@@ -1,0 +1,96 @@
+# Environment variables and secrets
+
+.env
+.env.*
+!.env.example
+
+# Python cache and compiled files
+
+**pycache**/
+*.py[cod]
+*$py.class
+
+# Virtual environments
+
+.venv/
+venv/
+env/
+ENV/
+
+# Pytest and coverage
+
+.pytest_cache/
+.coverage
+.coverage.*
+htmlcov/
+coverage.xml
+test-results/
+
+# Type checking and linting
+
+.mypy_cache/
+.pyright/
+.ruff_cache/
+
+# Build and packaging
+
+build/
+dist/
+*.egg-info/
+*.egg
+*.spec
+
+# Local application output
+
+output/
+exports/
+generated/
+logs/
+*.log
+
+# Temporary files
+
+tmp/
+temp/
+*.tmp
+*.bak
+*.swp
+
+# IDE and editor files
+
+.vscode/
+.idea/
+*.code-workspace
+
+# Operating system files
+
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Jupyter
+
+.ipynb_checkpoints/
+
+# Local databases
+
+*.db
+*.sqlite
+*.sqlite3
+
+# Anki local data
+
+collection.anki2
+collection.media/
+*.apkg
+
+# Local configuration overrides
+
+config.local.json
+settings.local.json
+
+# Generated HTML files
+
+output/**/*.html
+exports/**/*.html
+generated/**/*.html

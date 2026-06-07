@@ -1,0 +1,6 @@
+google-genai
+python-dotenv
+requests
+pydantic
+openai
+customtkinter
