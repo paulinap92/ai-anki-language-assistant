@@ -104,3 +104,19 @@ When adding new features, keep the same separation:
 - new Anki field rendering logic → `src/anki/field_builder.py`
 - new UI behaviour → `src/ui/`
 - new shared data model → `src/domain/models.py`
+
+## Grammar flow
+
+```text
+Modern Grammar tab
+    -> VocabularyAiClient.analyze_grammar()
+    -> provider-specific text generation
+    -> GrammarAnalysis validation
+    -> GrammarFieldBuilder
+    -> AI Grammar Light Card in Anki
+```
+
+The Grammar feature uses the same provider abstraction as vocabulary generation
+and conversation practice. Both Gemini and OpenAI implement the same
+`analyze_grammar()` contract.
+

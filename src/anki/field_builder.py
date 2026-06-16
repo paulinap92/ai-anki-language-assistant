@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from html import escape
 
-from src.domain.models import VocabularyCard
+from src.domain.models import GrammarAnalysis, VocabularyCard
 
 
 class VocabularyFieldBuilder:
@@ -48,4 +48,36 @@ class VocabularyFieldBuilder:
         """Render a list of short strings as HTML chips."""
         return " ".join(
             f'<span class="chip">{cls.safe(value)}</span>' for value in values
+        )
+
+
+class GrammarFieldBuilder:
+    """Build HTML-safe Anki fields from a grammar analysis."""
+
+    @classmethod
+    def build_fields(cls, card: GrammarAnalysis) -> dict[str, str]:
+        """Return Anki note fields for the grammar note type."""
+        return {
+            "Sentence": cls.safe(card.sentence),
+            "Language": cls.safe(card.target_language),
+            "Meaning": cls.safe(card.meaning),
+            "Structure": cls.safe(card.structure),
+            "Breakdown": cls.blocks(card.breakdown),
+            "Usage": cls.safe(card.usage),
+            "ContextExample": cls.safe(card.context_example),
+            "Contrasts": cls.blocks(card.contrasts),
+            "CommonMistakes": cls.blocks(card.common_mistakes),
+        }
+
+    @staticmethod
+    def safe(value: str) -> str:
+        """Escape text for Anki HTML and preserve explicit line breaks."""
+        return escape(value).replace("\\n", "<br>")
+
+    @classmethod
+    def blocks(cls, values: list[str]) -> str:
+        """Render a list of explanations as stacked HTML blocks."""
+        return "".join(
+            f'<div class="grammar-list-item">{cls.safe(value)}</div>'
+            for value in values
         )

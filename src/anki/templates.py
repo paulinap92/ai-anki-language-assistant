@@ -36,7 +36,7 @@ BACK_TEMPLATE = """
 <div class="vocab-card back">
   <div class="language-badge">{{Language}} · {{PartOfSpeech}}</div>
   <div class="word small">{{Word}}</div>
-  <div class="translation">{{TranslationPL}}</div>
+  {{#TranslationPL}}<div class="translation">{{TranslationPL}}</div>{{/TranslationPL}}
 
   <section class="section definition">
     <div class="label">Definition</div>
@@ -46,7 +46,7 @@ BACK_TEMPLATE = """
   <section class="section example">
     <div class="label">Example</div>
     <div class="sentence">{{Example}}</div>
-    <div class="translation-example">{{ExamplePL}}</div>
+    {{#ExamplePL}}<div class="translation-example">{{ExamplePL}}</div>{{/ExamplePL}}
   </section>
 
   <section class="section">
@@ -59,10 +59,12 @@ BACK_TEMPLATE = """
     <div class="chips secondary">{{Synonyms}}</div>
   </section>
 
+  {{#GrammarNote}}
   <section class="section grammar">
     <div class="label">Grammar / usage</div>
     <div class="content">{{GrammarNote}}</div>
   </section>
+  {{/GrammarNote}}
 </div>
 """.strip()
 
@@ -336,3 +338,111 @@ CARD_CSS = """
 }
 """.strip()
 
+
+
+GRAMMAR_MODEL_NAME = "AI Grammar Light Card"
+
+GRAMMAR_MODEL_FIELDS = [
+    "Sentence",
+    "Language",
+    "Meaning",
+    "Structure",
+    "Breakdown",
+    "Usage",
+    "ContextExample",
+    "Contrasts",
+    "CommonMistakes",
+]
+
+GRAMMAR_FRONT_TEMPLATE = """
+<div class="vocab-card front grammar-front">
+  <div class="language-badge">{{Language}} · grammar structure</div>
+  <div class="word grammar-sentence">{{Sentence}}</div>
+  <div class="prompt">Show explanation</div>
+</div>
+""".strip()
+
+GRAMMAR_BACK_TEMPLATE = """
+<div class="vocab-card back">
+  <div class="language-badge">{{Language}} · grammar structure</div>
+  <div class="word small grammar-sentence-small">{{Sentence}}</div>
+  <div class="translation grammar-meaning">{{Meaning}}</div>
+
+  <section class="section grammar">
+    <div class="label">Structure</div>
+    <div class="structure-pill">{{Structure}}</div>
+  </section>
+
+  <section class="section">
+    <div class="label">How it works</div>
+    <div class="grammar-list">{{Breakdown}}</div>
+  </section>
+
+  <section class="section">
+    <div class="label">When to use it</div>
+    <div class="content">{{Usage}}</div>
+  </section>
+
+  <section class="section example">
+    <div class="label">Natural context</div>
+    <div class="sentence">{{ContextExample}}</div>
+  </section>
+
+  <section class="section">
+    <div class="label">Contrast</div>
+    <div class="grammar-list">{{Contrasts}}</div>
+  </section>
+
+  <section class="section grammar-warning">
+    <div class="label">Common mistakes</div>
+    <div class="grammar-list">{{CommonMistakes}}</div>
+  </section>
+</div>
+""".strip()
+
+GRAMMAR_CARD_CSS = CARD_CSS + """
+
+.grammar-sentence {
+  max-width: 540px;
+  font-size: 38px;
+}
+
+.grammar-sentence-small {
+  font-size: 30px;
+  line-height: 1.25;
+}
+
+.grammar-meaning {
+  font-size: 20px;
+  line-height: 1.45;
+}
+
+.structure-pill {
+  display: inline-block;
+  padding: 7px 11px;
+  border-radius: 999px;
+  background: #eaf2ff !important;
+  color: #245db5 !important;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.grammar-list-item {
+  margin-top: 8px;
+  padding: 10px 12px;
+  border-radius: 11px;
+  background: #ffffff !important;
+  border: 1px solid #edf1f6;
+  font-size: 15px;
+  line-height: 1.45;
+}
+
+.grammar-list-item:first-child {
+  margin-top: 0;
+}
+
+.grammar-warning {
+  background: #fff8f1 !important;
+  border-color: #f6dfc6;
+}
+""".strip()

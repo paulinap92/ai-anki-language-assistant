@@ -14,7 +14,11 @@ import customtkinter as ctk
 from src.ai.base import VocabularyAiClient
 from src.anki.client import AnkiClient
 from src.domain.languages import LANGUAGE_TAGS
-from src.domain.models import ConversationFeedback, VocabularyCard
+from src.domain.models import ConversationFeedback, GrammarAnalysis, VocabularyCard
+
+
+EXPLANATION_LANGUAGES = ["Polish", "English", "Spanish", "German", "Italian", "No translation"]
+IMPROVEMENT_LEVELS = ["Natural B1/B2", "Strong B2/C1", "Professional / Interview"]
 
 
 class ModernVocabularyGui:
@@ -33,12 +37,18 @@ class ModernVocabularyGui:
 
         self._provider_var = ctk.StringVar(value=next(iter(ai_clients)))
         self._language_var = ctk.StringVar(value=default_target_language)
+        self._explanation_language_var = ctk.StringVar(value="Polish")
+        self._improvement_level_var = ctk.StringVar(value="Strong B2/C1")
         self._deck_var = ctk.StringVar(value=anki_client.deck_name)
         self._status_var = ctk.StringVar(value="Ready. Open Anki and choose a deck.")
 
         self._word_var = ctk.StringVar()
         self._generated_card: VocabularyCard | None = None
         self._generated_provider_name: str | None = None
+
+        self._grammar_sentence_var = ctk.StringVar()
+        self._generated_grammar: GrammarAnalysis | None = None
+        self._generated_grammar_provider_name: str | None = None
 
         self._topic_var = ctk.StringVar()
         self._conversation_question: str | None = None
@@ -85,13 +95,17 @@ class ModernVocabularyGui:
         tabs = ctk.CTkTabview(main)
         tabs.grid(row=2, column=0, sticky="nsew", padx=24, pady=12)
         tabs.add("Single flashcard")
+        tabs.add("Grammar")
         tabs.add("Conversation Practice")
         tabs.tab("Single flashcard").grid_columnconfigure(0, weight=1)
         tabs.tab("Single flashcard").grid_rowconfigure(0, weight=1)
+        tabs.tab("Grammar").grid_columnconfigure(0, weight=1)
+        tabs.tab("Grammar").grid_rowconfigure(0, weight=1)
         tabs.tab("Conversation Practice").grid_columnconfigure(0, weight=1)
         tabs.tab("Conversation Practice").grid_rowconfigure(0, weight=1)
 
         self._build_single_flashcard_tab(tabs.tab("Single flashcard"))
+        self._build_grammar_tab(tabs.tab("Grammar"))
         self._build_conversation_tab(tabs.tab("Conversation Practice"))
 
         ctk.CTkLabel(main, textvariable=self._status_var, anchor="w").grid(
@@ -147,15 +161,24 @@ class ModernVocabularyGui:
         entry = ctk.CTkEntry(left, textvariable=self._word_var, height=40)
         entry.grid(row=2, column=0, sticky="ew", padx=18, pady=(0, 12))
         entry.bind("<Return>", lambda _event: self._generate_single_card())
+        ctk.CTkLabel(left, text="Explanation / translation language").grid(
+            row=3, column=0, sticky="w", padx=18, pady=(4, 4)
+        )
+        ctk.CTkComboBox(
+            left,
+            variable=self._explanation_language_var,
+            values=EXPLANATION_LANGUAGES,
+            state="readonly",
+        ).grid(row=4, column=0, sticky="ew", padx=18, pady=(0, 12))
         ctk.CTkButton(left, text="Generate preview", height=42, command=self._generate_single_card).grid(
-            row=3, column=0, sticky="ew", padx=18, pady=(6, 8)
+            row=5, column=0, sticky="ew", padx=18, pady=(6, 8)
         )
         ctk.CTkButton(
             left,
             text="Add reviewed card to Anki",
             height=42,
             command=self._add_single_card_to_anki,
-        ).grid(row=4, column=0, sticky="ew", padx=18, pady=(0, 18))
+        ).grid(row=6, column=0, sticky="ew", padx=18, pady=(0, 18))
 
         right = ctk.CTkFrame(layout, corner_radius=18)
         right.grid(row=0, column=1, sticky="nsew")
@@ -168,6 +191,82 @@ class ModernVocabularyGui:
         self._preview.grid(row=1, column=0, sticky="nsew", padx=18, pady=(0, 18))
         self._preview.insert("1.0", "Generate a card to preview it here.")
         self._preview.configure(state="disabled")
+
+    def _build_grammar_tab(self, parent: ctk.CTkFrame) -> None:
+        """Build the sentence-first grammar analysis tab."""
+        layout = ctk.CTkFrame(parent, fg_color="transparent")
+        layout.grid(row=0, column=0, sticky="nsew", padx=8, pady=8)
+        layout.grid_columnconfigure(0, weight=0)
+        layout.grid_columnconfigure(1, weight=1)
+        layout.grid_rowconfigure(0, weight=1)
+
+        left = ctk.CTkFrame(layout, corner_radius=18, width=340)
+        left.grid(row=0, column=0, sticky="nsw", padx=(0, 12))
+        left.grid_propagate(False)
+        left.grid_columnconfigure(0, weight=1)
+
+        ctk.CTkLabel(
+            left,
+            text="Analyze a sentence",
+            font=ctk.CTkFont(size=20, weight="bold"),
+        ).grid(row=0, column=0, sticky="w", padx=18, pady=(18, 8))
+
+        ctk.CTkLabel(
+            left,
+            text="Enter a natural sentence in the selected language.",
+            wraplength=300,
+            justify="left",
+            text_color=("gray35", "gray75"),
+        ).grid(row=1, column=0, sticky="w", padx=18, pady=(0, 12))
+
+        grammar_entry = ctk.CTkEntry(
+            left,
+            textvariable=self._grammar_sentence_var,
+            height=42,
+            placeholder_text="He might have gone out.",
+        )
+        grammar_entry.grid(row=2, column=0, sticky="ew", padx=18, pady=(0, 12))
+        grammar_entry.bind("<Return>", lambda _event: self._analyze_grammar_sentence())
+
+        ctk.CTkButton(
+            left,
+            text="Analyze grammar",
+            height=42,
+            command=self._analyze_grammar_sentence,
+        ).grid(row=3, column=0, sticky="ew", padx=18, pady=(6, 8))
+
+        ctk.CTkButton(
+            left,
+            text="Add grammar card to Anki",
+            height=42,
+            command=self._add_grammar_card_to_anki,
+        ).grid(row=4, column=0, sticky="ew", padx=18, pady=(0, 18))
+
+        right = ctk.CTkFrame(layout, corner_radius=18)
+        right.grid(row=0, column=1, sticky="nsew")
+        right.grid_columnconfigure(0, weight=1)
+        right.grid_rowconfigure(1, weight=1)
+
+        ctk.CTkLabel(
+            right,
+            text="Grammar card preview",
+            font=ctk.CTkFont(size=20, weight="bold"),
+        ).grid(row=0, column=0, sticky="w", padx=18, pady=(18, 8))
+
+        self._grammar_preview = ctk.CTkTextbox(
+            right,
+            wrap="word",
+            font=ctk.CTkFont(size=14),
+        )
+        self._grammar_preview.grid(
+            row=1, column=0, sticky="nsew", padx=18, pady=(0, 18)
+        )
+        self._grammar_preview.insert(
+            "1.0",
+            "Enter a sentence to see its meaning, structure, usage, context, "
+            "contrasts, and common mistakes.",
+        )
+        self._grammar_preview.configure(state="disabled")
 
     def _build_conversation_tab(self, parent: ctk.CTkFrame) -> None:
         layout = ctk.CTkFrame(parent, fg_color="transparent")
@@ -185,14 +284,24 @@ class ModernVocabularyGui:
         ctk.CTkEntry(
             topic,
             textvariable=self._topic_var,
-            placeholder_text="np. volcanoes, travel in Italy, job interview, cooking dinner...",
+            placeholder_text="e.g. daily life, travel, an interview, cooking...",
             height=38,
         ).grid(row=0, column=1, padx=(0, 10), pady=14, sticky="ew")
+        ctk.CTkLabel(topic, text="Answer level").grid(
+            row=0, column=2, padx=(4, 6), pady=14, sticky="e"
+        )
+        ctk.CTkComboBox(
+            topic,
+            variable=self._improvement_level_var,
+            values=IMPROVEMENT_LEVELS,
+            state="readonly",
+            width=190,
+        ).grid(row=0, column=3, padx=(0, 10), pady=14)
         ctk.CTkButton(topic, text="Start topic", width=120, command=self._start_conversation_topic).grid(
-            row=0, column=2, padx=(0, 10), pady=14
+            row=0, column=4, padx=(0, 10), pady=14
         )
         ctk.CTkButton(topic, text="Reset", width=80, command=self._reset_conversation).grid(
-            row=0, column=3, padx=(0, 18), pady=14
+            row=0, column=5, padx=(0, 18), pady=14
         )
 
         chat_panel = ctk.CTkFrame(layout, corner_radius=18)
@@ -302,10 +411,18 @@ class ModernVocabularyGui:
         self._status_var.set(f"Generating card with {provider_name}...")
         self._root.update_idletasks()
         try:
-            card = self._current_ai_client().generate_card(word_or_phrase, self._language_var.get())
+            card = self._current_ai_client().generate_card(
+                word_or_phrase, self._language_var.get(), self._explanation_language_var.get()
+            )
         except Exception as exc:
             self._status_var.set("Card generation failed.")
             messagebox.showerror("Generation error", str(exc))
+            return
+
+        if not card.is_valid:
+            correction = ("\nSuggested correction: " + card.suggested_correction) if card.suggested_correction else ""
+            self._status_var.set("Input validation failed.")
+            messagebox.showwarning("Invalid word or phrase", f"{card.validation_error}{correction}")
             return
 
         self._generated_card = card
@@ -326,8 +443,9 @@ class ModernVocabularyGui:
             f"WORD / PHRASE\n{card.word_or_phrase}\n\n"
             f"LANGUAGE\n{card.target_language} · {card.part_of_speech}\n\n"
             f"DEFINITION\n{card.definition}\n\n"
-            f"POLISH\n{card.translation_pl}\n\n"
-            f"EXAMPLE\n{card.example}\n{card.example_pl}\n\n"
+            f"EXPLANATION LANGUAGE\n{card.explanation_language}\n\n"
+            f"TRANSLATION\n{card.translation_pl or '—'}\n\n"
+            f"EXAMPLE\n{card.example}\n{card.example_pl or '—'}\n\n"
             f"SYNONYMS / ALTERNATIVES\n{', '.join(card.synonyms)}\n\n"
             f"COLLOCATIONS / USAGE\n- " + "\n- ".join(card.collocations) + "\n\n"
             f"GRAMMAR NOTE\n{card.grammar_note}"
@@ -349,6 +467,80 @@ class ModernVocabularyGui:
         self._word_var.set("")
         self._generated_card = None
         self._generated_provider_name = None
+
+    def _analyze_grammar_sentence(self) -> None:
+        """Generate and preview a sentence-first grammar analysis."""
+        sentence = self._grammar_sentence_var.get().strip()
+        if not sentence:
+            messagebox.showerror("Missing sentence", "Enter a sentence to analyze.")
+            return
+
+        provider_name = self._provider_var.get()
+        self._status_var.set(f"Analyzing grammar with {provider_name}...")
+        self._root.update_idletasks()
+
+        try:
+            analysis = self._current_ai_client().analyze_grammar(
+                sentence=sentence,
+                target_language=self._language_var.get(),
+            )
+        except Exception as exc:
+            self._status_var.set("Grammar analysis failed.")
+            messagebox.showerror("Grammar error", str(exc))
+            return
+
+        self._generated_grammar = analysis
+        self._generated_grammar_provider_name = provider_name
+        self._set_grammar_preview(self._format_grammar_preview(analysis))
+        self._status_var.set("Grammar analysis ready. Review it before adding to Anki.")
+
+    def _set_grammar_preview(self, content: str) -> None:
+        """Replace the read-only grammar preview content."""
+        self._grammar_preview.configure(state="normal")
+        self._grammar_preview.delete("1.0", "end")
+        self._grammar_preview.insert("1.0", content)
+        self._grammar_preview.configure(state="disabled")
+
+    @staticmethod
+    def _format_grammar_preview(analysis: GrammarAnalysis) -> str:
+        """Format a grammar analysis for the desktop preview."""
+        return (
+            f"SENTENCE\n{analysis.sentence}\n\n"
+            f"LANGUAGE\n{analysis.target_language} · grammar structure\n\n"
+            f"MEANING\n{analysis.meaning}\n\n"
+            f"STRUCTURE\n{analysis.structure}\n\n"
+            f"HOW IT WORKS\n- " + "\n- ".join(analysis.breakdown) + "\n\n"
+            f"WHEN TO USE IT\n{analysis.usage}\n\n"
+            f"NATURAL CONTEXT\n{analysis.context_example}\n\n"
+            f"CONTRAST\n- " + "\n- ".join(analysis.contrasts) + "\n\n"
+            f"COMMON MISTAKES\n- " + "\n- ".join(analysis.common_mistakes)
+        )
+
+    def _add_grammar_card_to_anki(self) -> None:
+        """Add the reviewed grammar analysis to Anki."""
+        if self._generated_grammar is None:
+            messagebox.showerror(
+                "No grammar card",
+                "Analyze a sentence before adding it to Anki.",
+            )
+            return
+
+        try:
+            deck = self._set_selected_deck()
+            self._anki_client.add_grammar_card(
+                self._generated_grammar,
+                self._generated_grammar_provider_name or self._provider_var.get(),
+            )
+        except Exception as exc:
+            self._status_var.set("Could not add grammar card to Anki.")
+            messagebox.showerror("Anki error", str(exc))
+            return
+
+        self._status_var.set(f"Added grammar card to Anki deck: {deck}")
+        messagebox.showinfo("Added", "Grammar card added to Anki.")
+        self._grammar_sentence_var.set("")
+        self._generated_grammar = None
+        self._generated_grammar_provider_name = None
 
     def _start_conversation_topic(self) -> None:
         """Start a new conversation topic using the shared AI client interface."""
@@ -401,7 +593,7 @@ class ModernVocabularyGui:
                 question=self._conversation_question,
                 answer=answer,
                 target_language=self._language_var.get(),
-                improvement_level="Strong B2/C1",
+                improvement_level=self._improvement_level_var.get(),
             )
         except Exception as exc:
             self._status_var.set("Conversation reply failed.")
@@ -526,7 +718,14 @@ class ModernVocabularyGui:
             self._status_var.set(f"Generating and adding: {phrase}")
             self._root.update_idletasks()
             try:
-                card = self._current_ai_client().generate_card(phrase, target_language)
+                card = self._current_ai_client().generate_card(
+                    phrase, target_language, self._explanation_language_var.get()
+                )
+                if not card.is_valid:
+                    detail = card.validation_error or "Invalid word or phrase."
+                    if card.suggested_correction:
+                        detail += f" Suggested correction: {card.suggested_correction}"
+                    raise ValueError(detail)
                 self._anki_client.add_card(card, provider_name=provider_name)
                 added += 1
             except Exception as exc:

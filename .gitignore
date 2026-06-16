@@ -94,3 +94,7 @@ settings.local.json
 output/**/*.html
 exports/**/*.html
 generated/**/*.html
+
+old_files
+pp/
+ver 1/

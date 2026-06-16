@@ -12,6 +12,8 @@ from src.domain.languages import LANGUAGE_TAGS
 from src.domain.models import ConversationFeedback, VocabularyCard
 
 
+EXPLANATION_LANGUAGES = ["Polish", "English", "Spanish", "German", "Italian", "No translation"]
+
 IMPROVEMENT_LEVELS = [
     "Natural B1/B2",
     "Strong B2/C1",
@@ -52,6 +54,7 @@ class VocabularyGui:
         default_provider = next(iter(ai_clients))
         self._provider_var = tk.StringVar(value=default_provider)
         self._language_var = tk.StringVar(value=default_target_language)
+        self._explanation_language_var = tk.StringVar(value="Polish")
         self._deck_var = tk.StringVar(value=anki_client.deck_name)
         self._word_var = tk.StringVar()
         self._flashcard_status_var = tk.StringVar(
@@ -212,61 +215,61 @@ class VocabularyGui:
         """Create widgets used to generate and save a flashcard."""
         frame = self._flashcard_tab
         frame.columnconfigure(1, weight=1)
-        frame.rowconfigure(5, weight=1)
+        frame.rowconfigure(6, weight=1)
 
         ttk.Label(frame, text="AI provider:").grid(row=0, column=0, sticky="w", pady=6)
         ttk.Combobox(
-            frame,
-            textvariable=self._provider_var,
-            values=list(self._ai_clients.keys()),
-            state="readonly",
-            width=28,
+            frame, textvariable=self._provider_var, values=list(self._ai_clients.keys()),
+            state="readonly", width=28,
         ).grid(row=0, column=1, sticky="ew", pady=6, padx=(10, 10))
 
         ttk.Label(frame, text="Language:").grid(row=1, column=0, sticky="w", pady=6)
         ttk.Combobox(
-            frame,
-            textvariable=self._language_var,
-            values=list(LANGUAGE_TAGS.keys()),
-            state="readonly",
-            width=28,
+            frame, textvariable=self._language_var, values=list(LANGUAGE_TAGS.keys()),
+            state="readonly", width=28,
         ).grid(row=1, column=1, sticky="ew", pady=6, padx=(10, 10))
 
-        ttk.Label(frame, text="Anki deck:").grid(row=2, column=0, sticky="w", pady=6)
-        self._deck_box = ttk.Combobox(frame, textvariable=self._deck_var, width=50)
-        self._deck_box.grid(row=2, column=1, sticky="ew", pady=6, padx=(10, 10))
-        ttk.Button(frame, text="Refresh decks", command=self._load_decks).grid(
-            row=2, column=2, sticky="ew", pady=6
-        )
+        ttk.Label(frame, text="Explanation language:").grid(row=2, column=0, sticky="w", pady=6)
+        ttk.Combobox(
+            frame, textvariable=self._explanation_language_var,
+            values=EXPLANATION_LANGUAGES, state="readonly", width=28,
+        ).grid(row=2, column=1, sticky="ew", pady=6, padx=(10, 10))
 
-        ttk.Label(frame, text="Word or phrase:").grid(row=3, column=0, sticky="w", pady=6)
-        word_entry = ttk.Entry(frame, textvariable=self._word_var)
-        word_entry.grid(row=3, column=1, sticky="ew", pady=6, padx=(10, 10))
-        word_entry.bind("<Return>", lambda _event: self._generate_card())
-        ttk.Button(frame, text="Generate", command=self._generate_card, style="Accent.TButton").grid(
+        ttk.Label(frame, text="Anki deck:").grid(row=3, column=0, sticky="w", pady=6)
+        self._deck_box = ttk.Combobox(frame, textvariable=self._deck_var, width=50)
+        self._deck_box.grid(row=3, column=1, sticky="ew", pady=6, padx=(10, 10))
+        ttk.Button(frame, text="Refresh decks", command=self._load_decks).grid(
             row=3, column=2, sticky="ew", pady=6
         )
 
+        ttk.Label(frame, text="Word or phrase:").grid(row=4, column=0, sticky="w", pady=6)
+        word_entry = ttk.Entry(frame, textvariable=self._word_var)
+        word_entry.grid(row=4, column=1, sticky="ew", pady=6, padx=(10, 10))
+        word_entry.bind("<Return>", lambda _event: self._generate_card())
+        ttk.Button(
+            frame, text="Generate", command=self._generate_card, style="Accent.TButton"
+        ).grid(row=4, column=2, sticky="ew", pady=6)
+
         ttk.Label(frame, text="Preview:").grid(
-            row=4, column=0, columnspan=3, sticky="w", pady=(18, 6)
+            row=5, column=0, columnspan=3, sticky="w", pady=(18, 6)
         )
         self._preview = tk.Text(
             frame, wrap="word", state="disabled", font=("Segoe UI", 10),
             background=SURFACE, foreground=TEXT, relief="flat",
             highlightthickness=1, highlightbackground=BORDER, padx=14, pady=14,
         )
-        self._preview.grid(row=5, column=0, columnspan=3, sticky="nsew")
+        self._preview.grid(row=6, column=0, columnspan=3, sticky="nsew")
 
         ttk.Button(
-            frame,
-            text="Prepare style for old AI cards",
+            frame, text="Prepare style for old AI cards",
             command=self._prepare_old_cards_migration,
-        ).grid(row=6, column=0, columnspan=2, sticky="w", pady=(16, 10))
-        ttk.Button(frame, text="Add to Anki", command=self._add_to_anki, style="Accent.TButton").grid(
-            row=6, column=2, sticky="e", pady=(16, 10)
-        )
+        ).grid(row=7, column=0, columnspan=2, sticky="w", pady=(16, 10))
+        ttk.Button(
+            frame, text="Add to Anki", command=self._add_to_anki,
+            style="Accent.TButton",
+        ).grid(row=7, column=2, sticky="e", pady=(16, 10))
         ttk.Label(frame, textvariable=self._flashcard_status_var).grid(
-            row=7, column=0, columnspan=3, sticky="w", pady=(4, 0)
+            row=8, column=0, columnspan=3, sticky="w", pady=(4, 0)
         )
 
     def _build_conversation_tab(self) -> None:
@@ -469,10 +472,17 @@ class VocabularyGui:
             card = self._ai_clients[provider_name].generate_card(
                 word_or_phrase=word_or_phrase,
                 target_language=target_language,
+                explanation_language=self._explanation_language_var.get(),
             )
         except Exception as exc:
             self._flashcard_status_var.set("Card generation failed.")
             messagebox.showerror("Generation error", str(exc))
+            return
+
+        if not card.is_valid:
+            correction = ("\nSuggested correction: " + card.suggested_correction) if card.suggested_correction else ""
+            self._flashcard_status_var.set("Input validation failed.")
+            messagebox.showwarning("Invalid word or phrase", f"{card.validation_error}{correction}")
             return
 
         self._generated_card = card
@@ -489,9 +499,10 @@ class VocabularyGui:
             f"Language: {card.target_language}\n"
             f"Part of speech: {card.part_of_speech}\n\n"
             f"Definition: {card.definition}\n"
-            f"Polish translation: {card.translation_pl}\n\n"
+            f"Explanation language: {card.explanation_language}\n"
+            f"Translation: {card.translation_pl or '—'}\n\n"
             f"Example: {card.example}\n"
-            f"Example PL: {card.example_pl}\n\n"
+            f"Example translation: {card.example_pl or '—'}\n\n"
             f"Synonyms / alternatives: {', '.join(card.synonyms)}\n\n"
             f"Collocations / usage:\n- " + "\n- ".join(card.collocations) + "\n\n"
             f"Grammar note: {card.grammar_note}"
@@ -731,7 +742,13 @@ class VocabularyGui:
                 card = self._ai_clients[provider_name].generate_card(
                     word_or_phrase=expression,
                     target_language=language,
+                    explanation_language=self._explanation_language_var.get(),
                 )
+                if not card.is_valid:
+                    detail = card.validation_error or "Invalid word or phrase."
+                    if card.suggested_correction:
+                        detail += f" Suggested correction: {card.suggested_correction}"
+                    raise ValueError(detail)
                 self._anki_client.add_card(card, provider_name=provider_name)
                 added.append(expression)
             except Exception as exc:

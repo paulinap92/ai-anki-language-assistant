@@ -8,7 +8,7 @@ from typing import TypeVar
 
 from pydantic import BaseModel
 
-from src.domain.models import ConversationFeedback, ConversationStart, VocabularyCard
+from src.domain.models import ConversationFeedback, ConversationStart, GrammarAnalysis, VocabularyCard
 
 
 ResponseModel = TypeVar("ResponseModel", bound=BaseModel)
@@ -23,12 +23,18 @@ class VocabularyAiClient(ABC):
         """Return a user-facing provider name."""
 
     @abstractmethod
-    def generate_card(self, word_or_phrase: str, target_language: str) -> VocabularyCard:
+    def generate_card(
+        self, word_or_phrase: str, target_language: str, explanation_language: str = "Polish"
+    ) -> VocabularyCard:
         """Generate one validated vocabulary flashcard."""
 
     @abstractmethod
     def start_conversation(self, topic: str, target_language: str) -> ConversationStart:
         """Generate the first conversation question for a learner-selected topic."""
+
+    @abstractmethod
+    def analyze_grammar(self, sentence: str, target_language: str) -> GrammarAnalysis:
+        """Analyze the grammar and natural usage of one sentence."""
 
     @abstractmethod
     def review_conversation_answer(
@@ -72,6 +78,15 @@ class VocabularyAiClient(ABC):
         """Parse and validate an initial conversation question response."""
         return cls._parse_response(
             raw_text, provider_name, ConversationStart, "conversation question"
+        )
+
+    @classmethod
+    def _parse_grammar_analysis(
+        cls, raw_text: str, provider_name: str
+    ) -> GrammarAnalysis:
+        """Parse and validate a sentence-first grammar analysis response."""
+        return cls._parse_response(
+            raw_text, provider_name, GrammarAnalysis, "grammar analysis"
         )
 
     @classmethod

@@ -1,201 +1,118 @@
-"""Prompt templates for vocabulary flashcard generation."""
+"""Prompt templates for vocabulary, conversation, and grammar features."""
 
 from __future__ import annotations
 
-import random
+
+VOCABULARY_PROMPT_VERSION = "v3-word-first-validation-language"
+EXPLANATION_LANGUAGES = ["Polish", "English", "Spanish", "German", "Italian", "No translation"]
 
 
-EXAMPLE_CONTEXTS = [
-    # Home and everyday life
-    "an ordinary situation at home",
-    "cleaning, organising, or fixing something at home",
-    "preparing for a busy day",
-    "relaxing after a tiring day",
-    "talking with a partner at home",
-    "buying something practical for the house",
-    "dealing with a delivery, package, or small household problem",
-    "getting ready for a short trip",
-
-    # Food and cooking
-    "cooking dinner at home",
-    "trying a new recipe",
-    "preparing a healthy meal",
-    "using an air fryer or baking something",
-    "ordering food in a restaurant",
-    "talking about Italian food",
-    "choosing ingredients in a supermarket",
-    "having coffee or breakfast in a café",
-    "talking about a dish that tasted surprisingly good or bad",
-    "planning what to eat after exercise or after travelling",
-
-    # Travel and places
-    "travelling in Italy",
-    "planning a trip to the Canary Islands",
-    "spending time near the sea",
-    "walking around a lake or coastal town",
-    "asking for directions while travelling",
-    "using a train, bus, airport, or ferry",
-    "booking accommodation or an activity",
-    "discovering a beautiful viewpoint or hiking route",
-    "talking about a holiday that has just ended",
-    "coming back home after a trip",
-    "visiting a small town, market, or local café",
-    "dealing with a small travel inconvenience",
-
-    # Nature and outdoor life
-    "walking by the sea",
-    "going on a mountain or coastal hike",
-    "watching a sunset or beautiful landscape",
-    "taking care of herbs or plants on a balcony",
-    "talking about weather during an outdoor plan",
-    "spending a peaceful day outdoors",
-    "choosing a route for a weekend walk",
-    "describing a place that feels relaxing",
-
-    # Sport and wellbeing
-    "going swimming",
-    "training at the gym",
-    "doing yoga or stretching",
-    "going for a long walk",
-    "feeling tired after an active week",
-    "trying to sleep better and recover",
-    "choosing a manageable exercise plan",
-    "talking about motivation to stay active",
-    "taking care of wellbeing without overdoing things",
-
-    # Photography, hobbies, and creativity
-    "taking photos during a trip",
-    "choosing the best photo from a beautiful place",
-    "planning a photography blog post",
-    "playing guitar or piano at home",
-    "learning a song or practising a hobby",
-    "reading a book or listening to a podcast",
-    "talking about an interesting story or documentary",
-    "creating something for a personal project",
-
-    # Friends and social situations
-    "chatting with a friend about recent plans",
-    "meeting someone for coffee",
-    "telling a funny story from a trip",
-    "making weekend plans with another person",
-    "expressing excitement, disappointment, or relief",
-    "asking someone for advice",
-    "explaining a misunderstanding",
-    "meeting new people in a relaxed situation",
-
-    # Languages and learning
-    "learning English or Spanish vocabulary",
-    "trying to explain something in a foreign language",
-    "forgetting a word during a conversation",
-    "practising how to speak more naturally",
-    "studying a technical topic step by step",
-    "learning something that initially seemed difficult",
-    "preparing for a challenging question",
-
-    # Technology and personal projects
-    "working on a small Python project",
-    "debugging a frustrating technical problem",
-    "building a machine learning portfolio project",
-    "analysing data or checking model results",
-    "creating a useful automation tool",
-    "working on a travel-planning application",
-    "building a local AI assistant or RAG prototype",
-    "organising files, logs, or project documentation",
-    "solving a problem after several failed attempts",
-
-    # Work and career — present, but not dominant
-    "a realistic situation at work",
-    "explaining a technical issue to a colleague",
-    "discussing a machine vision or production problem",
-    "preparing for a job interview",
-    "describing a project during an interview",
-    "receiving feedback on a job application",
-    "talking about career plans and next steps",
-    "handling stress during a professional conversation",
-
-    # Opinions, emotions, and normal conversations
-    "expressing an honest opinion about something",
-    "being pleasantly surprised by an experience",
-    "feeling annoyed because something stopped working",
-    "feeling relieved after solving a problem",
-    "deciding whether something is worth the money",
-    "changing plans because the original idea was not good",
-    "talking about something that seems more difficult than it really is",
-    "realising that a small change makes a big difference",
-]
-
-
-def build_vocabulary_prompt(word_or_phrase: str, target_language: str) -> str:
-    """Build a prompt for generating one vocabulary flashcard.
-
-    Args:
-        word_or_phrase: Word or phrase provided by the user.
-        target_language: Language being learned, for example English or Spanish.
-
-    Returns:
-        Prompt string for the language model.
-    """
-    example_context = random.choice(EXAMPLE_CONTEXTS)
+def build_vocabulary_prompt(
+    word_or_phrase: str,
+    target_language: str,
+    explanation_language: str = "Polish",
+) -> str:
+    """Build a validated, word-first vocabulary flashcard prompt."""
+    no_translation = explanation_language == "No translation"
+    explanation_rules = (
+        f"Provide translations and the short grammar note in {explanation_language}."
+        if not no_translation
+        else (
+            "Do not translate the word or example. Return empty strings for "
+            '"translation_pl", "example_pl", and "grammar_note".'
+        )
+    )
 
     return f"""
-You are a professional {target_language} teacher helping a Polish speaker learn {target_language} vocabulary.
+You are a professional {target_language} language teacher.
 
-Create ONE high-quality flashcard for this {target_language} word or phrase:
+Create ONE high-quality vocabulary flashcard for this exact user input:
 
 "{word_or_phrase}"
 
-Requirements:
+Target language: {target_language}
+Explanation language: {explanation_language}
+
+Follow this process internally:
+1. Validate whether the input is a real, correctly formed word or phrase in {target_language}.
+2. If valid, preserve the exact input and identify its most common useful meaning.
+3. Identify natural collocations, grammar patterns, and normal usage.
+4. Choose a realistic context based on the expression itself.
+5. Generate a simple, natural example that demonstrates the selected meaning.
+6. Verify spelling, naturalness, collocations, and JSON validity.
+
+Validation rules:
+- If the input is misspelled, malformed, invented, or not a valid expression, set "is_valid" to false.
+- For invalid input, do not invent a definition or example.
+- Explain the problem briefly in "validation_error" using {explanation_language if not no_translation else target_language}.
+- Suggest a correction only when reasonably confident; otherwise return an empty string.
+- For invalid input, return empty strings/lists for all flashcard content fields.
+
+Exact-input rules:
+- For valid input, "word_or_phrase" must exactly match: "{word_or_phrase}".
+- Never replace it with a synonym, related expression, corrected phrase, or a different word.
+- Corrections belong only in "suggested_correction" when "is_valid" is false.
+
+Definition and explanation rules:
 - The definition must be short, clear, and written in {target_language}.
-- The Polish translation must be natural and useful.
-- The example sentence must be natural, practical, and useful for real communication.
-- Use this situation for the example sentence: {example_context}.
-- The example sentence must clearly demonstrate the meaning of the word or phrase.
-- Do not default to remote jobs, recruitment, software projects, office meetings, or data work unless they naturally fit the selected situation.
-- Keep examples varied, realistic, and appropriate for normal everyday communication.
-- Synonyms must be useful. If exact synonyms do not exist, provide close alternatives or useful related expressions.
-- Collocations must show how the word or phrase is commonly used.
-- The grammar note must be short and written in Polish.
-- Return ONLY valid JSON.
-- Do not use markdown.
-- Do not add comments outside JSON.
+- {explanation_rules}
+- Never invent words, translations, or phonetic approximations.
+- Any translation must match the exact meaning used in the example.
+
+Example rules:
+- Select context from the meaning and common usage of the expression.
+- Context is optional and subordinate to natural usage.
+- Do not use random categories or force the word into work, travel, food, technology, or any other domain.
+- Prefer common, realistic usage over creative or unusual examples.
+- Reject sentences that are grammatical but pragmatically unnatural.
+- The sentence must sound natural to a native speaker and clearly demonstrate the meaning.
+
+Synonym and collocation rules:
+- Return only useful, established synonyms or close alternatives.
+- Return only established, commonly used collocations or usage patterns.
+- Do not create combinations merely because they are grammatically possible.
+- Return fewer items when fewer reliable items exist.
+
+Final self-check:
+- Input validity is handled honestly.
+- Exact input is preserved for valid cards.
+- The example is natural and meaning-driven.
+- The explanation language rule is followed.
+- Translations are correctly spelled and semantically accurate.
+- Collocations are established and natural.
+- Output is valid JSON and contains no text outside JSON.
+
+Return ONLY valid JSON. Do not use markdown.
 
 Return this exact JSON structure:
 
 {{
-  "word_or_phrase": "string",
+  "is_valid": true,
+  "validation_error": "",
+  "suggested_correction": "",
+  "explanation_language": "{explanation_language}",
+  "word_or_phrase": "{word_or_phrase}",
   "target_language": "{target_language}",
   "part_of_speech": "string",
   "definition": "string",
   "translation_pl": "string",
   "example": "string",
   "example_pl": "string",
-  "synonyms": ["string", "string", "string"],
-  "collocations": ["string", "string", "string"],
+  "synonyms": ["string"],
+  "collocations": ["string"],
   "grammar_note": "string"
 }}
 """
 
+
 def build_conversation_start_prompt(topic: str, target_language: str) -> str:
     """Build a prompt for the first question in conversation practice."""
     return f"""
-You are a supportive {target_language} conversation teacher helping a Polish speaker practise speaking naturally.
-
-Start a short conversation in {target_language} about the learner's chosen topic:
-"{topic}"
-
-Requirements:
-- Ask ONE natural, open question in {target_language}.
-- Keep it appropriate for everyday conversation unless the topic is professional.
-- The question should invite a 2-5 sentence answer.
-- Do not give explanations or corrections yet.
-- Return ONLY valid JSON.
-- Do not use markdown.
-
-Return this exact JSON structure:
-
-{{
-  "question": "string"
-}}
+You are a supportive {target_language} conversation teacher.
+Start a short conversation in {target_language} about: "{topic}"
+Ask ONE natural, open question suitable for a 2-5 sentence answer.
+Return ONLY valid JSON without markdown:
+{{"question": "string"}}
 """
 
 
@@ -206,30 +123,21 @@ def build_conversation_feedback_prompt(
     target_language: str,
     improvement_level: str,
 ) -> str:
-    """Build a prompt for reviewing one answer and giving a stronger model version."""
+    """Build a prompt for reviewing one answer and continuing a conversation."""
     return f"""
-You are a supportive {target_language} conversation teacher helping a Polish speaker improve spontaneous communication.
-
+You are a supportive {target_language} conversation teacher helping a Polish speaker.
 Conversation topic: "{topic}"
-Your question in {target_language}: "{question}"
-Learner's answer in {target_language}: "{answer}"
-Requested model-answer level: "{improvement_level}"
+Question: "{question}"
+Learner answer: "{answer}"
+Requested level: "{improvement_level}"
 
 Requirements:
-- Give short, practical feedback in Polish. Mention the most important corrections and one useful upgrade.
-- Provide "corrected_version": preserve the learner's original idea and vocabulary as much as possible; only fix mistakes and obvious unnatural wording.
-- Provide "advanced_answer": answer the same question again in {target_language}, but in a richer, more natural and more expressive way appropriate to the selected level.
-- The advanced answer must add useful phrasing and detail, not merely reword the corrected version.
-- For "Natural B1/B2", make the answer accessible, clear and naturally conversational.
-- For "Strong B2/C1", use richer vocabulary, more varied sentence structure and useful idiomatic phrasing without sounding artificial.
-- For "Professional / Interview", make the answer structured, confident and professional, suitable when the topic is work-related; if the topic is not professional, still make it polished rather than corporate.
-- Ask ONE natural follow-up question in {target_language} to continue the same conversation.
-- Suggest exactly 3 useful words or phrases in {target_language}, preferably drawn from the advanced answer and worth learning as flashcards.
-- Do not produce a long grammar lesson.
-- Return ONLY valid JSON.
-- Do not use markdown.
-
-Return this exact JSON structure:
+- Give short practical feedback in Polish.
+- Preserve the learner's idea in "corrected_version".
+- Write a richer natural "advanced_answer" appropriate to {improvement_level}.
+- Ask one natural follow-up question.
+- Suggest exactly 3 useful words or phrases.
+- Return ONLY valid JSON without markdown.
 
 {{
   "feedback_pl": "string",
@@ -240,3 +148,43 @@ Return this exact JSON structure:
 }}
 """
 
+def build_grammar_analysis_prompt(sentence: str, target_language: str) -> str:
+    """Build a prompt for explaining grammar through one natural sentence."""
+    return f"""
+You are a professional {target_language} teacher.
+
+Analyze this sentence for a learner:
+
+"{sentence}"
+
+Use ONLY {target_language} in every explanation. Do not translate the sentence
+into Polish or any other language.
+
+Requirements:
+- Preserve the original sentence exactly in "sentence".
+- Explain its meaning with a simple natural paraphrase in {target_language}.
+- Identify the most useful grammar structure, not every possible grammar detail.
+- Keep the explanation practical and suitable for a flashcard.
+- Break the structure into 2-4 short, useful parts.
+- Explain when and why a speaker would use this structure.
+- Give ONE natural context containing the original sentence.
+- Provide 1-3 concise contrasts with genuinely similar structures.
+- Provide 1-3 common mistakes with corrected forms.
+- Do not create a long academic grammar lesson.
+- Return ONLY valid JSON.
+- Do not use markdown or comments outside JSON.
+
+Return this exact JSON structure:
+
+{{
+  "sentence": "{sentence}",
+  "target_language": "{target_language}",
+  "meaning": "string",
+  "structure": "string",
+  "breakdown": ["string", "string"],
+  "usage": "string",
+  "context_example": "string",
+  "contrasts": ["string", "string"],
+  "common_mistakes": ["string", "string"]
+}}
+"""

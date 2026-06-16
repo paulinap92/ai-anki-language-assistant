@@ -6,11 +6,16 @@ from typing import Any
 
 import requests
 
-from src.anki.field_builder import VocabularyFieldBuilder
+from src.anki.field_builder import GrammarFieldBuilder, VocabularyFieldBuilder
 from src.anki.templates import (
     BACK_TEMPLATE,
     CARD_CSS,
     FRONT_TEMPLATE,
+    GRAMMAR_BACK_TEMPLATE,
+    GRAMMAR_CARD_CSS,
+    GRAMMAR_FRONT_TEMPLATE,
+    GRAMMAR_MODEL_FIELDS,
+    GRAMMAR_MODEL_NAME,
     LEGACY_BACK_TEMPLATE,
     LEGACY_FRONT_TEMPLATE,
     LEGACY_MODEL_FIELDS,
@@ -19,7 +24,7 @@ from src.anki.templates import (
     MODEL_NAME,
 )
 from src.domain.languages import get_language_tag
-from src.domain.models import VocabularyCard
+from src.domain.models import GrammarAnalysis, VocabularyCard
 
 
 class AnkiClient:
@@ -46,6 +51,7 @@ class AnkiClient:
         self._url = anki_connect_url
         self._deck_name = deck_name
         self._model_ready = False
+        self._grammar_model_ready = False
 
     @property
     def deck_name(self) -> str:
@@ -92,6 +98,32 @@ class AnkiClient:
             )
 
         self._model_ready = True
+
+    def ensure_grammar_model_exists(self) -> None:
+        """Create or update the custom grammar note type."""
+        if self._grammar_model_ready:
+            return
+
+        model_names = self._invoke(action="modelNames") or []
+        if GRAMMAR_MODEL_NAME not in model_names:
+            self._create_model(
+                model_name=GRAMMAR_MODEL_NAME,
+                fields=GRAMMAR_MODEL_FIELDS,
+                front_template=GRAMMAR_FRONT_TEMPLATE,
+                back_template=GRAMMAR_BACK_TEMPLATE,
+                template_name="Grammar Card",
+                css=GRAMMAR_CARD_CSS,
+            )
+        else:
+            self._update_model(
+                model_name=GRAMMAR_MODEL_NAME,
+                front_template=GRAMMAR_FRONT_TEMPLATE,
+                back_template=GRAMMAR_BACK_TEMPLATE,
+                template_name="Grammar Card",
+                css=GRAMMAR_CARD_CSS,
+            )
+
+        self._grammar_model_ready = True
 
     def prepare_legacy_card_migration(self) -> int:
         """Prepare a migration note type and open old app cards in Anki Browse.
@@ -151,12 +183,37 @@ class AnkiClient:
                 f"Card already exists or could not be added: {card.word_or_phrase}"
             )
 
+    def add_grammar_card(self, card: GrammarAnalysis, provider_name: str) -> None:
+        """Add one sentence-first grammar card to the active Anki deck."""
+        self.ensure_grammar_model_exists()
+        language_tag = get_language_tag(card.target_language)
+        note = {
+            "deckName": self._deck_name,
+            "modelName": GRAMMAR_MODEL_NAME,
+            "fields": GrammarFieldBuilder.build_fields(card),
+            "options": {"allowDuplicate": False},
+            "tags": [
+                "ai_grammar",
+                "ai_grammar_light_card",
+                language_tag,
+                f"provider_{provider_name.lower()}",
+            ],
+        }
+
+        result = self._invoke(action="addNote", params={"note": note})
+        if result is None:
+            raise ValueError(
+                f"Grammar card already exists or could not be added: {card.sentence}"
+            )
+
     def _create_model(
         self,
         model_name: str,
         fields: list[str],
         front_template: str,
         back_template: str,
+        template_name: str = "Vocabulary Card",
+        css: str = CARD_CSS,
     ) -> None:
         """Create an Anki note type with one card template."""
         self._invoke(
@@ -164,11 +221,11 @@ class AnkiClient:
             params={
                 "modelName": model_name,
                 "inOrderFields": fields,
-                "css": CARD_CSS,
+                "css": css,
                 "isCloze": False,
                 "cardTemplates": [
                     {
-                        "Name": "Vocabulary Card",
+                        "Name": template_name,
                         "Front": front_template,
                         "Back": back_template,
                     }
@@ -176,11 +233,18 @@ class AnkiClient:
             },
         )
 
-    def _update_model(self, model_name: str, front_template: str, back_template: str) -> None:
+    def _update_model(
+        self,
+        model_name: str,
+        front_template: str,
+        back_template: str,
+        template_name: str = "Vocabulary Card",
+        css: str = CARD_CSS,
+    ) -> None:
         """Update styling and templates for an existing Anki note type."""
         self._invoke(
             action="updateModelStyling",
-            params={"model": {"name": model_name, "css": CARD_CSS}},
+            params={"model": {"name": model_name, "css": css}},
         )
         self._invoke(
             action="updateModelTemplates",
@@ -188,7 +252,7 @@ class AnkiClient:
                 "model": {
                     "name": model_name,
                     "templates": {
-                        "Vocabulary Card": {
+                        template_name: {
                             "Front": front_template,
                             "Back": back_template,
                         }
