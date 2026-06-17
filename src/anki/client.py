@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from html import unescape
+import re
 from typing import Any
 
 import requests
@@ -25,6 +27,14 @@ from src.anki.templates import (
 )
 from src.domain.languages import get_language_tag
 from src.domain.models import GrammarAnalysis, VocabularyCard
+
+
+class DuplicateNoteError(ValueError):
+    """Raised when a matching Anki note already exists."""
+
+    def __init__(self, message: str, note_id: int) -> None:
+        super().__init__(message)
+        self.note_id = note_id
 
 
 class AnkiClient:
@@ -67,6 +77,14 @@ class AnkiClient:
         """Return all deck names available in the currently open Anki profile."""
         result = self._invoke(action="deckNames")
         return sorted(result or [])
+
+
+    def find_cards_for_practice(self, query: str) -> list[dict[str, Any]]:
+        """Return detailed Anki card records matching a browser search query."""
+        card_ids = self._invoke(action="findCards", params={"query": query}) or []
+        if not card_ids:
+            return []
+        return self._invoke(action="cardsInfo", params={"cards": card_ids}) or []
 
     def ensure_deck_exists(self) -> None:
         """Create the currently selected deck if it does not already exist."""
@@ -177,11 +195,16 @@ class AnkiClient:
             ],
         }
 
+        existing_note_id = self.find_existing_vocabulary_note_id(card.word_or_phrase)
+        if existing_note_id is not None:
+            raise DuplicateNoteError(
+                f"A vocabulary card for '{card.word_or_phrase}' already exists.",
+                existing_note_id,
+            )
+
         result = self._invoke(action="addNote", params={"note": note})
         if result is None:
-            raise ValueError(
-                f"Card already exists or could not be added: {card.word_or_phrase}"
-            )
+            raise ValueError(f"Could not add card: {card.word_or_phrase}")
 
     def add_grammar_card(self, card: GrammarAnalysis, provider_name: str) -> None:
         """Add one sentence-first grammar card to the active Anki deck."""
@@ -200,11 +223,110 @@ class AnkiClient:
             ],
         }
 
+        existing_note_id = self.find_existing_grammar_note_id(card.sentence)
+        if existing_note_id is not None:
+            raise DuplicateNoteError(
+                f"A grammar card for this sentence already exists: {card.sentence}",
+                existing_note_id,
+            )
+
         result = self._invoke(action="addNote", params={"note": note})
         if result is None:
-            raise ValueError(
-                f"Grammar card already exists or could not be added: {card.sentence}"
-            )
+            raise ValueError(f"Could not add grammar card: {card.sentence}")
+
+    def find_existing_vocabulary_note_id(self, word_or_phrase: str) -> int | None:
+        """Return the exact matching vocabulary note ID in the active deck."""
+        return self._find_existing_note_id(
+            model_name=MODEL_NAME,
+            field_name="Word",
+            expected_value=word_or_phrase,
+        )
+
+    def find_existing_grammar_note_id(self, sentence: str) -> int | None:
+        """Return the exact matching grammar note ID in the active deck."""
+        return self._find_existing_note_id(
+            model_name=GRAMMAR_MODEL_NAME,
+            field_name="Sentence",
+            expected_value=sentence,
+        )
+
+    def update_card(self, card: VocabularyCard, provider_name: str) -> int:
+        """Replace fields of an existing vocabulary note and return its ID."""
+        self.ensure_vocabulary_model_exists()
+        note_id = self.find_existing_vocabulary_note_id(card.word_or_phrase)
+        if note_id is None:
+            raise ValueError(f"No existing card found for: {card.word_or_phrase}")
+        self._invoke(
+            action="updateNoteFields",
+            params={
+                "note": {
+                    "id": note_id,
+                    "fields": VocabularyFieldBuilder.build_fields(card),
+                }
+            },
+        )
+        self._invoke(
+            action="addTags",
+            params={
+                "notes": [note_id],
+                "tags": f"provider_{provider_name.lower()}",
+            },
+        )
+        return note_id
+
+    def update_grammar_card(self, card: GrammarAnalysis, provider_name: str) -> int:
+        """Replace fields of an existing grammar note and return its ID."""
+        self.ensure_grammar_model_exists()
+        note_id = self.find_existing_grammar_note_id(card.sentence)
+        if note_id is None:
+            raise ValueError(f"No existing grammar card found for: {card.sentence}")
+        self._invoke(
+            action="updateNoteFields",
+            params={
+                "note": {
+                    "id": note_id,
+                    "fields": GrammarFieldBuilder.build_fields(card),
+                }
+            },
+        )
+        self._invoke(
+            action="addTags",
+            params={
+                "notes": [note_id],
+                "tags": f"provider_{provider_name.lower()}",
+            },
+        )
+        return note_id
+
+    def _find_existing_note_id(
+        self, model_name: str, field_name: str, expected_value: str
+    ) -> int | None:
+        """Find an exact field match without relying on Anki duplicate heuristics."""
+        deck = self._escape_search_value(self._deck_name)
+        model = self._escape_search_value(model_name)
+        note_ids = self._invoke(
+            action="findNotes",
+            params={"query": f'deck:"{deck}" note:"{model}"'},
+        ) or []
+        if not note_ids:
+            return None
+        notes = self._invoke(action="notesInfo", params={"notes": note_ids}) or []
+        expected = self._normalise_field_value(expected_value)
+        for note in notes:
+            field = (note.get("fields") or {}).get(field_name) or {}
+            value = field.get("value", "")
+            if self._normalise_field_value(value) == expected:
+                return int(note["noteId"])
+        return None
+
+    @staticmethod
+    def _escape_search_value(value: str) -> str:
+        return value.replace('\\', '\\\\').replace('"', '\\"')
+
+    @staticmethod
+    def _normalise_field_value(value: str) -> str:
+        plain = re.sub(r"<[^>]+>", "", unescape(value or ""))
+        return " ".join(plain.split()).casefold()
 
     def _create_model(
         self,

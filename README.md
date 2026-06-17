@@ -5,7 +5,7 @@ Desktop application for generating vocabulary and grammar cards, practising conv
 ## Current interfaces
 
 - `python main_gui.py` — classic stable Tkinter GUI.
-- `python main_gui_custom.py` — modern CustomTkinter GUI with Vocabulary, Grammar, Conversation Practice, and Batch / Queue import.
+- `python main_gui_custom.py` — modern CustomTkinter GUI with Vocabulary, Grammar, Conversation Practice, Batch / Queue, Practice, and Print Test.
 
 ## Purpose
 
@@ -41,7 +41,7 @@ It uses configured external LLM providers such as Gemini or OpenAI.
 
 ## Main workflows
 
-The application has four main workflows.
+The application has six main workflows.
 
 ---
 
@@ -254,7 +254,7 @@ skipped
 invalid
 ```
 
-The interface also shows progress information such as:
+The interface also shows:
 
 ```text
 current item / total
@@ -264,7 +264,57 @@ invalid
 remaining
 ```
 
-This workflow reduces repetitive typing and makes it much faster to process long vocabulary lists while still reviewing every generated card before saving it to Anki.
+This makes it faster to process long vocabulary lists while still reviewing every card before saving it to Anki.
+
+---
+
+## Workflow 5: Practise vocabulary and grammar
+
+The modern GUI includes a **Practice** mode that loads supported cards from Anki.
+
+The user can:
+
+- choose an Anki deck;
+- filter the available cards;
+- select the exact words or grammar structures to practise;
+- practise vocabulary and grammar in a controlled session;
+- check an answer without opening a modal popup;
+- move to the next question;
+- finish the session and review the result.
+
+Vocabulary exercises can use:
+
+- a sentence with a missing word or phrase;
+- a definition-based question when a safe gap cannot be created;
+- multiple-choice answers selected from compatible cards.
+
+Grammar exercises ask the learner to identify the structure used in a sentence.
+
+The user controls the material. The application randomises only the question order inside the selected set.
+
+---
+
+## Workflow 6: Create a printable test
+
+The **Print Test** mode uses selected Anki cards to generate two separate HTML files:
+
+```text
+deck_name_test.html
+deck_name_answer_key.html
+```
+
+The first file contains exercises without answers.
+
+The second file contains the answer key.
+
+Both files can be opened in a browser, printed directly, or saved as PDF.
+
+This mode is useful for:
+
+- offline revision;
+- classroom-style exercises;
+- handwritten practice;
+- testing a selected vocabulary set.
 
 ---
 
@@ -278,17 +328,15 @@ Instead, the application shows a status message directly in the interface, for e
 Added to Anki: thorough
 ```
 
-The message remains visible until the next relevant action, such as generating or adding another card.
+The message remains visible until the next relevant action.
 
-The interface also keeps a short activity history so recent actions are not lost.
+The interface also keeps a short activity history.
 
 Blocking popups are reserved for:
 
 - real errors;
 - critical warnings;
 - confirmations that require a user decision.
-
-This improves the workflow when adding many cards in sequence.
 
 ---
 
@@ -304,11 +352,39 @@ The application:
 - rejects forced or pragmatically unnatural examples;
 - checks translations;
 - supports a configurable explanation language;
-- supports `No translation`.
+- supports `No translation`;
+- treats multi-word expressions, compounds, idioms, and fixed phrases as complete lexical units;
+- prefers the established meaning of a phrase over a literal word-by-word interpretation.
 
 Both GUIs include an explanation-language selector.
 
 Invalid or misspelled expressions are shown as validation warnings instead of being silently turned into fictional flashcards.
+
+
+### Phrase-level meaning
+
+For multi-word expressions, the application asks the model to analyse the complete expression before generating a definition.
+
+For example:
+
+```text
+curso de reciclaje
+```
+
+should be interpreted in its established educational or professional meaning:
+
+```text
+refresher course / professional updating course
+```
+
+rather than automatically as:
+
+```text
+a course about recycling waste
+```
+
+This change prevents literal composition errors where a phrase is incorrectly interpreted from its individual words.
+
 
 ---
 
@@ -321,6 +397,38 @@ Both GUIs allow the learner to select:
 - Professional / Interview
 
 The selected level is sent to the conversation-feedback prompt.
+
+---
+
+## Updating an existing Anki card
+
+If a generated word or phrase already exists in Anki, the application does not silently create a duplicate.
+
+Instead, it can ask whether the reviewed version should replace the existing card content.
+
+### Flow
+
+```text
+Duplicate detected
+        ↓
+Show confirmation
+        ↓
+Update the existing note fields
+        ↓
+Keep the same note and review history
+```
+
+The update uses the existing Anki note instead of deleting it and creating a new one.
+
+This is useful when a problem is discovered after a card has already been saved, for example:
+
+- incorrect definition;
+- wrong translation;
+- unnatural example;
+- weak collocations;
+- literal interpretation of a fixed phrase.
+
+The card content is updated while the existing Anki review history is preserved.
 
 ---
 
@@ -378,6 +486,7 @@ The LLM is used for:
 - creating stronger model answers;
 - suggesting useful expressions from conversation;
 - analysing grammar through natural sentences;
+- interpreting complete multi-word expressions;
 - preparing structured Anki card fields;
 - generating examples, collocations, and grammar notes.
 
@@ -430,10 +539,14 @@ The app currently supports:
 - Add your own custom expressions to the flashcard queue.
 - Generate multiple cards from selected expressions.
 - Import vocabulary lists from TXT, CSV, or pasted multiline text.
-- Review vocabulary in a one-card-at-a-time Batch / Queue workflow.
+- Review cards in a one-at-a-time Batch / Queue workflow.
 - Add, skip, regenerate, edit, and navigate between queued items.
-- Track queue progress and item status.
+- Practise selected vocabulary and grammar cards from Anki.
+- Generate sentence-gap and definition-based exercises.
+- Create a printable test and a separate answer key.
 - Use non-blocking status messages instead of success popups.
+- Treat multi-word expressions as complete lexical units.
+- Update an existing Anki note when a corrected version should replace a duplicate.
 - Analyse grammar through natural sentences.
 - Save grammar analysis as a separate Anki note type.
 - Use Gemini, OpenAI, or both, depending on configured API keys.
@@ -635,9 +748,12 @@ It includes:
 - grammar analysis;
 - conversation practice;
 - Batch / Queue vocabulary import;
+- Practice mode;
+- Print Test generation;
 - explanation-language selection;
 - selectable conversation level;
-- non-blocking success status messages.
+- non-blocking status messages;
+- updating existing Anki cards.
 
 ### Command-line mode
 
@@ -774,7 +890,7 @@ ai_anki_vocab_multi_cards/
     │   └── models.py               # Pydantic data models
     └── ui/
         ├── classic_gui.py          # Stable Tkinter GUI
-        └── modern_gui.py           # CustomTkinter GUI with Grammar and Batch / Queue
+        └── modern_gui.py           # CustomTkinter GUI
 ```
 
 ---
@@ -845,6 +961,8 @@ See:
 - `docs/PROMPT_ENGINEERING_HISTORY.md`
 - `docs/VIDEO_SCRIPT_PROMPT_ENGINEERING.md`
 - `docs/BATCH_QUEUE_MODE.md`
+- `docs/PRACTICE_AND_PRINT_MODE.md`
+- `docs/ANKI_UPDATE_EXISTING_CARDS.md`
 - `docs/UX_FEEDBACK_HISTORY.md`
 - `docs/ARCHITECTURE.md`
 
@@ -898,6 +1016,8 @@ Possible next improvements:
 
 - expand automated test coverage;
 - improve prompt evaluation and regression testing;
+- expand Practice exercise types;
+- improve Print Test configuration;
 - add speech input/output;
 - add more card templates;
 - improve error messages;

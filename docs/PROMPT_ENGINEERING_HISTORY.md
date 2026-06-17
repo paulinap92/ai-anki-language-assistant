@@ -48,3 +48,80 @@ Existing Anki field names such as `TranslationPL` remain unchanged for compatibi
 - misspelled inputs must return validation failure.
 - returned valid expression must match exact input.
 - `short fuse` should use established collocations only.
+
+---
+
+## Case — Literal interpretation of a fixed multi-word expression
+
+### Observed failure
+
+Input:
+
+```text
+curso de reciclaje
+```
+
+Generated meaning:
+
+```text
+a course teaching how to recycle waste correctly
+```
+
+In educational and professional usage, the established meaning is usually a refresher or updating course for professionals.
+
+### Root cause
+
+The prompt analysed the individual components `curso` and `reciclaje` instead of first treating the complete expression as one lexical unit.
+
+### Prompt change
+
+Prompt version `v4-phrase-level-meaning` now requires the model to:
+
+- treat the complete input as one lexical unit;
+- identify established meanings of compounds, idioms, and fixed phrases;
+- avoid composing the meaning from literal translations of individual words;
+- check educational, professional, cultural, regional, and idiomatic usage;
+- keep the definition, translation, example, and collocations consistent with the selected phrase-level meaning.
+
+### Expected output
+
+```text
+Definition: Curso destinado a actualizar o renovar conocimientos profesionales.
+Translation: kurs doszkalający / szkolenie aktualizacyjne
+Example: La empresa organizó un curso de reciclaje sobre los nuevos procedimientos de seguridad.
+```
+
+### Regression case
+
+`curso de reciclaje` should be included in the vocabulary benchmark with the failure category:
+
+```text
+literal interpretation of a fixed expression
+```
+
+---
+
+## UX improvement — Updating an existing Anki card
+
+### Observed problem
+
+Duplicate prevention correctly stopped a second card from being added, but users could discover an error only after the original card had already been saved. The application provided no direct way to replace the incorrect fields.
+
+### Implemented solution
+
+When an exact vocabulary word/phrase or grammar sentence already exists in the selected deck, the application now asks whether the user wants to replace the existing note with the reviewed version.
+
+The update preserves the Anki note and its review history while replacing its fields through AnkiConnect `updateNoteFields`.
+
+### Supported flows
+
+- classic vocabulary GUI;
+- modern single-card mode;
+- Batch / Queue mode;
+- grammar cards;
+- vocabulary generated from Conversation Practice.
+
+### Engineering rationale
+
+Updating the existing note is preferable to deleting and recreating it because it preserves the note identity and accumulated Anki review history.
+

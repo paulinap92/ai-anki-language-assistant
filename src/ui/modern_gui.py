@@ -15,9 +15,10 @@ from tkinter import filedialog, messagebox
 import customtkinter as ctk
 
 from src.ai.base import VocabularyAiClient
-from src.anki.client import AnkiClient
+from src.anki.client import AnkiClient, DuplicateNoteError
 from src.domain.languages import LANGUAGE_TAGS
 from src.domain.models import ConversationFeedback, GrammarAnalysis, VocabularyCard
+from src.practice import PracticeItem, PracticeQuestion, PracticeService
 
 
 EXPLANATION_LANGUAGES = ["Polish", "English", "Spanish", "German", "Italian", "No translation"]
@@ -70,6 +71,19 @@ class ModernVocabularyGui:
         self._batch_status_var = ctk.StringVar(value="Load a TXT/CSV file or paste a list.")
         self._activity_var = ctk.StringVar(value="")
 
+        # Practice and printable-test state.
+        self._practice_scope_var = ctk.StringVar(value="All supported cards")
+        self._practice_progress_var = ctk.StringVar(value="Load cards from Anki.")
+        self._practice_feedback_var = ctk.StringVar(value="")
+        self._practice_selected_answer = ctk.StringVar(value="")
+        self._practice_items: list[PracticeItem] = []
+        self._practice_item_vars: list[ctk.BooleanVar] = []
+        self._practice_questions: list[PracticeQuestion] = []
+        self._practice_index = 0
+        self._practice_correct = 0
+        self._practice_incorrect = 0
+        self._practice_checked = False
+
         self._configure_window()
         self._build_widgets()
         self._load_decks()
@@ -111,6 +125,7 @@ class ModernVocabularyGui:
         tabs.add("Grammar")
         tabs.add("Conversation Practice")
         tabs.add("Batch / Queue")
+        tabs.add("Practice & Print")
         tabs.tab("Single flashcard").grid_columnconfigure(0, weight=1)
         tabs.tab("Single flashcard").grid_rowconfigure(0, weight=1)
         tabs.tab("Grammar").grid_columnconfigure(0, weight=1)
@@ -119,11 +134,14 @@ class ModernVocabularyGui:
         tabs.tab("Conversation Practice").grid_rowconfigure(0, weight=1)
         tabs.tab("Batch / Queue").grid_columnconfigure(0, weight=1)
         tabs.tab("Batch / Queue").grid_rowconfigure(0, weight=1)
+        tabs.tab("Practice & Print").grid_columnconfigure(0, weight=1)
+        tabs.tab("Practice & Print").grid_rowconfigure(0, weight=1)
 
         self._build_single_flashcard_tab(tabs.tab("Single flashcard"))
         self._build_grammar_tab(tabs.tab("Grammar"))
         self._build_conversation_tab(tabs.tab("Conversation Practice"))
         self._build_batch_tab(tabs.tab("Batch / Queue"))
+        self._build_practice_tab(tabs.tab("Practice & Print"))
 
         footer = ctk.CTkFrame(main, fg_color="transparent")
         footer.grid(row=3, column=0, sticky="ew", padx=24, pady=(0, 16))
@@ -520,6 +538,92 @@ class ModernVocabularyGui:
             row=0, column=4, sticky="ew", padx=(4, 0)
         )
 
+    def _build_practice_tab(self, parent: ctk.CTkFrame) -> None:
+        """Build interactive practice and printable test controls."""
+        layout = ctk.CTkFrame(parent, fg_color="transparent")
+        layout.grid(row=0, column=0, sticky="nsew", padx=8, pady=8)
+        layout.grid_columnconfigure(0, weight=0)
+        layout.grid_columnconfigure(1, weight=1)
+        layout.grid_rowconfigure(0, weight=1)
+
+        left = ctk.CTkFrame(layout, corner_radius=18, width=370)
+        left.grid(row=0, column=0, sticky="nsw", padx=(0, 12))
+        left.grid_propagate(False)
+        left.grid_columnconfigure(0, weight=1)
+        left.grid_rowconfigure(6, weight=1)
+
+        ctk.CTkLabel(left, text="Choose cards", font=ctk.CTkFont(size=20, weight="bold")).grid(
+            row=0, column=0, sticky="w", padx=18, pady=(18, 8)
+        )
+        ctk.CTkLabel(left, text="Scope").grid(row=1, column=0, sticky="w", padx=18, pady=(4, 4))
+        ctk.CTkComboBox(
+            left,
+            variable=self._practice_scope_var,
+            values=["All supported cards", "Due + overdue", "Overdue", "New"],
+            state="readonly",
+        ).grid(row=2, column=0, sticky="ew", padx=18, pady=(0, 8))
+        ctk.CTkButton(left, text="Load from selected Anki deck", command=self._load_practice_cards).grid(
+            row=3, column=0, sticky="ew", padx=18, pady=(0, 8)
+        )
+        select_buttons = ctk.CTkFrame(left, fg_color="transparent")
+        select_buttons.grid(row=4, column=0, sticky="ew", padx=18, pady=(0, 8))
+        select_buttons.grid_columnconfigure((0, 1), weight=1)
+        ctk.CTkButton(select_buttons, text="Select all", command=lambda: self._set_all_practice_items(True)).grid(
+            row=0, column=0, sticky="ew", padx=(0, 5)
+        )
+        ctk.CTkButton(select_buttons, text="Select none", command=lambda: self._set_all_practice_items(False)).grid(
+            row=0, column=1, sticky="ew", padx=(5, 0)
+        )
+        ctk.CTkLabel(left, text="Cards").grid(row=5, column=0, sticky="w", padx=18, pady=(4, 4))
+        self._practice_selection_frame = ctk.CTkScrollableFrame(left, height=300)
+        self._practice_selection_frame.grid(row=6, column=0, sticky="nsew", padx=18, pady=(0, 8))
+        self._practice_selection_frame.grid_columnconfigure(0, weight=1)
+
+        ctk.CTkButton(left, text="Start interactive practice", command=self._start_practice).grid(
+            row=7, column=0, sticky="ew", padx=18, pady=(4, 6)
+        )
+        ctk.CTkButton(left, text="Create printable test + key", command=self._export_print_test).grid(
+            row=8, column=0, sticky="ew", padx=18, pady=(0, 18)
+        )
+
+        right = ctk.CTkFrame(layout, corner_radius=18)
+        right.grid(row=0, column=1, sticky="nsew")
+        right.grid_columnconfigure(0, weight=1)
+        right.grid_rowconfigure(2, weight=1)
+
+        header = ctk.CTkFrame(right, fg_color="transparent")
+        header.grid(row=0, column=0, sticky="ew", padx=18, pady=(18, 8))
+        header.grid_columnconfigure(0, weight=1)
+        ctk.CTkLabel(header, text="Practice", font=ctk.CTkFont(size=20, weight="bold")).grid(
+            row=0, column=0, sticky="w"
+        )
+        ctk.CTkLabel(header, textvariable=self._practice_progress_var).grid(row=0, column=1, sticky="e")
+
+        self._practice_prompt = ctk.CTkTextbox(right, height=145, wrap="word", font=ctk.CTkFont(size=16))
+        self._practice_prompt.grid(row=1, column=0, sticky="ew", padx=18, pady=(0, 10))
+        self._practice_prompt.insert("1.0", "Load and select cards, then start a practice session.")
+        self._practice_prompt.configure(state="disabled")
+
+        self._practice_options_frame = ctk.CTkFrame(right, fg_color="transparent")
+        self._practice_options_frame.grid(row=2, column=0, sticky="nsew", padx=18, pady=(0, 8))
+        self._practice_options_frame.grid_columnconfigure(0, weight=1)
+
+        ctk.CTkLabel(right, textvariable=self._practice_feedback_var, anchor="w").grid(
+            row=3, column=0, sticky="ew", padx=18, pady=(2, 8)
+        )
+        actions = ctk.CTkFrame(right, fg_color="transparent")
+        actions.grid(row=4, column=0, sticky="ew", padx=18, pady=(0, 18))
+        actions.grid_columnconfigure((0, 1, 2), weight=1)
+        ctk.CTkButton(actions, text="Check", command=self._check_practice_answer).grid(
+            row=0, column=0, sticky="ew", padx=(0, 5)
+        )
+        ctk.CTkButton(actions, text="Next", command=self._next_practice_question).grid(
+            row=0, column=1, sticky="ew", padx=5
+        )
+        ctk.CTkButton(actions, text="End session", command=self._end_practice).grid(
+            row=0, column=2, sticky="ew", padx=(5, 0)
+        )
+
     @staticmethod
     def _normalise_batch_words(words: list[str]) -> list[str]:
         result: list[str] = []
@@ -679,12 +783,29 @@ class ModernVocabularyGui:
         if self._batch_generated_card is None:
             messagebox.showerror("No card", "Generate and review the current card first.")
             return
+        provider_name = self._batch_generated_provider_name or self._provider_var.get()
         try:
             deck = self._set_selected_deck()
             self._anki_client.add_card(
                 self._batch_generated_card,
-                self._batch_generated_provider_name or self._provider_var.get(),
+                provider_name,
             )
+        except DuplicateNoteError:
+            replace = messagebox.askyesno(
+                "Card already exists",
+                f"A card for '{self._batch_generated_card.word_or_phrase}' already exists.\n\n"
+                "Replace it with this reviewed version?",
+            )
+            if not replace:
+                self._batch_status_var.set("Existing card was not changed.")
+                return
+            try:
+                self._anki_client.update_card(self._batch_generated_card, provider_name)
+            except Exception as update_exc:
+                self._batch_status_var.set(f"Could not update card: {update_exc}")
+                messagebox.showerror("Anki update error", str(update_exc))
+                return
+            deck = self._anki_client.deck_name
         except Exception as exc:
             self._batch_status_var.set(f"Could not add card: {exc}")
             messagebox.showerror("Anki error", str(exc))
@@ -789,6 +910,158 @@ class ModernVocabularyGui:
         self._record_activity("Batch session resumed")
         self._batch_status_var.set("Batch session resumed.")
 
+    def _practice_query(self) -> str:
+        deck = self._deck_var.get().strip().replace('"', '\"')
+        base = f'deck:"{deck}"'
+        scope = self._practice_scope_var.get()
+        if scope == "Due + overdue":
+            return f"{base} is:due"
+        if scope == "Overdue":
+            return f"{base} is:due prop:due<0"
+        if scope == "New":
+            return f"{base} is:new"
+        return base
+
+    def _load_practice_cards(self) -> None:
+        try:
+            self._set_selected_deck()
+            cards = self._anki_client.find_cards_for_practice(self._practice_query())
+            self._practice_items = PracticeService.from_anki_cards(cards)
+        except Exception as exc:
+            messagebox.showerror("Anki error", str(exc))
+            return
+        for widget in self._practice_selection_frame.winfo_children():
+            widget.destroy()
+        self._practice_item_vars = []
+        for row, item in enumerate(self._practice_items):
+            var = ctk.BooleanVar(value=True)
+            self._practice_item_vars.append(var)
+            label = f"{item.display_name}  ·  {item.item_type}"
+            ctk.CTkCheckBox(self._practice_selection_frame, text=label, variable=var).grid(
+                row=row, column=0, sticky="w", padx=6, pady=4
+            )
+        self._practice_progress_var.set(f"Loaded {len(self._practice_items)} supported cards.")
+        self._practice_feedback_var.set(
+            "Select the material. The app randomizes only the question order."
+        )
+
+    def _set_all_practice_items(self, selected: bool) -> None:
+        for var in self._practice_item_vars:
+            var.set(selected)
+
+    def _selected_practice_items(self) -> list[PracticeItem]:
+        return [
+            item
+            for item, var in zip(self._practice_items, self._practice_item_vars)
+            if var.get()
+        ]
+
+    def _start_practice(self) -> None:
+        selected = self._selected_practice_items()
+        if not selected:
+            messagebox.showwarning("No cards selected", "Select at least one card.")
+            return
+        self._practice_questions = PracticeService.build_questions(selected)
+        self._practice_index = 0
+        self._practice_correct = 0
+        self._practice_incorrect = 0
+        self._show_practice_question()
+
+    def _show_practice_question(self) -> None:
+        if not self._practice_questions:
+            return
+        if self._practice_index >= len(self._practice_questions):
+            self._end_practice()
+            return
+        question = self._practice_questions[self._practice_index]
+        self._practice_checked = False
+        self._practice_selected_answer.set("")
+        self._practice_feedback_var.set("")
+        self._practice_prompt.configure(state="normal")
+        self._practice_prompt.delete("1.0", "end")
+        self._practice_prompt.insert("1.0", question.prompt)
+        self._practice_prompt.configure(state="disabled")
+        for widget in self._practice_options_frame.winfo_children():
+            widget.destroy()
+        for row, option in enumerate(question.options):
+            ctk.CTkRadioButton(
+                self._practice_options_frame,
+                text=option,
+                variable=self._practice_selected_answer,
+                value=option,
+                font=ctk.CTkFont(size=15),
+            ).grid(row=row, column=0, sticky="w", padx=10, pady=8)
+        self._practice_progress_var.set(
+            f"{self._practice_index + 1}/{len(self._practice_questions)} · "
+            f"Correct {self._practice_correct} · Incorrect {self._practice_incorrect}"
+        )
+
+    def _check_practice_answer(self) -> None:
+        if not self._practice_questions or self._practice_checked:
+            return
+        selected = self._practice_selected_answer.get().strip()
+        if not selected:
+            self._practice_feedback_var.set("Choose an answer first.")
+            return
+        question = self._practice_questions[self._practice_index]
+        self._practice_checked = True
+        if selected.casefold() == question.correct_answer.casefold():
+            self._practice_correct += 1
+            self._practice_feedback_var.set(f"✓ Correct: {question.correct_answer}")
+        else:
+            self._practice_incorrect += 1
+            self._practice_feedback_var.set(
+                f"✕ Incorrect. Correct answer: {question.correct_answer}"
+            )
+        self._practice_progress_var.set(
+            f"{self._practice_index + 1}/{len(self._practice_questions)} · "
+            f"Correct {self._practice_correct} · Incorrect {self._practice_incorrect}"
+        )
+
+    def _next_practice_question(self) -> None:
+        if not self._practice_questions:
+            return
+        if not self._practice_checked:
+            self._practice_feedback_var.set("Check the current answer before continuing.")
+            return
+        self._practice_index += 1
+        self._show_practice_question()
+
+    def _end_practice(self) -> None:
+        total_answered = self._practice_correct + self._practice_incorrect
+        summary = (
+            f"Session finished · Answered {total_answered} · "
+            f"Correct {self._practice_correct} · Incorrect {self._practice_incorrect}"
+        )
+        self._practice_progress_var.set(summary)
+        self._practice_feedback_var.set(summary)
+        self._practice_questions = []
+        self._practice_index = 0
+        self._practice_checked = False
+
+    def _export_print_test(self) -> None:
+        selected = self._selected_practice_items()
+        if not selected:
+            messagebox.showwarning("No cards selected", "Select at least one card.")
+            return
+        directory = filedialog.askdirectory(title="Choose folder for test and answer key")
+        if not directory:
+            return
+        questions = PracticeService.build_questions(selected)
+        deck_slug = "".join(ch if ch.isalnum() else "_" for ch in self._deck_var.get()).strip("_") or "anki"
+        test_path = Path(directory) / f"{deck_slug}_test.html"
+        key_path = Path(directory) / f"{deck_slug}_answer_key.html"
+        PracticeService.export_printable_test(
+            questions,
+            test_path=test_path,
+            key_path=key_path,
+            title=f"Vocabulary and Grammar Test — {self._deck_var.get()}",
+        )
+        self._practice_feedback_var.set(
+            f"Created: {test_path.name} and {key_path.name}"
+        )
+        self._record_activity("Printable test and answer key created")
+
     def _record_activity(self, text: str) -> None:
         previous = [part.strip() for part in self._activity_var.get().split(" | ") if part.strip()]
         previous.append(text)
@@ -872,9 +1145,34 @@ class ModernVocabularyGui:
         if self._generated_card is None:
             messagebox.showerror("No card", "Generate a card before adding it to Anki.")
             return
+        provider_name = self._generated_provider_name or self._provider_var.get()
         try:
             deck = self._set_selected_deck()
-            self._anki_client.add_card(self._generated_card, self._generated_provider_name or self._provider_var.get())
+            self._anki_client.add_card(self._generated_card, provider_name)
+        except DuplicateNoteError:
+            replace = messagebox.askyesno(
+                "Card already exists",
+                f"A card for '{self._generated_card.word_or_phrase}' already exists.\n\n"
+                "Replace it with this reviewed version?",
+            )
+            if not replace:
+                self._status_var.set("Existing card was not changed.")
+                return
+            try:
+                self._anki_client.update_card(self._generated_card, provider_name)
+            except Exception as update_exc:
+                self._status_var.set("Could not update the existing card.")
+                messagebox.showerror("Anki update error", str(update_exc))
+                return
+            deck = self._anki_client.deck_name
+            self._status_var.set(
+                f"✓ Updated existing card in {deck}: {self._generated_card.word_or_phrase}"
+            )
+            self._record_activity(f"↻ {self._generated_card.word_or_phrase} updated")
+            self._word_var.set("")
+            self._generated_card = None
+            self._generated_provider_name = None
+            return
         except Exception as exc:
             self._status_var.set("Could not add card to Anki.")
             messagebox.showerror("Anki error", str(exc))
@@ -942,12 +1240,37 @@ class ModernVocabularyGui:
             )
             return
 
+        provider_name = self._generated_grammar_provider_name or self._provider_var.get()
         try:
             deck = self._set_selected_deck()
             self._anki_client.add_grammar_card(
                 self._generated_grammar,
-                self._generated_grammar_provider_name or self._provider_var.get(),
+                provider_name,
             )
+        except DuplicateNoteError:
+            replace = messagebox.askyesno(
+                "Grammar card already exists",
+                "A grammar card for this sentence already exists.\n\n"
+                "Replace it with this reviewed version?",
+            )
+            if not replace:
+                self._status_var.set("Existing grammar card was not changed.")
+                return
+            try:
+                self._anki_client.update_grammar_card(self._generated_grammar, provider_name)
+            except Exception as update_exc:
+                self._status_var.set("Could not update the grammar card.")
+                messagebox.showerror("Anki update error", str(update_exc))
+                return
+            deck = self._anki_client.deck_name
+            self._status_var.set(
+                f"✓ Updated grammar card in {deck}: {self._generated_grammar.sentence}"
+            )
+            self._record_activity("↻ Grammar card updated")
+            self._grammar_sentence_var.set("")
+            self._generated_grammar = None
+            self._generated_grammar_provider_name = None
+            return
         except Exception as exc:
             self._status_var.set("Could not add grammar card to Anki.")
             messagebox.showerror("Anki error", str(exc))
@@ -1143,7 +1466,16 @@ class ModernVocabularyGui:
                     if card.suggested_correction:
                         detail += f" Suggested correction: {card.suggested_correction}"
                     raise ValueError(detail)
-                self._anki_client.add_card(card, provider_name=provider_name)
+                try:
+                    self._anki_client.add_card(card, provider_name=provider_name)
+                except DuplicateNoteError:
+                    replace = messagebox.askyesno(
+                        "Card already exists",
+                        f"A card for '{phrase}' already exists. Replace it?",
+                    )
+                    if not replace:
+                        raise ValueError("Existing card was not changed.")
+                    self._anki_client.update_card(card, provider_name=provider_name)
                 added += 1
             except Exception as exc:
                 failed.append(f"{phrase}: {exc}")

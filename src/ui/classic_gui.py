@@ -6,7 +6,7 @@ import threading
 import tkinter as tk
 from tkinter import messagebox, ttk
 
-from src.anki.client import AnkiClient
+from src.anki.client import AnkiClient, DuplicateNoteError
 from src.ai.base import VocabularyAiClient
 from src.domain.languages import LANGUAGE_TAGS
 from src.domain.models import ConversationFeedback, VocabularyCard
@@ -520,12 +520,35 @@ class VocabularyGui:
             messagebox.showerror("Missing deck", "Select or type an Anki deck name.")
             return
 
+        provider_name = self._generated_provider_name or self._provider_var.get()
         try:
             self._anki_client.set_deck(deck_name)
             self._anki_client.add_card(
                 self._generated_card,
-                provider_name=self._generated_provider_name or self._provider_var.get(),
+                provider_name=provider_name,
             )
+        except DuplicateNoteError as exc:
+            replace = messagebox.askyesno(
+                "Card already exists",
+                f"A card for '{self._generated_card.word_or_phrase}' already exists "
+                "in this deck.\n\nReplace its fields with the reviewed version?",
+            )
+            if not replace:
+                self._flashcard_status_var.set("Existing card was not changed.")
+                return
+            try:
+                self._anki_client.update_card(self._generated_card, provider_name)
+            except Exception as update_exc:
+                self._flashcard_status_var.set("Could not update the existing card.")
+                messagebox.showerror("Anki update error", str(update_exc))
+                return
+            self._flashcard_status_var.set(
+                f"Updated existing card in: {self._anki_client.deck_name}"
+            )
+            self._word_var.set("")
+            self._generated_card = None
+            self._generated_provider_name = None
+            return
         except Exception as exc:
             self._flashcard_status_var.set("Could not add the card to Anki.")
             messagebox.showerror("Anki error", str(exc))
@@ -749,7 +772,16 @@ class VocabularyGui:
                     if card.suggested_correction:
                         detail += f" Suggested correction: {card.suggested_correction}"
                     raise ValueError(detail)
-                self._anki_client.add_card(card, provider_name=provider_name)
+                try:
+                    self._anki_client.add_card(card, provider_name=provider_name)
+                except DuplicateNoteError:
+                    replace = messagebox.askyesno(
+                        "Card already exists",
+                        f"A card for '{expression}' already exists. Replace it?",
+                    )
+                    if not replace:
+                        raise ValueError("Existing card was not changed.")
+                    self._anki_client.update_card(card, provider_name=provider_name)
                 added.append(expression)
             except Exception as exc:
                 failed.append(f"{expression}: {exc}")

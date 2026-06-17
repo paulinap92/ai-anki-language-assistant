@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 
-VOCABULARY_PROMPT_VERSION = "v3-word-first-validation-language"
+VOCABULARY_PROMPT_VERSION = "v4-phrase-level-meaning"
 EXPLANATION_LANGUAGES = ["Polish", "English", "Spanish", "German", "Italian", "No translation"]
 
 
@@ -35,11 +35,12 @@ Explanation language: {explanation_language}
 
 Follow this process internally:
 1. Validate whether the input is a real, correctly formed word or phrase in {target_language}.
-2. If valid, preserve the exact input and identify its most common useful meaning.
-3. Identify natural collocations, grammar patterns, and normal usage.
-4. Choose a realistic context based on the expression itself.
-5. Generate a simple, natural example that demonstrates the selected meaning.
-6. Verify spelling, naturalness, collocations, and JSON validity.
+2. Treat the complete input as one lexical unit before analysing individual words.
+3. If valid, preserve the exact input and identify its established, context-appropriate meaning.
+4. Identify natural collocations, grammar patterns, and normal usage of the complete expression.
+5. Choose a realistic context based on that meaning.
+6. Generate a simple, natural example that demonstrates the selected meaning.
+7. Verify spelling, naturalness, collocations, phrase-level meaning, and JSON validity.
 
 Validation rules:
 - If the input is misspelled, malformed, invented, or not a valid expression, set "is_valid" to false.
@@ -52,6 +53,14 @@ Exact-input rules:
 - For valid input, "word_or_phrase" must exactly match: "{word_or_phrase}".
 - Never replace it with a synonym, related expression, corrected phrase, or a different word.
 - Corrections belong only in "suggested_correction" when "is_valid" is false.
+
+Phrase-level meaning rules:
+- Treat the entire user input as one lexical unit.
+- For multi-word expressions, compounds, idioms, and fixed phrases, determine the established meaning of the complete expression before analysing individual words.
+- Do not infer the meaning by translating or defining each component separately.
+- Check whether the full phrase has a conventional meaning in educational, professional, cultural, regional, or idiomatic usage.
+- Prefer the established phrase meaning over a literal interpretation.
+- If more than one meaning is common, choose the one best supported by typical usage and keep the example consistent with that meaning.
 
 Definition and explanation rules:
 - The definition must be short, clear, and written in {target_language}.
