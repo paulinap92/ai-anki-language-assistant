@@ -5,7 +5,7 @@ Desktop application for generating vocabulary and grammar cards, practising conv
 ## Current interfaces
 
 - `python main_gui.py` — classic stable Tkinter GUI.
-- `python main_gui_custom.py` — modern CustomTkinter GUI with Vocabulary, Grammar, and Conversation Practice.
+- `python main_gui_custom.py` — modern CustomTkinter GUI with Vocabulary, Grammar, Conversation Practice, and Batch / Queue import.
 
 ## Purpose
 
@@ -41,7 +41,7 @@ It uses configured external LLM providers such as Gemini or OpenAI.
 
 ## Main workflows
 
-The application has three main workflows.
+The application has four main workflows.
 
 ---
 
@@ -214,6 +214,84 @@ Grammar explanations remain in the target language and can be saved as a separat
 
 ---
 
+## Workflow 4: Import and review a vocabulary list
+
+The modern GUI includes a separate **Batch / Queue** mode for working with larger vocabulary lists.
+
+The manual single-word workflow remains available.
+
+### Supported input
+
+You can:
+
+- load a `.txt` file;
+- load a `.csv` file;
+- paste a multiline list of words or phrases.
+
+### Flow
+
+```text
+Load or paste a vocabulary list
+        ↓
+Choose target language, explanation language, deck, and AI provider once
+        ↓
+Generate one card at a time
+        ↓
+Review the generated content
+        ↓
+Add, skip, regenerate, edit, or return to a previous item
+        ↓
+Move automatically to the next word
+```
+
+The queue tracks the status of each item:
+
+```text
+pending
+ready
+added
+skipped
+invalid
+```
+
+The interface also shows progress information such as:
+
+```text
+current item / total
+added
+skipped
+invalid
+remaining
+```
+
+This workflow reduces repetitive typing and makes it much faster to process long vocabulary lists while still reviewing every generated card before saving it to Anki.
+
+---
+
+## Non-blocking status messages
+
+Successful actions no longer require closing a modal `OK` dialog after every card.
+
+Instead, the application shows a status message directly in the interface, for example:
+
+```text
+Added to Anki: thorough
+```
+
+The message remains visible until the next relevant action, such as generating or adding another card.
+
+The interface also keeps a short activity history so recent actions are not lost.
+
+Blocking popups are reserved for:
+
+- real errors;
+- critical warnings;
+- confirmations that require a user decision.
+
+This improves the workflow when adding many cards in sequence.
+
+---
+
 ## Vocabulary quality workflow
 
 Vocabulary generation uses a **word-first** prompt.
@@ -351,6 +429,11 @@ The app currently supports:
 - Select suggested expressions from the conversation.
 - Add your own custom expressions to the flashcard queue.
 - Generate multiple cards from selected expressions.
+- Import vocabulary lists from TXT, CSV, or pasted multiline text.
+- Review vocabulary in a one-card-at-a-time Batch / Queue workflow.
+- Add, skip, regenerate, edit, and navigate between queued items.
+- Track queue progress and item status.
+- Use non-blocking status messages instead of success popups.
 - Analyse grammar through natural sentences.
 - Save grammar analysis as a separate Anki note type.
 - Use Gemini, OpenAI, or both, depending on configured API keys.
@@ -551,8 +634,10 @@ It includes:
 - vocabulary generation;
 - grammar analysis;
 - conversation practice;
+- Batch / Queue vocabulary import;
 - explanation-language selection;
-- selectable conversation level.
+- selectable conversation level;
+- non-blocking success status messages.
 
 ### Command-line mode
 
@@ -689,7 +774,7 @@ ai_anki_vocab_multi_cards/
     │   └── models.py               # Pydantic data models
     └── ui/
         ├── classic_gui.py          # Stable Tkinter GUI
-        └── modern_gui.py           # CustomTkinter GUI
+        └── modern_gui.py           # CustomTkinter GUI with Grammar and Batch / Queue
 ```
 
 ---
@@ -759,6 +844,8 @@ See:
 
 - `docs/PROMPT_ENGINEERING_HISTORY.md`
 - `docs/VIDEO_SCRIPT_PROMPT_ENGINEERING.md`
+- `docs/BATCH_QUEUE_MODE.md`
+- `docs/UX_FEEDBACK_HISTORY.md`
 - `docs/ARCHITECTURE.md`
 
 ---

@@ -6,8 +6,11 @@ both the single flashcard generator and Conversation Practice workflow.
 
 from __future__ import annotations
 
+import csv
+import json
 import tkinter as tk
-from tkinter import messagebox
+from pathlib import Path
+from tkinter import filedialog, messagebox
 
 import customtkinter as ctk
 
@@ -57,6 +60,16 @@ class ModernVocabularyGui:
         self._suggestion_vars: list[ctk.BooleanVar] = []
         self._flashcard_queue: list[str] = []
 
+        # Batch / Queue mode state.
+        self._batch_items: list[dict[str, object]] = []
+        self._batch_index = 0
+        self._batch_generated_card: VocabularyCard | None = None
+        self._batch_generated_provider_name: str | None = None
+        self._batch_word_var = ctk.StringVar()
+        self._batch_progress_var = ctk.StringVar(value="No list loaded.")
+        self._batch_status_var = ctk.StringVar(value="Load a TXT/CSV file or paste a list.")
+        self._activity_var = ctk.StringVar(value="")
+
         self._configure_window()
         self._build_widgets()
         self._load_decks()
@@ -97,20 +110,33 @@ class ModernVocabularyGui:
         tabs.add("Single flashcard")
         tabs.add("Grammar")
         tabs.add("Conversation Practice")
+        tabs.add("Batch / Queue")
         tabs.tab("Single flashcard").grid_columnconfigure(0, weight=1)
         tabs.tab("Single flashcard").grid_rowconfigure(0, weight=1)
         tabs.tab("Grammar").grid_columnconfigure(0, weight=1)
         tabs.tab("Grammar").grid_rowconfigure(0, weight=1)
         tabs.tab("Conversation Practice").grid_columnconfigure(0, weight=1)
         tabs.tab("Conversation Practice").grid_rowconfigure(0, weight=1)
+        tabs.tab("Batch / Queue").grid_columnconfigure(0, weight=1)
+        tabs.tab("Batch / Queue").grid_rowconfigure(0, weight=1)
 
         self._build_single_flashcard_tab(tabs.tab("Single flashcard"))
         self._build_grammar_tab(tabs.tab("Grammar"))
         self._build_conversation_tab(tabs.tab("Conversation Practice"))
+        self._build_batch_tab(tabs.tab("Batch / Queue"))
 
-        ctk.CTkLabel(main, textvariable=self._status_var, anchor="w").grid(
-            row=3, column=0, sticky="ew", padx=24, pady=(0, 16)
+        footer = ctk.CTkFrame(main, fg_color="transparent")
+        footer.grid(row=3, column=0, sticky="ew", padx=24, pady=(0, 16))
+        footer.grid_columnconfigure(0, weight=1)
+        ctk.CTkLabel(footer, textvariable=self._status_var, anchor="w").grid(
+            row=0, column=0, sticky="ew"
         )
+        ctk.CTkLabel(
+            footer,
+            textvariable=self._activity_var,
+            anchor="e",
+            text_color=("gray40", "gray70"),
+        ).grid(row=0, column=1, sticky="e", padx=(16, 0))
 
     def _build_top_settings(self, parent: ctk.CTkFrame) -> None:
         settings = ctk.CTkFrame(parent, corner_radius=18)
@@ -377,6 +403,397 @@ class ModernVocabularyGui:
             command=self._generate_queue_and_add_to_anki,
         ).grid(row=0, column=1, sticky="ew", padx=(6, 0))
 
+    def _build_batch_tab(self, parent: ctk.CTkFrame) -> None:
+        """Build the batch vocabulary review workflow."""
+        layout = ctk.CTkFrame(parent, fg_color="transparent")
+        layout.grid(row=0, column=0, sticky="nsew", padx=8, pady=8)
+        layout.grid_columnconfigure(0, weight=0)
+        layout.grid_columnconfigure(1, weight=1)
+        layout.grid_rowconfigure(0, weight=1)
+
+        left = ctk.CTkFrame(layout, corner_radius=18, width=360)
+        left.grid(row=0, column=0, sticky="nsw", padx=(0, 12))
+        left.grid_propagate(False)
+        left.grid_columnconfigure(0, weight=1)
+        left.grid_rowconfigure(5, weight=1)
+
+        ctk.CTkLabel(
+            left,
+            text="Load vocabulary list",
+            font=ctk.CTkFont(size=20, weight="bold"),
+        ).grid(row=0, column=0, sticky="w", padx=18, pady=(18, 8))
+
+        file_buttons = ctk.CTkFrame(left, fg_color="transparent")
+        file_buttons.grid(row=1, column=0, sticky="ew", padx=18, pady=(0, 10))
+        file_buttons.grid_columnconfigure((0, 1), weight=1)
+        ctk.CTkButton(file_buttons, text="Load TXT", command=self._load_batch_txt).grid(
+            row=0, column=0, sticky="ew", padx=(0, 5)
+        )
+        ctk.CTkButton(file_buttons, text="Load CSV", command=self._load_batch_csv).grid(
+            row=0, column=1, sticky="ew", padx=(5, 0)
+        )
+
+        ctk.CTkLabel(left, text="Or paste one word / phrase per line").grid(
+            row=2, column=0, sticky="w", padx=18, pady=(4, 4)
+        )
+        self._batch_paste_text = ctk.CTkTextbox(left, height=180, wrap="word")
+        self._batch_paste_text.grid(row=3, column=0, sticky="nsew", padx=18, pady=(0, 10))
+        ctk.CTkButton(left, text="Load pasted list", command=self._load_pasted_batch).grid(
+            row=4, column=0, sticky="ew", padx=18, pady=(0, 10)
+        )
+
+        session_buttons = ctk.CTkFrame(left, fg_color="transparent")
+        session_buttons.grid(row=6, column=0, sticky="ew", padx=18, pady=(0, 8))
+        session_buttons.grid_columnconfigure((0, 1), weight=1)
+        ctk.CTkButton(session_buttons, text="Save session", command=self._save_batch_session).grid(
+            row=0, column=0, sticky="ew", padx=(0, 5)
+        )
+        ctk.CTkButton(session_buttons, text="Resume session", command=self._resume_batch_session).grid(
+            row=0, column=1, sticky="ew", padx=(5, 0)
+        )
+        ctk.CTkButton(left, text="Clear batch", command=self._clear_batch).grid(
+            row=7, column=0, sticky="ew", padx=18, pady=(0, 18)
+        )
+
+        right = ctk.CTkFrame(layout, corner_radius=18)
+        right.grid(row=0, column=1, sticky="nsew")
+        right.grid_columnconfigure(0, weight=1)
+        right.grid_rowconfigure(4, weight=1)
+
+        header = ctk.CTkFrame(right, fg_color="transparent")
+        header.grid(row=0, column=0, sticky="ew", padx=18, pady=(18, 8))
+        header.grid_columnconfigure(0, weight=1)
+        ctk.CTkLabel(
+            header,
+            text="Batch review",
+            font=ctk.CTkFont(size=20, weight="bold"),
+        ).grid(row=0, column=0, sticky="w")
+        ctk.CTkLabel(header, textvariable=self._batch_progress_var).grid(
+            row=0, column=1, sticky="e"
+        )
+
+        ctk.CTkLabel(right, text="Current word / phrase").grid(
+            row=1, column=0, sticky="w", padx=18, pady=(4, 4)
+        )
+        current_row = ctk.CTkFrame(right, fg_color="transparent")
+        current_row.grid(row=2, column=0, sticky="ew", padx=18, pady=(0, 10))
+        current_row.grid_columnconfigure(0, weight=1)
+        self._batch_word_entry = ctk.CTkEntry(
+            current_row, textvariable=self._batch_word_var, height=40
+        )
+        self._batch_word_entry.grid(row=0, column=0, sticky="ew", padx=(0, 8))
+        ctk.CTkButton(
+            current_row,
+            text="Generate / Regenerate",
+            width=170,
+            command=self._generate_current_batch_card,
+        ).grid(row=0, column=1)
+
+        ctk.CTkLabel(
+            right,
+            textvariable=self._batch_status_var,
+            text_color=("gray35", "gray75"),
+            anchor="w",
+        ).grid(row=3, column=0, sticky="ew", padx=18, pady=(0, 6))
+
+        self._batch_preview = ctk.CTkTextbox(right, wrap="word", font=ctk.CTkFont(size=14))
+        self._batch_preview.grid(row=4, column=0, sticky="nsew", padx=18, pady=(0, 12))
+        self._batch_preview.insert("1.0", "Load a list to start reviewing cards.")
+        self._batch_preview.configure(state="disabled")
+
+        buttons = ctk.CTkFrame(right, fg_color="transparent")
+        buttons.grid(row=5, column=0, sticky="ew", padx=18, pady=(0, 18))
+        buttons.grid_columnconfigure((0, 1, 2, 3, 4), weight=1)
+        ctk.CTkButton(buttons, text="Previous", command=self._batch_previous).grid(
+            row=0, column=0, sticky="ew", padx=(0, 4)
+        )
+        ctk.CTkButton(buttons, text="Skip", command=self._skip_current_batch_item).grid(
+            row=0, column=1, sticky="ew", padx=4
+        )
+        ctk.CTkButton(buttons, text="Add to Anki", command=self._add_current_batch_card).grid(
+            row=0, column=2, sticky="ew", padx=4
+        )
+        ctk.CTkButton(buttons, text="Regenerate", command=self._generate_current_batch_card).grid(
+            row=0, column=3, sticky="ew", padx=4
+        )
+        ctk.CTkButton(buttons, text="Next", command=self._batch_next).grid(
+            row=0, column=4, sticky="ew", padx=(4, 0)
+        )
+
+    @staticmethod
+    def _normalise_batch_words(words: list[str]) -> list[str]:
+        result: list[str] = []
+        seen: set[str] = set()
+        for value in words:
+            cleaned = value.strip()
+            key = cleaned.casefold()
+            if cleaned and key not in seen:
+                result.append(cleaned)
+                seen.add(key)
+        return result
+
+    def _set_batch_words(self, words: list[str]) -> None:
+        clean_words = self._normalise_batch_words(words)
+        if not clean_words:
+            messagebox.showwarning("Empty list", "No words or phrases were found.")
+            return
+        self._batch_items = [{"word": word, "status": "pending"} for word in clean_words]
+        self._batch_index = 0
+        self._batch_generated_card = None
+        self._batch_generated_provider_name = None
+        self._show_current_batch_item(generate=True)
+        self._record_activity(f"Loaded {len(clean_words)} batch item(s)")
+
+    def _load_batch_txt(self) -> None:
+        filename = filedialog.askopenfilename(
+            title="Load vocabulary TXT",
+            filetypes=[("Text files", "*.txt"), ("All files", "*.*")],
+        )
+        if not filename:
+            return
+        try:
+            words = Path(filename).read_text(encoding="utf-8-sig").splitlines()
+        except Exception as exc:
+            messagebox.showerror("File error", str(exc))
+            return
+        self._set_batch_words(words)
+
+    def _load_batch_csv(self) -> None:
+        filename = filedialog.askopenfilename(
+            title="Load vocabulary CSV",
+            filetypes=[("CSV files", "*.csv"), ("All files", "*.*")],
+        )
+        if not filename:
+            return
+        try:
+            with open(filename, "r", encoding="utf-8-sig", newline="") as handle:
+                rows = list(csv.reader(handle))
+        except Exception as exc:
+            messagebox.showerror("File error", str(exc))
+            return
+        words: list[str] = []
+        for index, row in enumerate(rows):
+            if not row:
+                continue
+            value = row[0].strip()
+            if index == 0 and value.casefold() in {"word", "word_or_phrase", "phrase", "vocabulary"}:
+                continue
+            words.append(value)
+        self._set_batch_words(words)
+
+    def _load_pasted_batch(self) -> None:
+        words = self._batch_paste_text.get("1.0", "end").splitlines()
+        self._set_batch_words(words)
+
+    def _show_current_batch_item(self, generate: bool = False) -> None:
+        if not self._batch_items:
+            self._batch_word_var.set("")
+            self._batch_progress_var.set("No list loaded.")
+            self._batch_status_var.set("Load a TXT/CSV file or paste a list.")
+            return
+        self._batch_index = max(0, min(self._batch_index, len(self._batch_items) - 1))
+        item = self._batch_items[self._batch_index]
+        self._batch_word_var.set(str(item["word"]))
+        self._batch_generated_card = None
+        self._batch_generated_provider_name = None
+        self._update_batch_progress()
+        self._set_batch_preview(
+            f"WORD / PHRASE\n{item['word']}\n\nStatus: {item['status']}"
+        )
+        if generate and item["status"] not in {"added", "skipped"}:
+            self._generate_current_batch_card()
+
+    def _update_batch_progress(self) -> None:
+        total = len(self._batch_items)
+        counts = {name: 0 for name in ("added", "skipped", "invalid", "pending", "ready")}
+        for item in self._batch_items:
+            status = str(item.get("status", "pending"))
+            counts[status] = counts.get(status, 0) + 1
+        current = self._batch_index + 1 if total else 0
+        remaining = counts.get("pending", 0) + counts.get("ready", 0)
+        self._batch_progress_var.set(
+            f"{current}/{total} · Added {counts.get('added', 0)} · "
+            f"Skipped {counts.get('skipped', 0)} · Invalid {counts.get('invalid', 0)} · "
+            f"Remaining {remaining}"
+        )
+
+    def _set_batch_preview(self, content: str) -> None:
+        self._batch_preview.configure(state="normal")
+        self._batch_preview.delete("1.0", "end")
+        self._batch_preview.insert("1.0", content)
+        self._batch_preview.configure(state="disabled")
+
+    def _generate_current_batch_card(self) -> None:
+        if not self._batch_items:
+            messagebox.showerror("No list", "Load a vocabulary list first.")
+            return
+        word = self._batch_word_var.get().strip()
+        if not word:
+            messagebox.showerror("Missing word", "Enter a word or phrase.")
+            return
+        item = self._batch_items[self._batch_index]
+        item["word"] = word
+        provider_name = self._provider_var.get()
+        self._batch_status_var.set(
+            f"Generating {self._batch_index + 1}/{len(self._batch_items)}: {word}..."
+        )
+        self._status_var.set(self._batch_status_var.get())
+        self._root.update_idletasks()
+        try:
+            card = self._current_ai_client().generate_card(
+                word,
+                self._language_var.get(),
+                self._explanation_language_var.get(),
+            )
+        except Exception as exc:
+            item["status"] = "invalid"
+            item["error"] = str(exc)
+            self._batch_generated_card = None
+            self._batch_status_var.set(f"Invalid: {word} — {exc}")
+            self._set_batch_preview(f"WORD / PHRASE\n{word}\n\nERROR\n{exc}")
+            self._update_batch_progress()
+            return
+        if not card.is_valid:
+            item["status"] = "invalid"
+            detail = card.validation_error or "Invalid word or phrase."
+            if card.suggested_correction:
+                detail += f" Suggested correction: {card.suggested_correction}"
+            item["error"] = detail
+            self._batch_generated_card = None
+            self._batch_status_var.set(f"Invalid: {word}")
+            self._set_batch_preview(
+                f"WORD / PHRASE\n{word}\n\nVALIDATION ERROR\n{detail}"
+            )
+            self._update_batch_progress()
+            return
+        item["status"] = "ready"
+        item.pop("error", None)
+        self._batch_generated_card = card
+        self._batch_generated_provider_name = provider_name
+        self._set_batch_preview(self._format_card_preview(card))
+        self._batch_status_var.set(f"Ready to review: {word}")
+        self._status_var.set(self._batch_status_var.get())
+        self._update_batch_progress()
+
+    def _add_current_batch_card(self) -> None:
+        if self._batch_generated_card is None:
+            messagebox.showerror("No card", "Generate and review the current card first.")
+            return
+        try:
+            deck = self._set_selected_deck()
+            self._anki_client.add_card(
+                self._batch_generated_card,
+                self._batch_generated_provider_name or self._provider_var.get(),
+            )
+        except Exception as exc:
+            self._batch_status_var.set(f"Could not add card: {exc}")
+            messagebox.showerror("Anki error", str(exc))
+            return
+        word = self._batch_generated_card.word_or_phrase
+        self._batch_items[self._batch_index]["status"] = "added"
+        self._batch_status_var.set(f"✓ Added to {deck}: {word}")
+        self._status_var.set(self._batch_status_var.get())
+        self._record_activity(f"✓ {word} added")
+        self._update_batch_progress()
+        self._root.after(350, self._advance_batch_after_action)
+
+    def _skip_current_batch_item(self) -> None:
+        if not self._batch_items:
+            return
+        word = str(self._batch_items[self._batch_index]["word"])
+        self._batch_items[self._batch_index]["status"] = "skipped"
+        self._batch_status_var.set(f"Skipped: {word}")
+        self._status_var.set(self._batch_status_var.get())
+        self._record_activity(f"↷ {word} skipped")
+        self._update_batch_progress()
+        self._root.after(250, self._advance_batch_after_action)
+
+    def _advance_batch_after_action(self) -> None:
+        if self._batch_index < len(self._batch_items) - 1:
+            self._batch_index += 1
+            self._show_current_batch_item(generate=True)
+        else:
+            self._batch_status_var.set("Batch finished. Review progress or save the session.")
+            self._status_var.set(self._batch_status_var.get())
+
+    def _batch_previous(self) -> None:
+        if self._batch_items and self._batch_index > 0:
+            self._batch_index -= 1
+            self._show_current_batch_item(generate=False)
+
+    def _batch_next(self) -> None:
+        if self._batch_items and self._batch_index < len(self._batch_items) - 1:
+            self._batch_index += 1
+            self._show_current_batch_item(generate=True)
+
+    def _clear_batch(self) -> None:
+        self._batch_items.clear()
+        self._batch_index = 0
+        self._batch_generated_card = None
+        self._batch_generated_provider_name = None
+        self._show_current_batch_item()
+        self._set_batch_preview("Load a list to start reviewing cards.")
+        self._record_activity("Batch cleared")
+
+    def _save_batch_session(self) -> None:
+        if not self._batch_items:
+            messagebox.showwarning("No session", "There is no batch session to save.")
+            return
+        filename = filedialog.asksaveasfilename(
+            title="Save batch session",
+            defaultextension=".json",
+            filetypes=[("JSON files", "*.json")],
+        )
+        if not filename:
+            return
+        data = {
+            "items": self._batch_items,
+            "index": self._batch_index,
+            "provider": self._provider_var.get(),
+            "target_language": self._language_var.get(),
+            "explanation_language": self._explanation_language_var.get(),
+            "deck": self._deck_var.get(),
+        }
+        try:
+            Path(filename).write_text(
+                json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8"
+            )
+        except Exception as exc:
+            messagebox.showerror("Save error", str(exc))
+            return
+        self._record_activity("Batch session saved")
+        self._batch_status_var.set("Batch session saved.")
+
+    def _resume_batch_session(self) -> None:
+        filename = filedialog.askopenfilename(
+            title="Resume batch session",
+            filetypes=[("JSON files", "*.json")],
+        )
+        if not filename:
+            return
+        try:
+            data = json.loads(Path(filename).read_text(encoding="utf-8"))
+            self._batch_items = list(data["items"])
+            self._batch_index = int(data.get("index", 0))
+            if data.get("provider") in self._ai_clients:
+                self._provider_var.set(data["provider"])
+            self._language_var.set(data.get("target_language", self._language_var.get()))
+            self._explanation_language_var.set(
+                data.get("explanation_language", self._explanation_language_var.get())
+            )
+            self._deck_var.set(data.get("deck", self._deck_var.get()))
+        except Exception as exc:
+            messagebox.showerror("Resume error", str(exc))
+            return
+        self._show_current_batch_item(generate=False)
+        self._record_activity("Batch session resumed")
+        self._batch_status_var.set("Batch session resumed.")
+
+    def _record_activity(self, text: str) -> None:
+        previous = [part.strip() for part in self._activity_var.get().split(" | ") if part.strip()]
+        previous.append(text)
+        self._activity_var.set(" | ".join(previous[-3:]))
+
     def _current_ai_client(self) -> VocabularyAiClient:
         return self._ai_clients[self._provider_var.get()]
 
@@ -462,8 +879,8 @@ class ModernVocabularyGui:
             self._status_var.set("Could not add card to Anki.")
             messagebox.showerror("Anki error", str(exc))
             return
-        self._status_var.set(f"Added card to Anki deck: {deck}")
-        messagebox.showinfo("Added", "Flashcard added to Anki.")
+        self._status_var.set(f"✓ Added to Anki deck {deck}: {self._generated_card.word_or_phrase}")
+        self._record_activity(f"✓ {self._generated_card.word_or_phrase} added")
         self._word_var.set("")
         self._generated_card = None
         self._generated_provider_name = None
@@ -536,8 +953,8 @@ class ModernVocabularyGui:
             messagebox.showerror("Anki error", str(exc))
             return
 
-        self._status_var.set(f"Added grammar card to Anki deck: {deck}")
-        messagebox.showinfo("Added", "Grammar card added to Anki.")
+        self._status_var.set(f"✓ Added grammar card to Anki deck {deck}: {self._generated_grammar.sentence}")
+        self._record_activity("✓ Grammar card added")
         self._grammar_sentence_var.set("")
         self._generated_grammar = None
         self._generated_grammar_provider_name = None
@@ -735,8 +1152,8 @@ class ModernVocabularyGui:
             self._status_var.set(f"Added {added} card(s), {len(failed)} failed.")
             messagebox.showwarning("Finished with errors", "\n\n".join(failed[:5]))
         else:
-            self._status_var.set(f"Added {added} card(s) to Anki deck: {deck}")
-            messagebox.showinfo("Added", f"Added {added} flashcard(s) to Anki.")
+            self._status_var.set(f"✓ Added {added} card(s) to Anki deck: {deck}")
+            self._record_activity(f"✓ {added} queued card(s) added")
             self._clear_queue()
 
     def _reset_conversation(self) -> None:
