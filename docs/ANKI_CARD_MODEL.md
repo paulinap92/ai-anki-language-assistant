@@ -1,57 +1,96 @@
-# Anki Card Model
+# Anki Card Models
 
-## Main note type
+## Vocabulary note type
 
-The application creates this note type automatically:
+The application creates and maintains:
 
 ```text
 AI Vocabulary Light Card
 ```
 
-## Fields
+### Fields
 
 | Field | Purpose |
 |---|---|
-| `Word` | Target word or phrase. |
+| `Word` | Exact target word or phrase. |
 | `Language` | Target language, for example English or Spanish. |
 | `PartOfSpeech` | Part of speech or phrase type. |
-| `TranslationPL` | Natural Polish translation. |
-| `Definition` | Short target-language definition. |
+| `TranslationPL` | Explanation-language translation. The legacy field name is preserved for compatibility. |
+| `Definition` | Short definition in the target language. |
 | `Example` | Natural example sentence in the target language. |
-| `ExamplePL` | Polish translation of the example sentence. |
+| `ExamplePL` | Example translation in the selected explanation language. |
 | `Synonyms` | HTML chips with synonyms or close alternatives. |
-| `Collocations` | HTML chips with useful phrases and usage patterns. |
-| `GrammarNote` | Short grammar or usage note in Polish. |
+| `Collocations` | HTML chips with established collocations and usage patterns. |
+| `GrammarNote` | Short grammar or usage note. |
 
-## Template files
+When `No translation` is selected, translation fields remain empty and the template hides the corresponding sections.
 
-The HTML and CSS are stored in:
+## Grammar note type
+
+Grammar analyses use:
+
+```text
+AI Grammar Light Card
+```
+
+### Fields
+
+| Field | Purpose |
+|---|---|
+| `Sentence` | Original sentence entered by the learner. |
+| `Language` | Target language. |
+| `Meaning` | Meaning explained in the target language. |
+| `Structure` | Main grammar pattern. |
+| `Breakdown` | Explanation of the sentence components. |
+| `Usage` | When and why the structure is used. |
+| `ContextExample` | Natural context using the same structure. |
+| `Contrast` | Comparison with a related structure. |
+| `CommonMistake` | Typical incorrect form and correction. |
+
+## Template implementation
+
+HTML and CSS are stored in:
 
 ```text
 src/anki/templates.py
 ```
 
-This keeps presentation separate from AnkiConnect request logic.
-
-## Field rendering
-
-The conversion from `VocabularyCard` to Anki fields happens in:
+The conversion from validated domain models to Anki fields happens in:
 
 ```text
 src/anki/field_builder.py
 ```
 
-All AI-generated text is escaped before being inserted into Anki HTML fields.
+All model-generated text is escaped before insertion into HTML fields.
 
-## Duplicate behaviour
+## Duplicate and update behaviour
 
-Cards are added with:
+New cards are still protected against accidental duplicates.
 
-```python
-"allowDuplicate": False
+When an exact vocabulary expression or grammar sentence already exists, the application can update the existing note rather than creating another card.
+
+### Exact-match fields
+
+- vocabulary cards: `Word`;
+- grammar cards: `Sentence`.
+
+### Update flow
+
+```text
+findNotes
+→ notesInfo
+→ compare normalised primary field
+→ ask the user
+→ updateNoteFields
 ```
 
-If Anki rejects a card as duplicate, `AnkiClient.add_card()` raises `ValueError`.
+Updating the existing note preserves its note ID, scheduling, and review history.
+
+See:
+
+```text
+docs/ANKI_UPDATE_EXISTING_CARDS.md
+```
 
 ## Legacy migration model
 
@@ -61,9 +100,9 @@ Older Basic notes can be migrated to:
 AI Vocabulary Light Card · Migrated
 ```
 
-This model has only:
+This model contains:
 
 - `Front`
 - `Back`
 
-Its template parses the old Basic card HTML at display time. The migration is intentionally manual inside Anki to preserve scheduling and review history.
+The migration remains manual inside Anki so scheduling and review history are preserved.

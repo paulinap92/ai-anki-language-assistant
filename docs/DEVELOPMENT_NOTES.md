@@ -1,26 +1,22 @@
 # Development Notes
 
-## What changed in the cleanup
+## Current implementation
 
-- The original working flow was preserved.
-- Large mixed modules were split into responsibility-based packages.
-- Anki templates were moved out of the API client.
-- Anki field rendering was moved to a dedicated builder.
-- AI clients were grouped under `src/ai`.
-- Domain models and language utilities were moved under `src/domain`.
-- GUI files were moved under `src/ui`.
-- Legacy compatibility wrapper modules were removed.
-- The real `.env` file was removed from the deliverable package.
+The application currently includes:
 
-## Recommended workflow for future changes
+- classic and modern GUIs;
+- word-first vocabulary generation;
+- validation and exact-input preservation;
+- configurable explanation language and `No translation`;
+- sentence-first Grammar;
+- Conversation Practice with selectable level;
+- non-blocking status messages;
+- Batch / Queue import;
+- Practice mode;
+- Print Test with separate answer key;
+- existing Anki card updates;
+- Gemini, OpenAI, and Claude providers.
 
-1. Make one small change.
-2. Run syntax checks.
-3. Start the GUI.
-4. Test one flashcard generation.
-5. Test adding one card to Anki.
-6. Test conversation practice.
-7. Commit.
 
 ## Syntax check
 
@@ -28,34 +24,95 @@
 python -m compileall src main.py main_gui.py main_gui_custom.py
 ```
 
-## Manual smoke test
-
-1. Open Anki.
-2. Start the stable GUI:
+## Automated tests
 
 ```bash
-python main_gui.py
+pipenv run python -m pytest -v
 ```
 
-3. Refresh decks.
-4. Generate one card.
-5. Add it to a test deck.
-6. Start a conversation topic.
-7. Send one answer.
-8. Select all suggested expressions.
-9. Add them to Anki.
+With coverage:
 
-## Where to add new code
+```bash
+pipenv run python -m pytest   --cov=src   --cov-report=term-missing   --cov-report=html
+```
 
-| Change | Location |
+## Manual smoke test
+
+### Classic GUI
+
+- application startup;
+- refresh Anki decks;
+- generate a valid vocabulary card;
+- verify explanation-language selection;
+- verify `No translation`;
+- verify invalid-input warning;
+- add a card to Anki;
+- regenerate the same card and test existing-note update;
+- Conversation Practice startup;
+- verify selected conversation level.
+
+### Modern GUI — Vocabulary and Grammar
+
+- generate a vocabulary card;
+- verify natural example and collocations;
+- analyse a grammar sentence;
+- save a grammar card to Anki;
+- verify non-blocking success status.
+
+### Modern GUI — Batch / Queue
+
+- load TXT;
+- load CSV;
+- paste a multiline list;
+- generate one item;
+- test Add, Skip, Regenerate, Edit, Previous, and Next;
+- verify automatic advance;
+- verify counters and item states;
+- save and resume a session.
+
+### Modern GUI — Practice and Print
+
+- load supported cards from an Anki deck;
+- test All, New, Due, and Overdue filters;
+- select a subset of cards;
+- complete one vocabulary exercise;
+- complete one grammar exercise;
+- verify inline checking;
+- generate test HTML;
+- generate answer-key HTML;
+- both files open correctly in a browser.
+
+### Providers
+
+For Gemini, OpenAI, and Claude:
+
+- verify provider appears only with a configured key;
+- generate vocabulary;
+- analyse grammar;
+- conversation start and review flow;
+- verify invalid JSON and missing text are handled.
+
+## Prompt regression cases
+
+Keep these examples in the evaluation set:
+
+- `thorough` — must not be forced into a sunset context;
+- `short fuse` — only established collocations;
+- `spontaneous` — no invented translation;
+- `pizza` — natural meaning-driven example;
+- `look forward to` — correct grammar and phrase handling;
+- misspelled or invented words — validation failure;
+- `curso de reciclaje` — professional refresher-course meaning, not literal waste recycling.
+
+## Documentation map
+
+| Change | Documentation |
 |---|---|
-| New AI provider | `src/ai/providers/` |
-| New prompt | `src/ai/prompts.py` |
-| New card field | `src/domain/models.py`, `src/anki/templates.py`, `src/anki/field_builder.py` |
-| New supported language | `src/domain/languages.py` |
-| GUI change | `src/ui/classic_gui.py` or `src/ui/modern_gui.py` |
-| CLI change | `src/cli/app.py` |
-
-## Do not commit secrets
-
-Never commit `.env`. Only `.env.example` belongs in the repository.
+| Prompt behaviour | `PROMPT_ENGINEERING_HISTORY.md` |
+| Anki fields/templates | `ANKI_CARD_MODEL.md` |
+| Existing-note replacement | `ANKI_UPDATE_EXISTING_CARDS.md` |
+| Batch / Queue | `BATCH_QUEUE_MODE.md` |
+| Practice / Print | `PRACTICE_AND_PRINT_MODE.md` |
+| Claude | `CLAUDE_PROVIDER.md` |
+| Module boundaries | `ARCHITECTURE.md` |
+| Video narrative | `VIDEO_SCRIPT_PROMPT_ENGINEERING.md` |

@@ -11,14 +11,14 @@ The application uses the stored Anki fields rather than asking the LLM to recrea
 
 ## Card scope
 
-The user may load:
+Available card scopes:
 
 - all supported cards in the selected deck,
 - due and overdue cards,
 - overdue cards,
 - new cards.
 
-After loading, cards are shown with checkboxes. The user chooses the material; the application only randomizes the question order.
+After loading, cards are shown with checkboxes. The learner selects the material, while the application randomizes only the question order.
 
 ## Interactive practice
 
@@ -34,11 +34,11 @@ Grammar cards ask the learner to identify the structure used in the stored sente
 
 The interaction is non-blocking:
 
-1. select an answer,
-2. click `Check`,
-3. read inline feedback,
-4. click `Next`,
-5. finish with `End session` or after the last question.
+1. select an answer;
+2. run `Check`;
+3. review inline feedback;
+4. continue with `Next`;
+5. finish with `End session` or after the final question.
 
 ## Printable test
 

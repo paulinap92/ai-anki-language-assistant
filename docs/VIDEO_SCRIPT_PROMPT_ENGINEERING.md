@@ -1,61 +1,154 @@
-# Devlog Script — Fixing a Bad Vocabulary Generation Pipeline
+# Devlog Script — From Bad LLM Outputs to a Reliable Flashcard Workflow
 
 ## Hook
 
-"My flashcard app generated a sentence about being *thorough while watching a sunset*. It was grammatical, but nobody would naturally say it. The bug was not only the model — it was my generation pipeline."
+> My flashcard app generated a sentence about being *thorough while watching a sunset*. It was grammatical, but nobody would naturally say it. The problem was not only the model — it was my generation pipeline.
 
-## 1. Show the failures
+## 1. Show Version 1
 
-Display:
+Use Git:
 
-- an invented Polish word,
-- `thorough` forced into a sunset context,
-- `short fuse` inserted into a travel-app meeting,
-- weak collocations,
-- a misspelled input receiving a confident definition.
+```bash
+git switch --detach v0.1.0
+```
 
-## 2. Explain the root cause
+Display the original vocabulary and conversation workflow.
 
-The old code selected a random context first. The model then had to force the expression into that context.
+Explain that the application worked technically but had weak content-quality control.
 
-Show the removed `EXAMPLE_CONTEXTS` list and `random.choice(...)`.
+## 2. Display real failures
 
-## 3. Show the new word-first pipeline
+Examples:
+
+- invented Polish translation;
+- `thorough` forced into a sunset context;
+- `short fuse` inserted into an unrelated travel-app meeting;
+- invalid input receiving a confident definition;
+- weak collocations.
+
+## 3. Explain the random-context root cause
+
+Show:
+
+```python
+random.choice(EXAMPLE_CONTEXTS)
+```
+
+Explain the old order:
+
+```text
+random context
+→ force word into context
+→ unnatural example
+```
+
+Then display the new order:
 
 ```text
 validate input
 → preserve exact expression
-→ identify common meaning
-→ identify natural collocations
-→ choose meaning-driven context
+→ identify meaning
+→ identify collocations
+→ choose natural context
 → generate example
 → self-check
 ```
 
-## 4. Show application-level validation
+## 4. Switch to the prompt-engineering milestone
 
-Explain that prompt instructions are not enough. The provider now rejects a valid response when `word_or_phrase` differs from the user's exact input.
+```bash
+git switch --detach v0.2.0
+```
 
-Invalid inputs return structured metadata instead of fictional content.
+Show:
 
-## 5. Show multilingual explanation settings
+- word-first prompt;
+- exact-input preservation;
+- invalid-input metadata;
+- explanation-language selection;
+- `No translation`;
+- sentence-first Grammar.
 
-Demonstrate:
+## 5. Display phrase-level semantic failure
 
-- English vocabulary with Polish explanations,
-- English vocabulary with Spanish explanations,
-- `No translation` mode.
+Input:
 
-Mention that both classic and modern GUIs expose the setting.
+```text
+curso de reciclaje
+```
 
-## 6. Show the Conversation bug fix
+Bad output:
 
-The modern GUI previously hard-coded `Strong B2/C1`. Show the restored level selector and the selected value being sent to the feedback method.
+```text
+a course about recycling waste
+```
 
-## 7. Show before and after
+Correct interpretation in the educational/professional context:
 
-Use the same benchmark inputs and compare outputs. Explain that quality is measured through exact-input preservation, naturalness, translation correctness, collocation quality, and JSON validity.
+```text
+refresher course / professional updating course
+```
 
-## 8. Close
+Explain the fix:
 
-"This was not just rewriting a prompt. It required error analysis, schema changes, code validation, UI changes, regression cases, and documentation."
+```text
+Treat the complete expression as one lexical unit.
+Do not compose meaning from isolated words.
+```
+
+## 6. Display the Anki correction workflow
+
+Explain the real user problem:
+
+> I noticed the semantic error only after the card was already saved.
+
+Display the new flow:
+
+```text
+duplicate detected
+→ Replace it with this reviewed version?
+→ updateNoteFields
+→ preserve review history
+```
+
+## 7. Display Batch / Queue
+
+Switch to the corresponding milestone tag.
+
+Show:
+
+- TXT/CSV import;
+- one-card-at-a-time review;
+- Add, Skip, Regenerate, and Edit;
+- automatic advance;
+- progress counters;
+- persistent status instead of `OK` popups.
+
+## 8. Display Practice and Print Test
+
+Show:
+
+- selecting cards from Anki;
+- local multiple-choice checking;
+- no LLM call for ordinary checks;
+- printable test HTML;
+- separate answer-key HTML.
+
+## 9. Display Claude integration
+
+Switch to the Claude milestone.
+
+Explain that Gemini, OpenAI, and Claude now use the same prompt contract and validated models.
+
+Mention that provider comparisons can use the same regression benchmark.
+
+## 10. Close
+
+> This was not just rewriting a prompt. It required error analysis, schema changes, application-level validation, UI changes, Anki update logic, regression cases, and documentation.
+
+## Next engineering step
+
+- restore automated test coverage;
+- run provider benchmarks;
+- document real trials;
+- add TTS for example sentences only after current flows are protected by tests.

@@ -28,7 +28,7 @@ One word or phrase per line.
 
 ## Review flow
 
-The application generates one card at a time. The user may edit the current phrase, regenerate the card, add it to Anki, skip it, or navigate backward and forward. Add and Skip automatically advance to the next item.
+The application generates one card at a time. The current phrase can be edited, regenerated, added to Anki, skipped, or reviewed through backward and forward navigation. Add and Skip automatically advance to the next item.
 
 ## Session persistence
 

@@ -21,6 +21,8 @@ class Settings:
     gemini_model: str
     openai_api_key: str | None
     openai_model: str
+    anthropic_api_key: str | None
+    claude_model: str
     anki_connect_url: str
     anki_deck_name: str
     default_target_language: str
@@ -37,10 +39,12 @@ def get_settings() -> Settings:
     """
     gemini_api_key = os.getenv("GEMINI_API_KEY")
     openai_api_key = os.getenv("OPENAI_API_KEY")
+    anthropic_api_key = os.getenv("ANTHROPIC_API_KEY")
 
-    if not gemini_api_key and not openai_api_key:
+    if not gemini_api_key and not openai_api_key and not anthropic_api_key:
         raise ValueError(
-            "Configure at least one API key in .env: GEMINI_API_KEY or OPENAI_API_KEY."
+            "Configure at least one API key in .env: GEMINI_API_KEY, "
+            "OPENAI_API_KEY, or ANTHROPIC_API_KEY."
         )
 
     return Settings(
@@ -48,6 +52,8 @@ def get_settings() -> Settings:
         gemini_model=os.getenv("GEMINI_MODEL", "gemini-2.5-flash"),
         openai_api_key=openai_api_key,
         openai_model=os.getenv("OPENAI_MODEL", "gpt-4.1-mini"),
+        anthropic_api_key=anthropic_api_key,
+        claude_model=os.getenv("CLAUDE_MODEL", "claude-haiku-4-5"),
         anki_connect_url=os.getenv("ANKI_CONNECT_URL", "http://localhost:8765"),
         anki_deck_name=os.getenv("ANKI_DECK_NAME", "AI Vocabulary"),
         default_target_language=normalize_language(

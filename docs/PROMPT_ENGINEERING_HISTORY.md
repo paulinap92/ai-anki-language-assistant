@@ -125,3 +125,23 @@ The update preserves the Anki note and its review history while replacing its fi
 
 Updating the existing note is preferable to deleting and recreating it because it preserves the note identity and accumulated Anki review history.
 
+
+---
+
+## Multi-provider evaluation: Claude integration
+
+### Goal
+
+Add Claude behind the existing provider abstraction without duplicating prompt or parsing logic.
+
+### Engineering change
+
+- added `ClaudeVocabularyClient`,
+- reused the same prompts and Pydantic response models,
+- preserved exact-input validation,
+- added configuration through environment variables,
+- added mock-based unit tests without real API calls.
+
+### Evaluation value
+
+The same benchmark inputs can now be run against Gemini, OpenAI, and Claude while keeping the prompt contract constant. This allows comparison of JSON reliability, translation accuracy, example naturalness, collocations, latency, and cost.

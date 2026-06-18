@@ -2,57 +2,69 @@
 
 ## Goal
 
-This project is a local language-learning assistant. It generates structured vocabulary cards with an AI provider and saves them to Anki through AnkiConnect.
+AI Anki Language Assistant is a local desktop application that generates structured language-learning content with configurable LLM providers and saves reviewed material to Anki through AnkiConnect.
 
-The refactor keeps the existing behaviour but separates the code into clear responsibility areas.
+The codebase separates domain models, provider integrations, Anki logic, UI workflows, and configuration.
 
 ## Main layers
 
 ### `src/domain`
 
-Contains pure application concepts:
+Contains validated application models and language utilities.
+
+Main models include:
 
 - `VocabularyCard`
 - `ConversationStart`
 - `ConversationFeedback`
-- supported languages and aliases
+- `GrammarAnalysis`
 
-This layer has no dependency on GUI, Anki, OpenAI, Gemini, or environment variables.
+This layer has no dependency on GUI frameworks, AnkiConnect, provider SDKs, or environment variables.
 
 ### `src/core`
 
-Contains application configuration loaded from environment variables.
+Contains configuration loaded from environment variables.
 
-`get_settings()` reads `.env` through `python-dotenv` and returns a `Settings` dataclass.
+`get_settings()` reads `.env` and exposes provider keys, model names, Anki settings, and defaults.
 
 ### `src/ai`
 
-Contains the AI abstraction and provider implementations.
+Contains the provider abstraction, prompt builders, response parsing, and provider implementations.
 
-- `base.py` defines `VocabularyAiClient`.
-- `prompts.py` builds prompts.
-- `factory.py` creates only providers that have configured API keys.
+- `base.py` defines the common AI client contract and central parsing logic.
+- `prompts.py` builds vocabulary, grammar, and conversation prompts.
+- `factory.py` registers only providers with configured API keys.
 - `providers/gemini.py` implements Gemini.
 - `providers/openai_provider.py` implements OpenAI.
+- `providers/claude.py` implements Claude through the Anthropic Messages API.
 
-All providers return validated Pydantic models, not raw JSON strings.
+All providers reuse the same prompts and validated domain models.
 
 ### `src/anki`
 
-Contains all Anki-related logic.
+Contains AnkiConnect integration.
 
-- `client.py` communicates with AnkiConnect.
-- `templates.py` stores note type names, fields, HTML templates, and CSS.
-- `field_builder.py` converts validated `VocabularyCard` objects into HTML-safe Anki fields.
+- `client.py` sends AnkiConnect actions.
+- `templates.py` stores note types, fields, card templates, and CSS.
+- `field_builder.py` converts validated models into escaped Anki fields.
+
+The Anki layer also supports:
+
+- deck discovery;
+- note creation;
+- duplicate detection;
+- updating existing notes;
+- reading cards for Practice and Print Test;
+- querying new, due, and overdue cards.
 
 ### `src/ui`
 
 Contains desktop interfaces.
 
-- `classic_gui.py` is the stable Tkinter UI.
-- `modern_gui.py` is the CustomTkinter UI.
+- `classic_gui.py` provides the stable Tkinter GUI.
+- `modern_gui.py` provides Vocabulary, Grammar, Conversation Practice, Batch / Queue, Practice, and Print Test workflows.
 
-The UI does not build prompts or call AnkiConnect directly. It calls the AI clients and `AnkiClient`.
+The UI coordinates services but does not build prompts or manually construct AnkiConnect payloads.
 
 ### `src/cli`
 
@@ -60,63 +72,111 @@ Contains the command-line workflow.
 
 ## Import policy
 
-This version does not keep legacy compatibility wrapper modules. All runtime code imports from the explicit package structure:
+Runtime code imports only from the explicit package structure:
 
-- `src.domain.*` for domain models and language utilities
-- `src.ai.*` for AI clients, prompts, and provider selection
-- `src.anki.*` for AnkiConnect integration and card templates
-- `src.ui.*` for graphical interfaces
-- `src.cli.*` for the command-line interface
-- `src.core.*` for configuration
+- `src.domain.*`
+- `src.core.*`
+- `src.ai.*`
+- `src.anki.*`
+- `src.ui.*`
+- `src.cli.*`
 
-Old flat imports such as `src.models`, `src.anki_client`, `src.gui`, or `src.prompts` are intentionally not supported anymore.
+Legacy compatibility wrapper modules are intentionally not kept.
 
-## Data flow
+## Vocabulary flow
 
 ```text
 User input
-  ↓
-GUI or CLI
-  ↓
-VocabularyAiClient implementation
-  ↓
-Prompt builder
-  ↓
-Gemini/OpenAI
-  ↓
-Pydantic model validation
-  ↓
-Anki field builder
-  ↓
-AnkiClient
-  ↓
-AnkiConnect
-  ↓
-Anki deck
+→ GUI or CLI
+→ prompt builder
+→ selected provider
+→ structured JSON response
+→ Pydantic validation
+→ exact-input validation
+→ field builder
+→ duplicate check / update decision
+→ AnkiConnect
 ```
-
-## Design rule
-
-When adding new features, keep the same separation:
-
-- new provider → `src/ai/providers/`
-- new card layout → `src/anki/templates.py`
-- new Anki field rendering logic → `src/anki/field_builder.py`
-- new UI behaviour → `src/ui/`
-- new shared data model → `src/domain/models.py`
 
 ## Grammar flow
 
 ```text
-Modern Grammar tab
-    -> VocabularyAiClient.analyze_grammar()
-    -> provider-specific text generation
-    -> GrammarAnalysis validation
-    -> GrammarFieldBuilder
-    -> AI Grammar Light Card in Anki
+Sentence
+→ analyze_grammar()
+→ provider-specific text generation
+→ GrammarAnalysis validation
+→ Grammar field builder
+→ AI Grammar Light Card
 ```
 
-The Grammar feature uses the same provider abstraction as vocabulary generation
-and conversation practice. Both Gemini and OpenAI implement the same
-`analyze_grammar()` contract.
+## Conversation flow
 
+```text
+Topic + level
+→ start_conversation()
+→ learner answer
+→ review_conversation_answer()
+→ feedback + corrected answer + suggested vocabulary
+→ optional vocabulary-card generation
+→ Anki
+```
+
+## Batch / Queue flow
+
+```text
+TXT / CSV / pasted list
+→ normalise and deduplicate
+→ queue items
+→ generate one item
+→ review
+→ Add / Skip / Regenerate / Edit
+→ automatic advance
+→ optional JSON session persistence
+```
+
+## Practice flow
+
+```text
+Selected Anki deck
+→ find supported notes/cards
+→ user selects material
+→ local exercise generation
+→ local answer checking
+→ inline feedback
+```
+
+Practice does not call an LLM for ordinary multiple-choice checking.
+
+## Print Test flow
+
+```text
+Selected Anki cards
+→ local exercise generation
+→ test HTML
+→ separate answer-key HTML
+```
+
+## Existing-card update flow
+
+```text
+exact match found
+→ ask user
+→ updateNoteFields
+→ keep note ID and review history
+```
+
+## Provider design
+
+Gemini, OpenAI, and Claude implement the same application contract.
+
+Provider selection remains dynamic: a provider appears only when its API key is configured.
+
+## Design rules
+
+- New provider → `src/ai/providers/`
+- New prompt → `src/ai/prompts.py`
+- New shared model → `src/domain/models.py`
+- New Anki note field → domain model + template + field builder
+- New reusable Anki action → `src/anki/client.py`
+- New workflow UI → `src/ui/`
+- Provider-specific code must not duplicate parsing or validation logic

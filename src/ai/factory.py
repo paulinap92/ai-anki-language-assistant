@@ -6,6 +6,7 @@ from src.ai.base import VocabularyAiClient
 from src.core.config import Settings
 from src.ai.providers.gemini import GeminiVocabularyClient
 from src.ai.providers.openai_provider import OpenAiVocabularyClient
+from src.ai.providers.claude import ClaudeVocabularyClient
 
 
 def build_ai_clients(settings: Settings) -> dict[str, VocabularyAiClient]:
@@ -30,6 +31,13 @@ def build_ai_clients(settings: Settings) -> dict[str, VocabularyAiClient]:
         client = OpenAiVocabularyClient(
             api_key=settings.openai_api_key,
             model=settings.openai_model,
+        )
+        clients[client.provider_name] = client
+
+    if settings.anthropic_api_key:
+        client = ClaudeVocabularyClient(
+            api_key=settings.anthropic_api_key,
+            model=settings.claude_model,
         )
         clients[client.provider_name] = client
 

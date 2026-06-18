@@ -22,7 +22,7 @@ Instead of creating simple word-translation cards manually, the app uses an LLM 
 - grammar note;
 - part of speech.
 
-The app can also help with conversation practice. You answer AI-generated questions, receive feedback, and then convert useful expressions from the conversation into Anki cards.
+The application also supports conversation practice. Learner responses receive structured feedback, and selected expressions can be converted into Anki cards.
 
 ## Main idea
 
@@ -37,7 +37,7 @@ Anki flashcards saved through AnkiConnect
 ```
 
 The app does not train its own AI model.
-It uses configured external LLM providers such as Gemini or OpenAI.
+It uses configured external LLM providers such as Gemini, OpenAI, or Claude.
 
 ## Main workflows
 
@@ -47,14 +47,14 @@ The application has six main workflows.
 
 ## Workflow 1: Create a single flashcard
 
-Use this workflow when you already know the word or phrase you want to learn.
+This workflow is intended for a known word or phrase that should be added to Anki.
 
 ### Flow
 
 ```text
 Enter a word or phrase
         ↓
-Choose language, explanation language, deck, and AI provider
+Select language, explanation language, deck, and AI provider
         ↓
 Generate vocabulary card with AI
         ↓
@@ -112,16 +112,16 @@ The verb "desarrollar" is commonly used with skills, projects, ideas, and profes
 
 ## Workflow 2: Practise conversation and create flashcards from it
 
-Use this workflow when you want to practise writing in a foreign language.
+This workflow supports written practice in a foreign language.
 
 ### Flow
 
 ```text
-Choose language, level, topic, deck, and AI provider
+Select language, level, topic, deck, and AI provider
         ↓
 AI asks a question
         ↓
-You write your answer
+Learner writes an answer
         ↓
 AI gives feedback and correction
         ↓
@@ -129,7 +129,7 @@ AI proposes a stronger model answer
         ↓
 AI suggests useful expressions
         ↓
-You select expressions you want to remember
+Learner selects expressions to retain
         ↓
 The app generates full Anki flashcards
         ↓
@@ -186,7 +186,7 @@ Suggested expressions:
 - proyectos más técnicos
 ```
 
-You can then select one or more expressions and generate full Anki cards from them.
+One or more suggested expressions can then be selected and converted into complete Anki cards.
 
 ---
 
@@ -222,7 +222,7 @@ The manual single-word workflow remains available.
 
 ### Supported input
 
-You can:
+The workflow supports:
 
 - load a `.txt` file;
 - load a `.csv` file;
@@ -233,7 +233,7 @@ You can:
 ```text
 Load or paste a vocabulary list
         ↓
-Choose target language, explanation language, deck, and AI provider once
+Select target language, explanation language, deck, and AI provider once
         ↓
 Generate one card at a time
         ↓
@@ -411,7 +411,7 @@ Instead, it can ask whether the reviewed version should replace the existing car
 ```text
 Duplicate detected
         ↓
-Show confirmation
+Display confirmation
         ↓
 Update the existing note fields
         ↓
@@ -476,7 +476,7 @@ The verb "desarrollar" is commonly used with skills, projects, ideas, and profes
 
 ## How the app uses LLMs
 
-The app uses Gemini or OpenAI to generate structured language-learning content.
+The app uses Gemini, OpenAI, or Claude to generate structured language-learning content.
 
 The LLM is used for:
 
@@ -527,16 +527,16 @@ The app currently supports:
 - Generate complete AI vocabulary cards.
 - Validate misspelled or invalid expressions.
 - Preserve the exact user input.
-- Choose the explanation language or use `No translation`.
+- Configurable explanation language, including `No translation`.
 - Save cards directly to a selected Anki deck.
 - Automatically create or update a custom Anki note type.
 - Practise conversation in a target language.
-- Choose conversation topic and language level.
-- Receive feedback on your answer.
-- See a corrected version of your answer.
+- Configurable conversation topic and language level.
+- Structured feedback on learner answers.
+- Corrected learner-answer version.
 - See a stronger model answer.
 - Select suggested expressions from the conversation.
-- Add your own custom expressions to the flashcard queue.
+- Custom expressions can be added to the flashcard queue.
 - Generate multiple cards from selected expressions.
 - Import vocabulary lists from TXT, CSV, or pasted multiline text.
 - Review cards in a one-at-a-time Batch / Queue workflow.
@@ -549,22 +549,23 @@ The app currently supports:
 - Update an existing Anki note when a corrected version should replace a duplicate.
 - Analyse grammar through natural sentences.
 - Save grammar analysis as a separate Anki note type.
-- Use Gemini, OpenAI, or both, depending on configured API keys.
+- Use Gemini, OpenAI, Claude, or any configured combination of these providers.
 
 ---
 
 ## Requirements
 
-To use the app from source code, you need:
+Running the application from source requires:
 
 - Python 3.10+
 - Anki Desktop
 - AnkiConnect add-on installed in Anki
 - At least one API key:
-  - Gemini API key, or
-  - OpenAI API key
+  - Gemini API key;
+  - OpenAI API key; or
+  - Anthropic API key for Claude
 
-To use the exported `.exe` version, you need:
+Running the exported `.exe` version requires:
 
 - Windows
 - Anki Desktop
@@ -573,32 +574,12 @@ To use the exported `.exe` version, you need:
 
 ---
 
-## Important security note
-
-The `.env` file contains private API keys.
-
-Do not publish it on GitHub.
-Do not send it to people you do not trust.
-Do not include it in public releases.
-
-For private family testing, the `.env` file can be placed next to the `.exe`, but this means that the app will use the same API key.
-
-Recommended private distribution structure:
-
-```text
-AI_Anki_App/
-├── main_gui.exe
-├── .env
-└── README_PL.txt
-```
-
-Do not delete the `.env` file, because the app needs it to connect to the AI provider.
 
 ---
 
 ## Environment variables
 
-Create a `.env` file based on `.env.example`.
+Configuration is loaded from a local `.env` file based on `.env.example`.
 
 Example:
 
@@ -609,16 +590,48 @@ GEMINI_MODEL=gemini-2.5-flash
 OPENAI_API_KEY=your_openai_api_key_here
 OPENAI_MODEL=gpt-4.1-mini
 
+ANTHROPIC_API_KEY=your_anthropic_api_key_here
+CLAUDE_MODEL=claude-haiku-4-5
+
 ANKI_CONNECT_URL=http://localhost:8765
 ANKI_DECK_NAME=AI Vocabulary
 DEFAULT_TARGET_LANGUAGE=English
 ```
 
-At least one API key is required.
+At least one configured provider key is required.
 
-If only Gemini is configured, only Gemini will be available.
-If only OpenAI is configured, only OpenAI will be available.
-If both are configured, both providers can be used.
+Only providers with configured API keys are displayed in the application.
+
+For example:
+
+- if only Gemini is configured, only Gemini is available;
+- if only OpenAI is configured, only OpenAI is available;
+- if only Claude is configured, only Claude is available;
+- if multiple keys are configured, the user can choose between the available providers.
+
+---
+
+## Claude provider
+
+Claude is available as an optional third AI provider.
+
+It follows the same application contract as Gemini and OpenAI and supports:
+
+- vocabulary generation;
+- grammar analysis;
+- conversation start;
+- conversation feedback;
+- Batch / Queue generation.
+
+Claude appears in the provider selector only when `ANTHROPIC_API_KEY` is configured.
+
+The default model can be changed through:
+
+```env
+CLAUDE_MODEL=claude-haiku-4-5
+```
+
+Claude API usage is billed separately by Anthropic. A Claude web subscription does not automatically include API usage.
 
 ---
 
@@ -636,11 +649,11 @@ Install the AnkiConnect add-on in Anki.
 
 ### 3. Restart Anki
 
-After installing AnkiConnect, restart Anki.
+Restart Anki after installing AnkiConnect.
 
-### 4. Keep Anki open
+### 4. Keep Anki running
 
-Anki must be open while using this app.
+Anki must remain running while the application is in use.
 
 The app communicates with Anki through AnkiConnect at:
 
@@ -684,6 +697,12 @@ source .venv/bin/activate
 pip install -r requirements.txt
 ```
 
+The project includes the official Anthropic Python SDK for Claude support:
+
+```text
+anthropic
+```
+
 ### 4. Create `.env`
 
 Windows CMD:
@@ -698,7 +717,7 @@ PowerShell:
 Copy-Item .env.example .env
 ```
 
-Then edit `.env` and add your API key.
+Edit `.env` and add the required API key.
 
 ### 5. Start the classic GUI
 
@@ -775,81 +794,9 @@ q           close the app
 
 ---
 
-## Running the exported Windows version
-
-If you received the app as an `.exe`, use this flow.
-
-### Folder structure
-
-Keep all files in one folder:
-
-```text
-AI_Anki_App/
-├── main_gui.exe
-├── .env
-└── README_PL.txt
-```
-
-### How to run
-
-1. Open Anki Desktop.
-2. Make sure AnkiConnect is installed.
-3. Keep Anki open.
-4. Open `main_gui.exe`.
-5. Choose language, explanation language, deck, and AI provider.
-6. Generate flashcards or start conversation practice.
-7. Save selected cards to Anki.
-
-### Windows warning
-
-Windows may show a warning because the `.exe` is private and not signed with a paid certificate.
-
-If you trust the source of the file, click:
-
-```text
-More info → Run anyway
-```
-
-or in Polish Windows:
-
-```text
-Więcej informacji → Uruchom mimo to
-```
 
 ---
 
-## Building the Windows `.exe`
-
-Install PyInstaller:
-
-```bash
-pip install pyinstaller
-```
-
-Build the stable GUI:
-
-```bash
-pyinstaller --onefile --windowed main_gui.py
-```
-
-The generated file will be available in:
-
-```text
-dist/main_gui.exe
-```
-
-If the app uses additional folders such as `assets`, `prompts`, or templates, include them with `--add-data`.
-
-Example for Windows:
-
-```powershell
-pyinstaller --onefile --windowed main_gui.py `
-  --add-data "assets;assets" `
-  --add-data "prompts;prompts"
-```
-
-Do not embed `.env` inside the `.exe`.
-Place `.env` next to the `.exe`.
 
 ---
 
@@ -876,7 +823,8 @@ ai_anki_vocab_multi_cards/
     │   ├── prompts.py              # Prompt builders and validation instructions
     │   └── providers/
     │       ├── gemini.py           # Gemini provider
-    │       └── openai_provider.py  # OpenAI provider
+    │       ├── openai_provider.py  # OpenAI provider
+    │       └── claude.py           # Claude provider
     ├── anki/
     │   ├── client.py               # AnkiConnect API wrapper
     │   ├── field_builder.py        # Converts cards to safe Anki fields
@@ -919,10 +867,10 @@ Older cards created as `Basic` notes can be migrated safely.
 
 Recommended flow:
 
-1. Open the stable GUI.
-2. Click **Prepare style for old AI cards**.
-3. In Anki Browse, select the shown cards.
-4. Choose **Notes → Change Note Type**.
+1. Start the stable GUI.
+2. Select **Prepare style for old AI cards**.
+3. Select the displayed cards in Anki Browse.
+4. Open **Notes → Change Note Type**.
 5. Select `AI Vocabulary Light Card · Migrated`.
 6. Map `Front → Front` and `Back → Back`.
 
@@ -963,6 +911,7 @@ See:
 - `docs/BATCH_QUEUE_MODE.md`
 - `docs/PRACTICE_AND_PRINT_MODE.md`
 - `docs/ANKI_UPDATE_EXISTING_CARDS.md`
+- `docs/CLAUDE_PROVIDER.md`
 - `docs/UX_FEEDBACK_HISTORY.md`
 - `docs/ARCHITECTURE.md`
 
@@ -985,9 +934,17 @@ Check that:
 Check that:
 
 - `.env` exists;
-- the API key is correct;
+- the correct provider key is configured;
 - the model name is correct;
+- the required provider SDK is installed;
 - the app was restarted after editing `.env`.
+
+Claude requires:
+
+```env
+ANTHROPIC_API_KEY=...
+CLAUDE_MODEL=...
+```
 
 ### The app does not start
 
@@ -998,15 +955,6 @@ Check that:
 - Python version is 3.10 or newer;
 - `.env` exists if running the full AI workflow.
 
-### Windows blocks the `.exe`
-
-This can happen because the app is not signed with a paid code-signing certificate.
-
-If you trust the app source, choose:
-
-```text
-More info → Run anyway
-```
 
 ---
 

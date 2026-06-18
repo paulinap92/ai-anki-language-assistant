@@ -6,13 +6,13 @@ Anki duplicate prevention is useful, but a learner may notice that a generated d
 
 ## Behaviour
 
-When the same exact vocabulary expression or grammar sentence already exists in the selected deck, the application asks:
+When the same vocabulary expression or grammar sentence already exists in the selected deck, the application displays:
 
 ```text
 Replace it with this reviewed version?
 ```
 
-Choosing **Yes** updates all fields of the existing note. Choosing **No** leaves the note unchanged.
+Selecting **Yes** updates all fields of the existing note. Selecting **No** leaves the note unchanged.
 
 ## Technical implementation
 
