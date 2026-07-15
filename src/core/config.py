@@ -26,6 +26,15 @@ class Settings:
     anki_connect_url: str
     anki_deck_name: str
     default_target_language: str
+    elevenlabs_api_key: str | None
+    elevenlabs_tts_model: str
+    elevenlabs_voice_id: str
+    openai_tts_model: str
+    openai_tts_voice: str
+    gemini_tts_model: str
+    gemini_tts_voice: str
+    piper_model_path: str | None
+    audio_cache_dir: str
 
 
 def get_settings() -> Settings:
@@ -59,4 +68,13 @@ def get_settings() -> Settings:
         default_target_language=normalize_language(
             os.getenv("DEFAULT_TARGET_LANGUAGE", "English")
         ),
+        elevenlabs_api_key=os.getenv("ELEVENLABS_API_KEY"),
+        elevenlabs_tts_model=os.getenv("ELEVENLABS_TTS_MODEL", "eleven_flash_v2_5"),
+        elevenlabs_voice_id=os.getenv("ELEVENLABS_VOICE_ID", "JBFqnCBsd6RMkjVDRZzb"),
+        openai_tts_model=os.getenv("OPENAI_TTS_MODEL", "gpt-4o-mini-tts"),
+        openai_tts_voice=os.getenv("OPENAI_TTS_VOICE", "coral"),
+        gemini_tts_model=os.getenv("GEMINI_TTS_MODEL", "gemini-3.1-flash-tts-preview"),
+        gemini_tts_voice=os.getenv("GEMINI_TTS_VOICE", "Kore"),
+        piper_model_path=os.getenv("PIPER_MODEL_PATH"),
+        audio_cache_dir=os.getenv("AUDIO_CACHE_DIR", ".audio_cache"),
     )

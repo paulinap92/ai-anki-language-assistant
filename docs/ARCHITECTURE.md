@@ -180,3 +180,16 @@ Provider selection remains dynamic: a provider appears only when its API key is 
 - New reusable Anki action → `src/anki/client.py`
 - New workflow UI → `src/ui/`
 - Provider-specific code must not duplicate parsing or validation logic
+
+
+### `src/speech`
+
+Contains TTS abstractions, provider factories, deterministic audio caching, and speech application services. Text providers and speech providers remain independent.
+
+Speech flow:
+
+```text
+Example sentence → SpeechService → TTS provider → cache → Anki media → Audio field
+```
+
+LangChain and LangGraph are not required for the current deterministic workflows. LangGraph remains a possible later fit for stateful Auto Batch orchestration with checkpoints and human review.

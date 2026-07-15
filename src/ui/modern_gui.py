@@ -8,6 +8,10 @@ from __future__ import annotations
 
 import csv
 import json
+import os
+import subprocess
+import sys
+import threading
 import tkinter as tk
 from pathlib import Path
 from tkinter import filedialog, messagebox
@@ -19,6 +23,8 @@ from src.anki.client import AnkiClient, DuplicateNoteError
 from src.domain.languages import LANGUAGE_TAGS
 from src.domain.models import ConversationFeedback, GrammarAnalysis, VocabularyCard
 from src.practice import PracticeItem, PracticeQuestion, PracticeService
+from src.speech import SpeechService
+from src.speech.models import TtsResult
 
 
 EXPLANATION_LANGUAGES = ["Polish", "English", "Spanish", "German", "Italian", "No translation"]
@@ -34,10 +40,12 @@ class ModernVocabularyGui:
         ai_clients: dict[str, VocabularyAiClient],
         anki_client: AnkiClient,
         default_target_language: str,
+        speech_service: SpeechService | None = None,
     ) -> None:
         self._root = root
         self._ai_clients = ai_clients
         self._anki_client = anki_client
+        self._speech_service = speech_service
 
         self._provider_var = ctk.StringVar(value=next(iter(ai_clients)))
         self._language_var = ctk.StringVar(value=default_target_language)
@@ -49,6 +57,15 @@ class ModernVocabularyGui:
         self._word_var = ctk.StringVar()
         self._generated_card: VocabularyCard | None = None
         self._generated_provider_name: str | None = None
+        self._generated_audio: TtsResult | None = None
+
+        tts_names = list(speech_service.providers) if speech_service else []
+        self._tts_provider_var = ctk.StringVar(value=tts_names[0] if tts_names else "")
+        self._tts_model_var = ctk.StringVar(value="")
+        self._tts_voice_var = ctk.StringVar(value="")
+        self._speech_notes: list[dict[str, object]] = []
+        self._speech_note_vars: list[ctk.BooleanVar] = []
+        self._speech_progress_var = ctk.StringVar(value="Load existing cards with missing audio.")
 
         self._grammar_sentence_var = ctk.StringVar()
         self._generated_grammar: GrammarAnalysis | None = None
@@ -126,6 +143,7 @@ class ModernVocabularyGui:
         tabs.add("Conversation Practice")
         tabs.add("Batch / Queue")
         tabs.add("Practice & Print")
+        tabs.add("Speech / Audio")
         tabs.tab("Single flashcard").grid_columnconfigure(0, weight=1)
         tabs.tab("Single flashcard").grid_rowconfigure(0, weight=1)
         tabs.tab("Grammar").grid_columnconfigure(0, weight=1)
@@ -136,12 +154,15 @@ class ModernVocabularyGui:
         tabs.tab("Batch / Queue").grid_rowconfigure(0, weight=1)
         tabs.tab("Practice & Print").grid_columnconfigure(0, weight=1)
         tabs.tab("Practice & Print").grid_rowconfigure(0, weight=1)
+        tabs.tab("Speech / Audio").grid_columnconfigure(0, weight=1)
+        tabs.tab("Speech / Audio").grid_rowconfigure(0, weight=1)
 
         self._build_single_flashcard_tab(tabs.tab("Single flashcard"))
         self._build_grammar_tab(tabs.tab("Grammar"))
         self._build_conversation_tab(tabs.tab("Conversation Practice"))
         self._build_batch_tab(tabs.tab("Batch / Queue"))
         self._build_practice_tab(tabs.tab("Practice & Print"))
+        self._build_speech_tab(tabs.tab("Speech / Audio"))
 
         footer = ctk.CTkFrame(main, fg_color="transparent")
         footer.grid(row=3, column=0, sticky="ew", padx=24, pady=(0, 16))
@@ -217,12 +238,23 @@ class ModernVocabularyGui:
         ctk.CTkButton(left, text="Generate preview", height=42, command=self._generate_single_card).grid(
             row=5, column=0, sticky="ew", padx=18, pady=(6, 8)
         )
+        speech_frame = ctk.CTkFrame(left, fg_color="transparent")
+        speech_frame.grid(row=6, column=0, sticky="ew", padx=18, pady=(2, 8))
+        speech_frame.grid_columnconfigure((0, 1), weight=1)
+        ctk.CTkButton(
+            speech_frame, text="Generate example audio",
+            command=self._generate_single_audio,
+        ).grid(row=0, column=0, sticky="ew", padx=(0, 4))
+        ctk.CTkButton(
+            speech_frame, text="Preview audio",
+            command=self._preview_generated_audio,
+        ).grid(row=0, column=1, sticky="ew", padx=(4, 0))
         ctk.CTkButton(
             left,
             text="Add reviewed card to Anki",
             height=42,
             command=self._add_single_card_to_anki,
-        ).grid(row=6, column=0, sticky="ew", padx=18, pady=(0, 18))
+        ).grid(row=7, column=0, sticky="ew", padx=18, pady=(0, 18))
 
         right = ctk.CTkFrame(layout, corner_radius=18)
         right.grid(row=0, column=1, sticky="nsew")
@@ -1018,6 +1050,42 @@ class ModernVocabularyGui:
             f"Correct {self._practice_correct} · Incorrect {self._practice_incorrect}"
         )
 
+    def _build_speech_tab(self, parent: ctk.CTkFrame) -> None:
+        """Build TTS controls for new and existing vocabulary cards."""
+        frame = ctk.CTkFrame(parent, fg_color="transparent")
+        frame.grid(row=0, column=0, sticky="nsew", padx=8, pady=8)
+        frame.grid_columnconfigure(0, weight=1)
+        frame.grid_rowconfigure(2, weight=1)
+
+        controls = ctk.CTkFrame(frame, corner_radius=18)
+        controls.grid(row=0, column=0, sticky="ew", pady=(0, 10))
+        controls.grid_columnconfigure((1, 3, 5), weight=1)
+        ctk.CTkLabel(controls, text="TTS provider").grid(row=0, column=0, padx=(16, 8), pady=14)
+        self._tts_provider_box = ctk.CTkComboBox(
+            controls, variable=self._tts_provider_var,
+            values=list(self._speech_service.providers) if self._speech_service else [],
+            state="readonly", command=lambda _value: self._sync_tts_defaults(),
+        )
+        self._tts_provider_box.grid(row=0, column=1, sticky="ew", padx=(0, 16), pady=14)
+        ctk.CTkLabel(controls, text="Model").grid(row=0, column=2, padx=(0, 8), pady=14)
+        self._tts_model_box = ctk.CTkComboBox(controls, variable=self._tts_model_var, values=[])
+        self._tts_model_box.grid(row=0, column=3, sticky="ew", padx=(0, 16), pady=14)
+        ctk.CTkLabel(controls, text="Voice").grid(row=0, column=4, padx=(0, 8), pady=14)
+        self._tts_voice_box = ctk.CTkComboBox(controls, variable=self._tts_voice_var, values=[])
+        self._tts_voice_box.grid(row=0, column=5, sticky="ew", padx=(0, 16), pady=14)
+
+        actions = ctk.CTkFrame(frame, corner_radius=18)
+        actions.grid(row=1, column=0, sticky="ew", pady=(0, 10))
+        ctk.CTkButton(actions, text="Load cards with missing audio", command=self._load_speech_notes).pack(side="left", padx=16, pady=14)
+        ctk.CTkButton(actions, text="Select all", command=lambda: [v.set(True) for v in self._speech_note_vars]).pack(side="left", padx=(0, 8), pady=14)
+        ctk.CTkButton(actions, text="Generate audio for selected", command=self._generate_audio_for_existing).pack(side="left", padx=(0, 8), pady=14)
+        ctk.CTkLabel(actions, textvariable=self._speech_progress_var).pack(side="right", padx=16, pady=14)
+
+        self._speech_scroll = ctk.CTkScrollableFrame(frame, corner_radius=18)
+        self._speech_scroll.grid(row=2, column=0, sticky="nsew")
+        self._speech_scroll.grid_columnconfigure(0, weight=1)
+        self._sync_tts_defaults()
+
     def _next_practice_question(self) -> None:
         if not self._practice_questions:
             return
@@ -1116,6 +1184,7 @@ class ModernVocabularyGui:
             return
 
         self._generated_card = card
+        self._generated_audio = None
         self._generated_provider_name = provider_name
         self._show_single_preview(card)
         self._status_var.set("Card generated. Review it before adding to Anki.")
@@ -1148,6 +1217,11 @@ class ModernVocabularyGui:
         provider_name = self._generated_provider_name or self._provider_var.get()
         try:
             deck = self._set_selected_deck()
+            if self._generated_audio is not None:
+                media_name = self._anki_client.store_media_file(self._generated_audio.path)
+                self._generated_card = self._generated_card.model_copy(
+                    update={"audio": f"[sound:{media_name}]"}
+                )
             self._anki_client.add_card(self._generated_card, provider_name)
         except DuplicateNoteError:
             replace = messagebox.askyesno(
@@ -1172,6 +1246,7 @@ class ModernVocabularyGui:
             self._word_var.set("")
             self._generated_card = None
             self._generated_provider_name = None
+            self._generated_audio = None
             return
         except Exception as exc:
             self._status_var.set("Could not add card to Anki.")
@@ -1182,6 +1257,120 @@ class ModernVocabularyGui:
         self._word_var.set("")
         self._generated_card = None
         self._generated_provider_name = None
+        self._generated_audio = None
+
+    def _sync_tts_defaults(self) -> None:
+        if not self._speech_service or not self._tts_provider_var.get():
+            self._tts_model_var.set("")
+            self._tts_voice_var.set("")
+            return
+        provider = self._speech_service.providers[self._tts_provider_var.get()]
+        self._tts_model_box.configure(values=provider.models) if hasattr(self, "_tts_model_box") else None
+        self._tts_voice_box.configure(values=provider.voices) if hasattr(self, "_tts_voice_box") else None
+        self._tts_model_var.set(provider.default_model)
+        self._tts_voice_var.set(provider.default_voice)
+
+    def _generate_single_audio(self) -> None:
+        if self._generated_card is None:
+            messagebox.showerror("No card", "Generate a vocabulary card first.")
+            return
+        if not self._speech_service or not self._tts_provider_var.get():
+            messagebox.showerror("TTS unavailable", "Configure at least one TTS provider.")
+            return
+        self._status_var.set("Generating example audio...")
+        self._root.update_idletasks()
+        try:
+            self._generated_audio = self._speech_service.generate(
+                self._tts_provider_var.get(),
+                self._generated_card.example,
+                self._generated_card.target_language,
+                self._tts_model_var.get(),
+                self._tts_voice_var.get(),
+            )
+        except Exception as exc:
+            self._status_var.set("Audio generation failed.")
+            messagebox.showerror("TTS error", str(exc))
+            return
+        source = "cache" if self._generated_audio.cached else "provider"
+        self._status_var.set(f"✓ Example audio ready from {source}: {self._generated_audio.path.name}")
+        self._record_activity("♪ Example audio ready")
+
+    def _preview_generated_audio(self) -> None:
+        if self._generated_audio is None:
+            messagebox.showwarning("No audio", "Generate example audio first.")
+            return
+        self._open_audio_file(self._generated_audio.path)
+
+    @staticmethod
+    def _open_audio_file(path: Path) -> None:
+        if sys.platform.startswith("win"):
+            os.startfile(path)  # type: ignore[attr-defined]
+        elif sys.platform == "darwin":
+            subprocess.Popen(["open", str(path)])
+        else:
+            subprocess.Popen(["xdg-open", str(path)])
+
+    def _load_speech_notes(self) -> None:
+        try:
+            self._set_selected_deck()
+            self._speech_notes = self._anki_client.list_vocabulary_notes_for_audio(
+                missing_only=True
+            )
+        except Exception as exc:
+            messagebox.showerror("Anki error", str(exc))
+            return
+        for widget in self._speech_scroll.winfo_children():
+            widget.destroy()
+        self._speech_note_vars = []
+        for index, note in enumerate(self._speech_notes):
+            var = ctk.BooleanVar(value=True)
+            self._speech_note_vars.append(var)
+            label = f"{note['word']} — {note['example']}"
+            ctk.CTkCheckBox(self._speech_scroll, text=label, variable=var).grid(
+                row=index, column=0, sticky="w", padx=12, pady=6
+            )
+        self._speech_progress_var.set(
+            f"{len(self._speech_notes)} cards without audio"
+        )
+
+    def _generate_audio_for_existing(self) -> None:
+        selected = [
+            note for note, var in zip(self._speech_notes, self._speech_note_vars) if var.get()
+        ]
+        if not selected:
+            messagebox.showwarning("No cards selected", "Select at least one card.")
+            return
+        if not self._speech_service or not self._tts_provider_var.get():
+            messagebox.showerror("TTS unavailable", "Configure at least one TTS provider.")
+            return
+        self._speech_progress_var.set(f"Generating 0/{len(selected)}...")
+        threading.Thread(
+            target=self._existing_audio_worker, args=(selected,), daemon=True
+        ).start()
+
+    def _existing_audio_worker(self, notes: list[dict[str, object]]) -> None:
+        completed = 0
+        errors = 0
+        for index, note in enumerate(notes, start=1):
+            try:
+                result = self._speech_service.generate(
+                    self._tts_provider_var.get(),
+                    str(note["example"]),
+                    str(note["language"]),
+                    self._tts_model_var.get(),
+                    self._tts_voice_var.get(),
+                )
+                media_name = self._anki_client.store_media_file(result.path)
+                self._anki_client.attach_audio_to_note(int(note["note_id"]), media_name)
+                completed += 1
+            except Exception:
+                errors += 1
+            self._root.after(
+                0, self._speech_progress_var.set,
+                f"Generating {index}/{len(notes)} · Added {completed} · Errors {errors}",
+            )
+        self._root.after(0, self._load_speech_notes)
+        self._root.after(0, self._record_activity, f"♪ Audio added to {completed} cards")
 
     def _analyze_grammar_sentence(self) -> None:
         """Generate and preview a sentence-first grammar analysis."""

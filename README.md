@@ -878,6 +878,18 @@ This preserves review history because the final note-type conversion happens ins
 
 ---
 
+## Speech and example audio
+
+The modern GUI supports optional example-sentence audio through a dedicated speech layer. Available TTS providers depend on local configuration and can include ElevenLabs, OpenAI TTS, Gemini TTS, and Piper offline.
+
+Audio can be generated while reviewing a new vocabulary card or added later to selected existing cards with an empty `Audio` field. Generated media is stored in Anki and referenced with `[sound:filename]`, preserving existing note and review history.
+
+Audio generation is on demand and uses a deterministic local cache based on sentence, language, provider, model, and voice.
+
+See `docs/SPEECH_AND_TTS.md`.
+
+---
+
 ## Development
 
 Install with Pipenv and run tests with coverage:

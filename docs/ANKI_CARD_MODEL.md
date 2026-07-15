@@ -22,6 +22,7 @@ AI Vocabulary Light Card
 | `Synonyms` | HTML chips with synonyms or close alternatives. |
 | `Collocations` | HTML chips with established collocations and usage patterns. |
 | `GrammarNote` | Short grammar or usage note. |
+| `Audio` | Anki `[sound:filename]` reference for the example sentence. |
 
 When `No translation` is selected, translation fields remain empty and the template hides the corresponding sections.
 
@@ -106,3 +107,8 @@ This model contains:
 - `Back`
 
 The migration remains manual inside Anki so scheduling and review history are preserved.
+
+
+## Audio media
+
+Audio is stored through AnkiConnect `storeMediaFile`. The `Audio` field is updated without recreating the note, so existing review history is preserved.

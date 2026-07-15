@@ -18,6 +18,7 @@ MODEL_FIELDS = [
         "Synonyms",
         "Collocations",
         "GrammarNote",
+        "Audio",
     ]
 
 LEGACY_MODEL_NAME = "AI Vocabulary Light Card · Migrated"
@@ -46,6 +47,7 @@ BACK_TEMPLATE = """
   <section class="section example">
     <div class="label">Example</div>
     <div class="sentence">{{Example}}</div>
+    {{#Audio}}<div class="audio">{{Audio}}</div>{{/Audio}}
     {{#ExamplePL}}<div class="translation-example">{{ExamplePL}}</div>{{/ExamplePL}}
   </section>
 

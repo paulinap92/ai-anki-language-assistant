@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 from html import unescape
+import base64
+from pathlib import Path
 import re
 from typing import Any
 
@@ -109,6 +111,7 @@ class AnkiClient:
                 back_template=BACK_TEMPLATE,
             )
         else:
+            self._ensure_model_fields(MODEL_NAME, MODEL_FIELDS)
             self._update_model(
                 model_name=MODEL_NAME,
                 front_template=FRONT_TEMPLATE,
@@ -256,14 +259,14 @@ class AnkiClient:
         note_id = self.find_existing_vocabulary_note_id(card.word_or_phrase)
         if note_id is None:
             raise ValueError(f"No existing card found for: {card.word_or_phrase}")
+        fields = VocabularyFieldBuilder.build_fields(card)
+        if not fields.get("Audio"):
+            existing = self._invoke(action="notesInfo", params={"notes": [note_id]}) or []
+            if existing:
+                fields["Audio"] = (existing[0].get("fields", {}).get("Audio", {}) or {}).get("value", "")
         self._invoke(
             action="updateNoteFields",
-            params={
-                "note": {
-                    "id": note_id,
-                    "fields": VocabularyFieldBuilder.build_fields(card),
-                }
-            },
+            params={"note": {"id": note_id, "fields": fields}},
         )
         self._invoke(
             action="addTags",
@@ -297,6 +300,68 @@ class AnkiClient:
             },
         )
         return note_id
+
+    def store_media_file(self, file_path: Path) -> str:
+        """Copy a local audio file into Anki media and return its media filename."""
+        data = base64.b64encode(file_path.read_bytes()).decode("ascii")
+        result = self._invoke(
+            action="storeMediaFile",
+            params={"filename": file_path.name, "data": data},
+        )
+        if not result:
+            raise ValueError(f"Could not store Anki media file: {file_path.name}")
+        return str(result)
+
+    def list_vocabulary_notes_for_audio(self, missing_only: bool = True) -> list[dict[str, Any]]:
+        """Return vocabulary notes from the active deck for audio enrichment."""
+        self.ensure_vocabulary_model_exists()
+        deck = self._escape_search_value(self._deck_name)
+        model = self._escape_search_value(MODEL_NAME)
+        note_ids = self._invoke(
+            action="findNotes",
+            params={"query": f'deck:"{deck}" note:"{model}"'},
+        ) or []
+        if not note_ids:
+            return []
+        notes = self._invoke(action="notesInfo", params={"notes": note_ids}) or []
+        result: list[dict[str, Any]] = []
+        for note in notes:
+            fields = note.get("fields") or {}
+            audio = (fields.get("Audio") or {}).get("value", "")
+            if missing_only and self._normalise_field_value(audio):
+                continue
+            result.append({
+                "note_id": int(note["noteId"]),
+                "word": (fields.get("Word") or {}).get("value", ""),
+                "example": (fields.get("Example") or {}).get("value", ""),
+                "language": (fields.get("Language") or {}).get("value", ""),
+                "audio": audio,
+            })
+        return result
+
+    def attach_audio_to_note(self, note_id: int, media_filename: str) -> None:
+        """Set an Anki sound reference on an existing vocabulary note."""
+        self._invoke(
+            action="updateNoteFields",
+            params={
+                "note": {
+                    "id": note_id,
+                    "fields": {"Audio": f"[sound:{media_filename}]"},
+                }
+            },
+        )
+
+    def _ensure_model_fields(self, model_name: str, fields: list[str]) -> None:
+        """Add fields introduced after the note type was first created."""
+        existing = self._invoke(
+            action="modelFieldNames", params={"modelName": model_name}
+        ) or []
+        for field in fields:
+            if field not in existing:
+                self._invoke(
+                    action="modelFieldAdd",
+                    params={"modelName": model_name, "fieldName": field},
+                )
 
     def _find_existing_note_id(
         self, model_name: str, field_name: str, expected_value: str

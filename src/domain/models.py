@@ -24,6 +24,7 @@ class VocabularyCard(BaseModel):
     synonyms: list[str] = Field(description="A short list of useful synonyms or close alternatives.")
     collocations: list[str] = Field(description="Common phrases, collocations, or usage patterns.")
     grammar_note: str = Field(description="Short grammar or usage note in Polish.")
+    audio: str = Field(default="", description="Anki sound reference for the example sentence.")
 
 
 class ConversationStart(BaseModel):

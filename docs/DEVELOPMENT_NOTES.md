@@ -116,3 +116,14 @@ Keep these examples in the evaluation set:
 | Claude | `CLAUDE_PROVIDER.md` |
 | Module boundaries | `ARCHITECTURE.md` |
 | Video narrative | `VIDEO_SCRIPT_PROMPT_ENGINEERING.md` |
+
+
+## Speech tests
+
+- provider factory registration;
+- deterministic cache keys;
+- cache reuse;
+- provider calls with mocks;
+- Anki media upload;
+- existing-note Audio updates;
+- missing credentials, empty text, and provider errors.

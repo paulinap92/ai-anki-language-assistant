@@ -36,6 +36,7 @@ class VocabularyFieldBuilder:
             "Synonyms": cls.chips(card.synonyms),
             "Collocations": cls.chips(card.collocations),
             "GrammarNote": cls.safe(card.grammar_note),
+            "Audio": card.audio,
         }
 
     @staticmethod
