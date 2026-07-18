@@ -983,3 +983,65 @@ Possible next improvements:
 - improve error messages;
 - add import/export of user settings;
 - add packaging scripts for Windows releases.
+
+
+---
+
+## Simple Auto Batch
+
+The modern GUI includes a safer Auto Batch workflow built on top of the stable TTS version.
+
+### Batch actions
+
+- `Auto-generate pending` generates cards one by one.
+- `Add all ready` adds only cards with status `ready`.
+- Invalid, duplicate, or error cards remain in review.
+
+### Safety behavior
+
+- Batch sessions are autosaved to `batch_autosaves/`.
+- Runtime logs are written to `logs/ai_anki_app.log`.
+- `Add all ready` runs step by step through the GUI event loop, not through a worker thread.
+- Existing Anki notes are fetched once before bulk add to reduce repeated duplicate scans.
+- A failed card is marked as `error` and the process continues with the next card.
+
+
+---
+
+## Audio diagnostics
+
+TTS generation and Anki audio attachment now write detailed runtime information to:
+
+```text
+logs/ai_anki_app.log
+```
+
+The log records:
+
+- selected TTS provider, model, and voice;
+- whether audio came from cache or provider;
+- generated audio cache path;
+- Anki media upload attempts;
+- Audio field updates;
+- failures when attaching audio to new or existing cards.
+
+Changing the main card language refreshes the TTS voice preset list so language-specific voices are shown when available.
+
+
+---
+
+## Version 7.2: Auto Batch rate-limit fix
+
+Auto Batch now treats provider rate-limit errors as a stop condition instead of
+retrying the same item repeatedly.
+
+Behavior:
+
+- only `pending` items are auto-generated;
+- `invalid`, `error`, and `rate_limited` items are not retried automatically;
+- HTTP 429 / `Too Many Requests` stops Auto Batch;
+- the Batch session is autosaved before stopping;
+- the user can resume later after the provider limit cools down.
+
+This prevents rapid retry loops that can repeatedly call the provider after a
+rate-limit response.

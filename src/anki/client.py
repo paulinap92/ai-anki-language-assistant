@@ -253,6 +253,78 @@ class AnkiClient:
             expected_value=sentence,
         )
 
+    def existing_vocabulary_note_map(self) -> dict[str, int]:
+        """Return existing vocabulary note IDs indexed by normalized word value.
+
+        Bulk workflows use this method to avoid scanning the whole deck for every
+        individual card.
+        """
+        self.ensure_vocabulary_model_exists()
+        deck = self._escape_search_value(self._deck_name)
+        model = self._escape_search_value(MODEL_NAME)
+        note_ids = self._invoke(
+            action="findNotes",
+            params={"query": f'deck:"{deck}" note:"{model}"'},
+        ) or []
+        if not note_ids:
+            return {}
+
+        notes = self._invoke(action="notesInfo", params={"notes": note_ids}) or []
+        result: dict[str, int] = {}
+        for note in notes:
+            fields = note.get("fields") or {}
+            word_field = fields.get("Word") or {}
+            word_value = word_field.get("value", "")
+            normalized = self._normalise_field_value(word_value)
+            if normalized:
+                result[normalized] = int(note["noteId"])
+        return result
+
+    def add_card_without_duplicate_scan(
+        self, card: VocabularyCard, provider_name: str
+    ) -> None:
+        """Add one vocabulary card without an extra exact-match deck scan."""
+        self.ensure_vocabulary_model_exists()
+        language_tag = get_language_tag(card.target_language)
+        note = {
+            "deckName": self._deck_name,
+            "modelName": MODEL_NAME,
+            "fields": VocabularyFieldBuilder.build_fields(card),
+            "options": {"allowDuplicate": False},
+            "tags": [
+                "ai_vocabulary",
+                "ai_vocabulary_light_card",
+                language_tag,
+                f"provider_{provider_name.lower()}",
+            ],
+        }
+        result = self._invoke(action="addNote", params={"note": note})
+        if result is None:
+            raise ValueError(f"Could not add card: {card.word_or_phrase}")
+
+    def update_card_by_note_id(
+        self, note_id: int, card: VocabularyCard, provider_name: str
+    ) -> int:
+        """Replace fields of an existing vocabulary note by known note ID."""
+        self.ensure_vocabulary_model_exists()
+        fields = VocabularyFieldBuilder.build_fields(card)
+        if not fields.get("Audio"):
+            existing = self._invoke(action="notesInfo", params={"notes": [note_id]}) or []
+            if existing:
+                fields["Audio"] = (existing[0].get("fields", {}).get("Audio", {}) or {}).get("value", "")
+        self._invoke(
+            action="updateNoteFields",
+            params={"note": {"id": note_id, "fields": fields}},
+        )
+        self._invoke(
+            action="addTags",
+            params={
+                "notes": [note_id],
+                "tags": f"provider_{provider_name.lower()}",
+            },
+        )
+        return note_id
+
     def update_card(self, card: VocabularyCard, provider_name: str) -> int:
         """Replace fields of an existing vocabulary note and return its ID."""
         self.ensure_vocabulary_model_exists()

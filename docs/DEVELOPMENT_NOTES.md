@@ -127,3 +127,36 @@ Keep these examples in the evaluation set:
 - Anki media upload;
 - existing-note Audio updates;
 - missing credentials, empty text, and provider errors.
+
+
+## Simple Auto Batch regression checks
+
+- Start the modern GUI.
+- Load a small list of 5 vocabulary items.
+- Run `Auto-generate pending`.
+- Confirm that an autosave file appears in `batch_autosaves/`.
+- Run `Add all ready`.
+- Confirm that cards are added one by one and the status changes after each card.
+- Confirm that one duplicate does not stop the whole batch.
+- Confirm that one failed card is marked as `error`.
+- Confirm that `logs/ai_anki_app.log` records the operation.
+
+
+## Audio debugging regression checks
+
+- Change card language and confirm that TTS voice presets refresh.
+- Generate audio for a new card and confirm a cache file is created.
+- Add the card to Anki and confirm the Audio field contains `[sound:...]`.
+- Force an AnkiConnect/media error and confirm the message is visible in the GUI.
+- Confirm `logs/ai_anki_app.log` records the selected provider, model, voice, cache path, and error details.
+- Generate audio for existing cards and confirm errors are logged per note instead of being swallowed silently.
+
+
+## Auto Batch rate-limit regression checks
+
+- Simulate or trigger a provider 429 response.
+- Confirm the current item is marked `rate_limited`.
+- Confirm Auto Batch stops instead of retrying the same item repeatedly.
+- Confirm the autosave file is updated.
+- Confirm the log contains the rate-limit stop reason.
+- Confirm `Auto-generate pending` later continues only truly pending items.

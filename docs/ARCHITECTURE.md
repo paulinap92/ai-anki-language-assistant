@@ -193,3 +193,24 @@ Example sentence → SpeechService → TTS provider → cache → Anki media →
 ```
 
 LangChain and LangGraph are not required for the current deterministic workflows. LangGraph remains a possible later fit for stateful Auto Batch orchestration with checkpoints and human review.
+
+
+## Simple Auto Batch architecture
+
+The Auto Batch implementation intentionally avoids worker threads. Long operations
+are split into small steps scheduled through the Tk event loop:
+
+```text
+Auto-generate pending
+→ generate one item
+→ autosave
+→ schedule next item with after()
+
+Add all ready
+→ add one ready card
+→ autosave
+→ update progress
+→ schedule next card with after()
+```
+
+This keeps GUI updates on the main Tk thread and reduces thread-safety risk.

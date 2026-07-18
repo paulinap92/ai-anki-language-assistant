@@ -46,3 +46,19 @@ The cache key includes text, language, provider, model, and voice. Unchanged syn
 ## Anki model
 
 `AI Vocabulary Light Card` includes an `Audio` field. Existing note types receive the field automatically through AnkiConnect before templates are updated.
+
+
+## Diagnostics
+
+TTS and Anki audio operations are logged to `logs/ai_anki_app.log`.
+
+The log includes:
+
+- provider, model, and selected voice;
+- generated cache path;
+- cache/provider source;
+- Anki media upload;
+- Audio field update;
+- exception details for failed audio operations.
+
+The GUI displays detailed error messages instead of a generic failure state.
