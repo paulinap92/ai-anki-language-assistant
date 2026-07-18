@@ -11,6 +11,7 @@ def build_vocabulary_prompt(
     word_or_phrase: str,
     target_language: str,
     explanation_language: str = "Polish",
+    topic_context: str = "",
 ) -> str:
     """Build a validated, word-first vocabulary flashcard prompt."""
     no_translation = explanation_language == "No translation"
@@ -21,6 +22,19 @@ def build_vocabulary_prompt(
             "Do not translate the word or example. Return empty strings for "
             '"translation_pl", "example_pl", and "grammar_note".'
         )
+    )
+
+    topic_context = topic_context.strip()
+    topic_rules = (
+        f"""
+Topic / section rules:
+- Generate this flashcard in the context of: "{topic_context}".
+- Treat this topic as a hard constraint for the example sentence and usage.
+- The example must clearly fit the selected topic/section.
+- Avoid unrelated business, travel, technology, medical, food, or random contexts unless the selected topic explicitly requires them.
+"""
+        if topic_context
+        else ""
     )
 
     return f"""
@@ -69,7 +83,7 @@ Definition and explanation rules:
 - Any translation must match the exact meaning used in the example.
 
 Example rules:
-- Select context from the meaning and common usage of the expression.
+{topic_rules}- Select context from the meaning and common usage of the expression.
 - Context is optional and subordinate to natural usage.
 - Do not use random categories or force the word into work, travel, food, technology, or any other domain.
 - Prefer common, realistic usage over creative or unusual examples.

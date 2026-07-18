@@ -24,7 +24,11 @@ class VocabularyAiClient(ABC):
 
     @abstractmethod
     def generate_card(
-        self, word_or_phrase: str, target_language: str, explanation_language: str = "Polish"
+        self,
+        word_or_phrase: str,
+        target_language: str,
+        explanation_language: str = "Polish",
+        topic_context: str = "",
     ) -> VocabularyCard:
         """Generate one validated vocabulary flashcard."""
 

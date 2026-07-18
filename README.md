@@ -5,7 +5,7 @@ Desktop application for generating vocabulary and grammar cards, practising conv
 ## Current interfaces
 
 - `python main_gui.py` — classic stable Tkinter GUI.
-- `python main_gui_custom.py` — modern CustomTkinter GUI with Vocabulary, Grammar, Conversation Practice, Batch / Queue, Practice, and Print Test.
+- `python main_gui_custom.py` — modern CustomTkinter GUI with Vocabulary, Grammar, Conversation Practice, Batch / Queue, Speech / Audio, Fix Cards, Practice, and Print Test.
 
 ## Purpose
 
@@ -41,7 +41,7 @@ It uses configured external LLM providers such as Gemini, OpenAI, or Claude.
 
 ## Main workflows
 
-The application has six main workflows.
+The application has eight main workflows.
 
 ---
 
@@ -266,9 +266,55 @@ remaining
 
 This makes it faster to process long vocabulary lists while still reviewing every card before saving it to Anki.
 
+The Batch workflow also supports an optional **Batch topic / dział** field. When it is set, the topic is sent to the LLM as a hard context constraint and saved in Batch autosave. New Anki cards created from that Batch receive a topic tag such as `topic_character_personality_traits`.
+
 ---
 
-## Workflow 5: Practise vocabulary and grammar
+## Workflow 5: Backfill missing audio
+
+The modern GUI centralises missing-audio work in **Speech / Audio**. This tab scans the selected Anki deck broadly instead of only checking the app's custom note type, so older cards, Basic notes, and already-reviewed cards can be detected when they expose recognisable fields.
+
+Supported audio status values include:
+
+```text
+has_audio
+missing_audio
+missing_audio_field
+malformed_audio
+```
+
+`Find missing audio` lists missing or malformed audio from all supported note types in the selected deck. An optional Anki query can narrow the scan, for example:
+
+```text
+tag:topic_character
+note:Basic
+is:due
+```
+
+Cards that already contain `[sound:...]` are skipped. Notes without a supported audio field are visible as `missing_audio_field`, but they are not selected for generation by default because the app should not silently change old note types. Audio batch progress is autosaved, and Pause / Stop can be used without losing completed items.
+
+---
+
+## Workflow 6: Fix / improve existing Anki cards
+
+The modern GUI includes a **Fix Cards** tab for quality maintenance on cards that are already in Anki. This is separate from audio backfill: it is for flagged/leech/tagged cards, manual corrections, topic tags, and future targeted regeneration.
+
+The tab can:
+
+- find existing cards in the selected deck with an extra Anki query;
+- filter by tag, for example `needs_fix` or `topic_character`;
+- load flagged cards, for example red/orange/green/blue flags;
+- load leech cards through `tag:leech`;
+- find existing cards from a pasted word list;
+- apply dry topic tags to selected notes, for example `topic_character_personality_traits`;
+- open one selected note for manual correction;
+- save corrections back to the same Anki note, preserving review history.
+
+Topic tagging is intentionally implemented with Anki tags first. This avoids changing old note types and does not reset learning progress.
+
+---
+
+## Workflow 7: Practise vocabulary and grammar
 
 The modern GUI includes a **Practice** mode that loads supported cards from Anki.
 
@@ -294,7 +340,7 @@ The user controls the material. The application randomises only the question ord
 
 ---
 
-## Workflow 6: Create a printable test
+## Workflow 8: Create a printable test
 
 The **Print Test** mode uses selected Anki cards to generate two separate HTML files:
 
@@ -541,6 +587,13 @@ The app currently supports:
 - Import vocabulary lists from TXT, CSV, or pasted multiline text.
 - Review cards in a one-at-a-time Batch / Queue workflow.
 - Add, skip, regenerate, edit, and navigate between queued items.
+- Use an optional Batch topic / dział to keep generated examples inside a selected context.
+- Save topic tags such as `topic_character_personality_traits` to new cards.
+- Find existing Anki cards independent of Batch autosave.
+- Apply dry topic tags to existing cards without resetting Anki review history.
+- Find existing cards with missing or malformed audio.
+- Backfill missing audio only, without regenerating audio that already exists.
+- Manually fix selected existing cards and save changes to the same Anki note with a local backup.
 - Practise selected vocabulary and grammar cards from Anki.
 - Generate sentence-gap and definition-based exercises.
 - Create a printable test and a separate answer key.

@@ -23,10 +23,27 @@ class VoicePreset:
 
 
 ELEVENLABS_VOICE_PRESETS: list[VoicePreset] = [
+    VoicePreset(
+        "ElevenLabs default verified",
+        "ElevenLabs",
+        "JBFqnCBsd6RMkjVDRZzb",
+        None,
+        None,
+        None,
+        "Known working default voice. Treat ElevenLabs presets as account-dependent until verified via API.",
+    ),
     VoicePreset("British male 1", "ElevenLabs", "lUTamkMw7gOzZbFIwmq4", "English", "British", "male"),
     VoicePreset("British male 2", "ElevenLabs", "NNl6r8mD7vthiJatiJt1", "English", "British", "male"),
     VoicePreset("British female", "ElevenLabs", "4CrZuIW9am7gYAxgo2Af", "English", "British", "female"),
-    VoicePreset("American male 1", "ElevenLabs", "bfGb7JTLUnZebZRiFYyq", "English", "American", "male"),
+    VoicePreset(
+        "American male 1 (unverified)",
+        "ElevenLabs",
+        "bfGb7JTLUnZebZRiFYyq",
+        "English",
+        "American",
+        "male",
+        "Previously returned provider errors on at least one account.",
+    ),
     VoicePreset("American female", "ElevenLabs", "lxYfHSkYm1EzQzGhdbfc", "English", "American", "female"),
     VoicePreset("American male 2", "ElevenLabs", "6xPz2opT0y5qtoRh1U1Y", "English", "American", "male"),
     VoicePreset("Spanish male", "ElevenLabs", "ZCh4e9eZSUf41K4cmCEL", "Spanish", "Spain", "male"),

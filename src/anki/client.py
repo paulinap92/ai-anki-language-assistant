@@ -173,7 +173,7 @@ class AnkiClient:
         ) or []
         return len(old_cards)
 
-    def add_card(self, card: VocabularyCard, provider_name: str) -> None:
+    def add_card(self, card: VocabularyCard, provider_name: str, extra_tags: list[str] | None = None) -> None:
         """Add one vocabulary card to the active Anki deck.
 
         Args:
@@ -195,6 +195,7 @@ class AnkiClient:
                 "ai_vocabulary_light_card",
                 language_tag,
                 f"provider_{provider_name.lower()}",
+                *(extra_tags or []),
             ],
         }
 
@@ -281,7 +282,7 @@ class AnkiClient:
         return result
 
     def add_card_without_duplicate_scan(
-        self, card: VocabularyCard, provider_name: str
+        self, card: VocabularyCard, provider_name: str, extra_tags: list[str] | None = None
     ) -> None:
         """Add one vocabulary card without an extra exact-match deck scan."""
         self.ensure_vocabulary_model_exists()
@@ -296,6 +297,7 @@ class AnkiClient:
                 "ai_vocabulary_light_card",
                 language_tag,
                 f"provider_{provider_name.lower()}",
+                *(extra_tags or []),
             ],
         }
         result = self._invoke(action="addNote", params={"note": note})
@@ -303,7 +305,7 @@ class AnkiClient:
             raise ValueError(f"Could not add card: {card.word_or_phrase}")
 
     def update_card_by_note_id(
-        self, note_id: int, card: VocabularyCard, provider_name: str
+        self, note_id: int, card: VocabularyCard, provider_name: str, extra_tags: list[str] | None = None
     ) -> int:
         """Replace fields of an existing vocabulary note by known note ID."""
         self.ensure_vocabulary_model_exists()
@@ -320,12 +322,12 @@ class AnkiClient:
             action="addTags",
             params={
                 "notes": [note_id],
-                "tags": f"provider_{provider_name.lower()}",
+                "tags": " ".join([f"provider_{provider_name.lower()}", *(extra_tags or [])]),
             },
         )
         return note_id
 
-    def update_card(self, card: VocabularyCard, provider_name: str) -> int:
+    def update_card(self, card: VocabularyCard, provider_name: str, extra_tags: list[str] | None = None) -> int:
         """Replace fields of an existing vocabulary note and return its ID."""
         self.ensure_vocabulary_model_exists()
         note_id = self.find_existing_vocabulary_note_id(card.word_or_phrase)
@@ -344,7 +346,7 @@ class AnkiClient:
             action="addTags",
             params={
                 "notes": [note_id],
-                "tags": f"provider_{provider_name.lower()}",
+                "tags": " ".join([f"provider_{provider_name.lower()}", *(extra_tags or [])]),
             },
         )
         return note_id
@@ -384,44 +386,137 @@ class AnkiClient:
             raise ValueError(f"Could not store Anki media file: {file_path.name}")
         return str(result)
 
-    def list_vocabulary_notes_for_audio(self, missing_only: bool = True) -> list[dict[str, Any]]:
-        """Return vocabulary notes from the active deck for audio enrichment."""
-        self.ensure_vocabulary_model_exists()
+    AUDIO_FIELD_CANDIDATES = ("Audio", "WordAudio", "ExampleAudio", "SentenceAudio")
+    WORD_FIELD_CANDIDATES = ("Word", "Front", "Expression", "Phrase", "Term")
+    EXAMPLE_FIELD_CANDIDATES = ("Example", "Sentence", "ExampleSentence", "Back")
+
+    def list_vocabulary_notes_for_audio(
+        self, missing_only: bool = True, search_query: str = ""
+    ) -> list[dict[str, Any]]:
+        """Return existing deck notes for audio enrichment.
+
+        Historically this method scanned only the app's custom vocabulary note
+        type. That missed older/legacy cards, so audio backfill now delegates to
+        the same broad note scanner used by maintenance workflows.
+        """
+        return self.list_existing_notes(
+            search_query=search_query,
+            missing_audio_only=missing_only,
+        )
+
+    def list_existing_notes(
+        self,
+        search_query: str = "",
+        missing_audio_only: bool = False,
+        words: list[str] | None = None,
+    ) -> list[dict[str, Any]]:
+        """Return note summaries from the active deck for existing-card workflows.
+
+        The method intentionally does not depend only on this app's custom note
+        type. Older user-created notes can still be scanned, tagged, and checked
+        for missing audio when they expose recognisable word/example/audio fields.
+        """
         deck = self._escape_search_value(self._deck_name)
-        model = self._escape_search_value(MODEL_NAME)
-        note_ids = self._invoke(
-            action="findNotes",
-            params={"query": f'deck:"{deck}" note:"{model}"'},
-        ) or []
+        query_parts = [f'deck:"{deck}"']
+        if search_query.strip():
+            query_parts.append(search_query.strip())
+        query = " ".join(query_parts)
+        note_ids = self._invoke(action="findNotes", params={"query": query}) or []
         if not note_ids:
             return []
         notes = self._invoke(action="notesInfo", params={"notes": note_ids}) or []
+        word_filter = {self._normalise_field_value(word) for word in words or [] if word.strip()}
         result: list[dict[str, Any]] = []
-        for note in notes:
-            fields = note.get("fields") or {}
-            audio = (fields.get("Audio") or {}).get("value", "")
-            if missing_only and self._normalise_field_value(audio):
+        for raw_note in notes:
+            summary = self._summarise_note(raw_note)
+            if not summary["word"]:
                 continue
-            result.append({
-                "note_id": int(note["noteId"]),
-                "word": (fields.get("Word") or {}).get("value", ""),
-                "example": (fields.get("Example") or {}).get("value", ""),
-                "language": (fields.get("Language") or {}).get("value", ""),
-                "audio": audio,
-            })
+            if word_filter and self._normalise_field_value(str(summary["word"])) not in word_filter:
+                continue
+            if missing_audio_only and summary["audio_status"] == "has_audio":
+                continue
+            result.append(summary)
         return result
 
-    def attach_audio_to_note(self, note_id: int, media_filename: str) -> None:
-        """Set an Anki sound reference on an existing vocabulary note."""
+    def add_tags_to_notes(self, note_ids: list[int], tags: str | list[str]) -> None:
+        """Add one or more tags to existing notes."""
+        if not note_ids:
+            return
+        tag_text = " ".join(tags) if isinstance(tags, list) else tags
+        self._invoke(action="addTags", params={"notes": note_ids, "tags": tag_text})
+
+    def update_note_fields(self, note_id: int, fields: dict[str, str]) -> None:
+        """Update selected fields of an existing note without creating a duplicate."""
+        self._invoke(
+            action="updateNoteFields",
+            params={"note": {"id": note_id, "fields": fields}},
+        )
+
+    def attach_audio_to_note(
+        self, note_id: int, media_filename: str, field_name: str = "Audio"
+    ) -> None:
+        """Set an Anki sound reference on an existing note audio field."""
         self._invoke(
             action="updateNoteFields",
             params={
                 "note": {
                     "id": note_id,
-                    "fields": {"Audio": f"[sound:{media_filename}]"},
+                    "fields": {field_name or "Audio": f"[sound:{media_filename}]"},
                 }
             },
         )
+
+    def _summarise_note(self, note: dict[str, Any]) -> dict[str, Any]:
+        """Normalize an AnkiConnect notesInfo object for UI workflows."""
+        fields = note.get("fields") or {}
+        field_values = {
+            name: (payload or {}).get("value", "")
+            for name, payload in fields.items()
+        }
+        word_field = self._first_existing_field(field_values, self.WORD_FIELD_CANDIDATES)
+        example_field = self._first_existing_field(field_values, self.EXAMPLE_FIELD_CANDIDATES)
+        audio_field = self._first_existing_field(field_values, self.AUDIO_FIELD_CANDIDATES)
+        audio_value = field_values.get(audio_field, "") if audio_field else ""
+        audio_status = self._audio_status(audio_field, audio_value)
+        return {
+            "note_id": int(note["noteId"]),
+            "model": note.get("modelName", ""),
+            "tags": list(note.get("tags") or []),
+            "fields": field_values,
+            "word_field": word_field,
+            "example_field": example_field,
+            "audio_field": audio_field,
+            "word": self._plain_field_value(field_values.get(word_field, "")) if word_field else "",
+            "example": self._plain_field_value(field_values.get(example_field, "")) if example_field else "",
+            "language": self._plain_field_value(field_values.get("Language", "")),
+            "audio": audio_value,
+            "audio_status": audio_status,
+        }
+
+    @classmethod
+    def _first_existing_field(
+        cls, field_values: dict[str, str], candidates: tuple[str, ...]
+    ) -> str:
+        for name in candidates:
+            if name in field_values:
+                return name
+        return ""
+
+    @staticmethod
+    def _audio_status(audio_field: str, audio_value: str) -> str:
+        if not audio_field:
+            return "missing_audio_field"
+        normalized = AnkiClient._normalise_field_value(audio_value)
+        if not normalized:
+            return "missing_audio"
+        if "[sound:" in (audio_value or "").casefold():
+            return "has_audio"
+        return "malformed_audio"
+
+    @staticmethod
+    def _plain_field_value(value: str) -> str:
+        plain = re.sub(r"<[^>]+>", " ", unescape(value or ""))
+        return " ".join(plain.split())
 
     def _ensure_model_fields(self, model_name: str, fields: list[str]) -> None:
         """Add fields introduced after the note type was first created."""

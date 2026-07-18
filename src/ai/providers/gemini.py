@@ -34,11 +34,15 @@ class GeminiVocabularyClient(VocabularyAiClient):
         return response.text or ""
 
     def generate_card(
-        self, word_or_phrase: str, target_language: str, explanation_language: str = "Polish"
+        self,
+        word_or_phrase: str,
+        target_language: str,
+        explanation_language: str = "Polish",
+        topic_context: str = "",
     ) -> VocabularyCard:
         """Generate a vocabulary flashcard with Gemini."""
         raw_text = self._generate_text(
-            build_vocabulary_prompt(word_or_phrase, target_language, explanation_language)
+            build_vocabulary_prompt(word_or_phrase, target_language, explanation_language, topic_context)
         )
         card = self._parse_card_response(raw_text, self.provider_name)
         if card.is_valid and card.word_or_phrase.strip().casefold() != word_or_phrase.strip().casefold():
