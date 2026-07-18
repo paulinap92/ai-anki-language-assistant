@@ -25,7 +25,7 @@ This release continues the v8 stabilization line. It does not rebuild the projec
   - `WordAudio`
   - `ExampleAudio`
   - `SentenceAudio`
-- Batch **Topic / dział** field for new vocabulary lists.
+- Batch **Topic / context** field for new vocabulary lists.
 - Topic-aware vocabulary prompt context for Gemini/OpenAI/Claude.
 - Topic tags added to new Batch-created Anki cards.
 - Lightweight topic warnings for character/personality batches.

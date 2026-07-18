@@ -133,6 +133,7 @@ class ModernVocabularyGui:
         self._batch_add_all_duplicate_strategy: str | None = None
         self._batch_add_all_existing_notes: dict[str, dict[str, object]] = {}
         self._batch_add_all_counts = {"added": 0, "updated": 0, "duplicates": 0, "uncertain": 0, "failed": 0}
+        self._batch_add_all_failed_details: list[str] = []
         self._activity_var = ctk.StringVar(value="")
 
         # Existing cards workflow state. This is deliberately separate from
@@ -563,7 +564,7 @@ class ModernVocabularyGui:
             row=4, column=0, sticky="ew", padx=18, pady=(0, 10)
         )
 
-        ctk.CTkLabel(left, text="Batch topic / dział (optional)").grid(
+        ctk.CTkLabel(left, text="Batch topic / context (optional)").grid(
             row=5, column=0, sticky="w", padx=18, pady=(4, 4)
         )
         self._batch_topic_box = ctk.CTkComboBox(
@@ -1002,6 +1003,7 @@ class ModernVocabularyGui:
                 "error",
                 "rate_limited",
                 "provider_failed",
+                "add_failed",
                 "duplicate",
                 "duplicate_found",
                 "duplicate_uncertain",
@@ -1018,7 +1020,7 @@ class ModernVocabularyGui:
         self._batch_progress_var.set(
             f"{current}/{total} · Added {added_total} · Updated {counts.get('updated_in_anki', 0)} · "
             f"Duplicates {duplicate_total} · Skipped {counts.get('skipped', 0)} · Invalid {counts.get('invalid', 0)} · "
-            f"Failed {counts.get('error', 0) + counts.get('provider_failed', 0)} · "
+            f"Failed {counts.get('error', 0) + counts.get('provider_failed', 0) + counts.get('add_failed', 0)} · "
             f"Rate limited {counts.get('rate_limited', 0)} · Remaining {remaining}"
         )
 
@@ -1602,6 +1604,18 @@ class ModernVocabularyGui:
             return
 
         resume = self._batch_auto_generate_paused
+        if not resume:
+            precheck_result = self._mark_pending_duplicates_before_auto_generation()
+            if precheck_result < 0:
+                self._autosave_batch_session("auto-generation cancelled: duplicate precheck failed")
+                return
+            if not any(str(item.get("status", "pending")) == "pending" and not item.get("card") for item in self._batch_items):
+                message = "Auto-generation skipped: all pending items already exist in Anki or are not ready for generation."
+                self._batch_status_var.set(message)
+                self._status_var.set(message)
+                self._autosave_batch_session("auto-generation skipped duplicates")
+                return
+
         self._batch_auto_generate_running = True
         self._batch_auto_generate_paused = False
         self._batch_auto_generate_stop_requested = False
@@ -1715,12 +1729,7 @@ class ModernVocabularyGui:
             self._batch_add_all_paused = False
             self._batch_add_all_running = False
             self._autosave_batch_session("add all ready stopped")
-            counts = self._batch_add_all_counts
-            message = (
-                f"Add all ready stopped: {counts['added']} added, {counts['updated']} updated, "
-                f"{counts['duplicates']} duplicates skipped, {counts.get('uncertain', 0)} uncertain, {counts['failed']} failed. "
-                f"Progress saved: {self._batch_autosave_path}"
-            )
+            message = self._format_add_all_summary("Add all ready stopped")
         else:
             message = "No Batch process is currently running."
         self._batch_status_var.set(message)
@@ -1733,7 +1742,7 @@ class ModernVocabularyGui:
             messagebox.showerror("No list", "Load a vocabulary list first.")
             return
 
-        retryable_statuses = {"error", "rate_limited", "provider_failed"}
+        retryable_statuses = {"error", "add_failed", "rate_limited", "provider_failed"}
         retryable_indexes = [
             index
             for index, item in enumerate(self._batch_items)
@@ -1836,6 +1845,95 @@ class ModernVocabularyGui:
             summary += "\nExamples:\n" + "\n".join(examples)
         return summary, counts
 
+    @staticmethod
+    def _friendly_anki_error_message(exc: Exception, word: str = "") -> str:
+        """Return a user-facing Anki failure reason without raw provider/API noise."""
+        raw = str(exc) or exc.__class__.__name__
+        lowered = raw.casefold()
+        prefix = f"{word}: " if word else ""
+        if "duplicate" in lowered:
+            return prefix + "Anki reported this as a duplicate. It was not added; review/update the existing note."
+        if "model" in lowered and ("not found" in lowered or "unknown" in lowered):
+            return prefix + "Anki note type/model problem. Refresh/create the latest Vocabulary Card model and retry."
+        if "field" in lowered:
+            return prefix + "Anki field mismatch. The target note type probably misses a required field."
+        if "connection" in lowered or "refused" in lowered or "8765" in lowered:
+            return prefix + "Could not reach AnkiConnect. Open Anki and make sure AnkiConnect is running."
+        return prefix + f"Anki update failed: {raw}"
+
+    def _format_add_all_summary(self, label: str) -> str:
+        counts = self._batch_add_all_counts
+        message = (
+            f"{label}: {counts['added']} added, {counts['updated']} updated, "
+            f"{counts['duplicates']} duplicates skipped, {counts.get('uncertain', 0)} uncertain, "
+            f"{counts['failed']} failed."
+        )
+        if self._batch_add_all_failed_details:
+            details = "; ".join(self._batch_add_all_failed_details[:4])
+            if len(self._batch_add_all_failed_details) > 4:
+                details += f"; +{len(self._batch_add_all_failed_details) - 4} more"
+            message += f" Failed details: {details}."
+        if self._batch_autosave_path:
+            message += f" Autosave: {self._batch_autosave_path}"
+        return message
+
+    def _mark_pending_duplicates_before_auto_generation(self) -> int:
+        """Mark pending Batch items that already exist in Anki before any API call.
+
+        Returns:
+            Number of duplicate pending items marked. Returns -1 if duplicate
+            scan failed, because continuing would waste provider API calls.
+        """
+        pending_indexes = [
+            index for index, item in enumerate(self._batch_items)
+            if str(item.get("status", "pending")) == "pending" and not item.get("card")
+        ]
+        if not pending_indexes:
+            return 0
+        try:
+            self._set_selected_deck()
+            existing_map = self._anki_client.existing_note_map_broad()
+        except Exception as exc:
+            LOGGER.exception("Duplicate precheck before Auto Batch failed")
+            message = (
+                "Auto Batch cancelled before API calls: duplicate precheck failed. "
+                "Open Anki/AnkiConnect or use Generate selected manually. "
+                + self._friendly_anki_error_message(exc)
+            )
+            self._batch_status_var.set(message)
+            self._status_var.set(message)
+            return -1
+
+        marked = 0
+        for index in pending_indexes:
+            item = self._batch_items[index]
+            word = str(item.get("word", "")).strip()
+            if not word:
+                continue
+            existing = existing_map.get(self._normalise_anki_value(word))
+            if not existing:
+                continue
+            model = str(existing.get("model") or "unknown model")
+            duplicate_count = int(existing.get("duplicate_count", 1) or 1)
+            safe = model == MODEL_NAME and duplicate_count == 1
+            item["status"] = "duplicate_found" if safe else "duplicate_uncertain"
+            item["duplicate_note_id"] = existing.get("note_id")
+            item["duplicate_model"] = model
+            item["error"] = (
+                f"Skipped before generation: '{word}' already exists in Anki "
+                f"({model}, matches: {duplicate_count}). No AI provider API was used."
+            )
+            marked += 1
+        if marked:
+            self._autosave_batch_session("auto-generation duplicate precheck")
+            self._update_batch_progress()
+            self._show_current_batch_item(generate=False)
+            message = f"Duplicate precheck: {marked} pending item(s) already exist in Anki and were skipped before API calls."
+            self._batch_status_var.set(message)
+            self._status_var.set(message)
+            self._record_activity(message)
+        return marked
+
     def _start_add_all_ready_batch_cards(self) -> None:
         """Start safe step-by-step adding of all ready Batch cards."""
         if self._batch_add_all_running:
@@ -1917,6 +2015,7 @@ class ModernVocabularyGui:
         self._batch_add_all_position = 0
         self._batch_add_all_duplicate_strategy = strategy
         self._batch_add_all_counts = {"added": 0, "updated": 0, "duplicates": 0, "uncertain": 0, "failed": 0}
+        self._batch_add_all_failed_details = []
         self._batch_add_all_running = True
         self._batch_add_all_paused = False
         self._batch_add_all_stop_requested = False
@@ -1931,12 +2030,7 @@ class ModernVocabularyGui:
             self._batch_add_all_running = False
             self._batch_add_all_stop_requested = False
             self._autosave_batch_session("add all ready stopped")
-            counts = self._batch_add_all_counts
-            message = (
-                f"Add all ready stopped: {counts['added']} added, {counts['updated']} updated, "
-                f"{counts['duplicates']} duplicates skipped, {counts.get('uncertain', 0)} uncertain, {counts['failed']} failed. "
-                f"Progress saved: {self._batch_autosave_path}"
-            )
+            message = self._format_add_all_summary("Add all ready stopped")
             self._batch_status_var.set(message)
             self._status_var.set(message)
             self._record_activity(message)
@@ -1951,12 +2045,7 @@ class ModernVocabularyGui:
             self._update_batch_progress()
             self._show_current_batch_item(generate=False)
             self._autosave_batch_session("add all ready finished")
-            counts = self._batch_add_all_counts
-            message = (
-                f"Add all ready finished: {counts['added']} added, "
-                f"{counts['updated']} updated, {counts['duplicates']} duplicates skipped, {counts.get('uncertain', 0)} uncertain, "
-                f"{counts['failed']} failed. Autosave: {self._batch_autosave_path}"
-            )
+            message = self._format_add_all_summary("Add all ready finished")
             self._batch_status_var.set(message)
             self._status_var.set(message)
             self._record_activity(message)
@@ -2026,9 +2115,18 @@ class ModernVocabularyGui:
 
         except Exception as exc:
             LOGGER.exception("Add all ready failed for %s", card.word_or_phrase)
-            item["status"] = "error"
-            item["error"] = str(exc)
-            self._batch_add_all_counts["failed"] += 1
+            friendly_error = self._friendly_anki_error_message(exc, card.word_or_phrase)
+            if "duplicate" in str(exc).casefold():
+                item["status"] = "duplicate_uncertain"
+                item["error"] = friendly_error
+                self._batch_add_all_counts["uncertain"] += 1
+            else:
+                item["status"] = "add_failed"
+                item["error"] = friendly_error
+                self._batch_add_all_counts["failed"] += 1
+                self._batch_add_all_failed_details.append(friendly_error)
+            self._batch_status_var.set(friendly_error)
+            self._status_var.set(friendly_error)
 
         self._autosave_batch_session(f"add all {self._batch_add_all_position}/{total}")
         self._root.after(120, self._add_next_ready_batch_card)
@@ -2282,7 +2380,7 @@ class ModernVocabularyGui:
             command=self._find_existing_words_from_list,
         ).grid(row=12, column=0, sticky="new", padx=18, pady=(0, 10))
 
-        ctk.CTkLabel(left, text="Topic / dział tag").grid(
+        ctk.CTkLabel(left, text="Topic tag").grid(
             row=13, column=0, sticky="w", padx=18, pady=(8, 4)
         )
         self._existing_topic_box = ctk.CTkComboBox(
@@ -2501,7 +2599,7 @@ class ModernVocabularyGui:
             return
         topic = self._existing_topic_var.get().strip()
         if not topic:
-            messagebox.showwarning("Missing topic", "Choose or type a topic/dział first.")
+            messagebox.showwarning("Missing topic", "Choose or type a topic first.")
             return
         tag = self._topic_tag_from_value(topic)
         note_ids = [int(note["note_id"]) for note in selected]
@@ -2568,14 +2666,19 @@ class ModernVocabularyGui:
     def _fix_selected_existing_card(self) -> None:
         selected = self._selected_existing_cards()
         if len(selected) != 1:
-            messagebox.showwarning("Select one card", "Select exactly one existing card to fix.")
+            message = f"Fix Cards needs exactly one selected card. Selected: {len(selected)}."
+            self._existing_progress_var.set(message)
+            messagebox.showwarning("Select one card", message)
             return
         note = selected[0]
         try:
             card = self._card_from_existing_note(note)
         except Exception as exc:
+            self._existing_progress_var.set("Could not parse selected card for editing.")
             messagebox.showerror("Card parse error", str(exc))
             return
+        self._preview_existing_card(self._existing_cards.index(note))
+        self._existing_progress_var.set(f"Opening editor for: {card.word_or_phrase}")
         self._open_existing_card_editor(note, card)
 
     def _open_existing_card_editor(self, note: dict[str, object], card: VocabularyCard) -> None:
@@ -2583,6 +2686,9 @@ class ModernVocabularyGui:
         editor.title(f"Fix existing card: {card.word_or_phrase}")
         editor.geometry("760x760")
         editor.transient(self._root)
+        editor.lift()
+        editor.focus_force()
+        editor.grab_set()
         editor.grid_columnconfigure(1, weight=1)
 
         entries: dict[str, tk.Widget] = {}
@@ -3550,6 +3656,11 @@ class ModernVocabularyGui:
         completed = 0
         skipped_done = 0
         errors = 0
+
+        def publish_progress(message: str) -> None:
+            self._root.after(0, self._render_speech_notes, message)
+            self._root.after(0, self._record_activity, message)
+
         stopped = False
         stop_message = ""
         failed_index = None
@@ -3592,10 +3703,8 @@ class ModernVocabularyGui:
                 write_mode = str(note.get("_write_mode") or "Use dedicated audio field")
                 if current_status in {"audio_ready", "updated_in_anki", "has_audio"}:
                     skipped_done += 1
-                    self._root.after(
-                        0,
-                        self._speech_progress_var.set,
-                        f"Skipping already generated {index}/{len(notes)} · Updated {completed} · Skipped {skipped_done} · Failed {errors}",
+                    publish_progress(
+                        f"Skipping already generated {index}/{len(notes)} · Updated {completed} · Skipped {skipped_done} · Failed {errors}"
                     )
                     continue
                 if not audio_field or not source_text:
@@ -3604,10 +3713,8 @@ class ModernVocabularyGui:
                     self._speech_audio_error_by_note_id[note_id] = (
                         "Missing target audio field." if not audio_field else "Missing source text for TTS."
                     )
-                    self._root.after(
-                        0,
-                        self._speech_progress_var.set,
-                        f"Skipping not-ready note {index}/{len(notes)} · Updated {completed} · Skipped {skipped_done} · Failed {errors}",
+                    publish_progress(
+                        f"Skipping not-ready note {index}/{len(notes)} · Updated {completed} · Skipped {skipped_done} · Failed {errors}"
                     )
                     continue
 
@@ -3695,10 +3802,8 @@ class ModernVocabularyGui:
                         )
                         break
 
-                self._root.after(
-                    0,
-                    self._speech_progress_var.set,
-                    f"Generating {index}/{len(notes)} · Updated {completed} · Skipped {skipped_done} · Failed {errors}",
+                publish_progress(
+                    f"Generating {index}/{len(notes)} · Updated {completed} · Skipped {skipped_done} · Failed {errors}"
                 )
 
             self._autosave_audio_progress(

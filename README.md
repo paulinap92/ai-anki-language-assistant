@@ -266,7 +266,7 @@ remaining
 
 This makes it faster to process long vocabulary lists while still reviewing every card before saving it to Anki.
 
-The Batch workflow also supports an optional **Batch topic / dział** field. When it is set, the topic is sent to the LLM as a hard context constraint and saved in Batch autosave. New Anki cards created from that Batch receive a topic tag such as `topic_character_personality_traits`.
+The Batch workflow also supports an optional **Batch topic / context** field. When it is set, the topic is sent to the LLM as a hard context constraint and saved in Batch autosave. New Anki cards created from that Batch receive a topic tag such as `topic_character_personality_traits`.
 
 ---
 
@@ -587,7 +587,7 @@ The app currently supports:
 - Import vocabulary lists from TXT, CSV, or pasted multiline text.
 - Review cards in a one-at-a-time Batch / Queue workflow.
 - Add, skip, regenerate, edit, and navigate between queued items.
-- Use an optional Batch topic / dział to keep generated examples inside a selected context.
+- Use an optional Batch topic / context to keep generated examples inside a selected context.
 - Save topic tags such as `topic_character_personality_traits` to new cards.
 - Find existing Anki cards independent of Batch autosave.
 - Apply dry topic tags to existing cards without resetting Anki review history.
@@ -1160,3 +1160,11 @@ Legacy/Basic duplicates are not auto-updated. They are marked for review instead
 - edit one selected note and save it back to the same Anki note.
 
 Rows show an action status such as `found`, `topic_tagged`, or `saved_to_anki`.
+
+## v8.1.3 hotfix notes
+
+- Auto Batch performs a broad duplicate precheck before provider API calls. Existing pending words are marked as duplicates and skipped before Gemini/OpenAI/Claude are used.
+- Add All summaries now include failure reasons, not only a failed count.
+- Speech / Audio refreshes progress after each item.
+- Fix Cards editor is focused/modal when opened.
+- UI wording uses `topic/context`, not mixed-language labels.
