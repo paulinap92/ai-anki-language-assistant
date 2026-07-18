@@ -2407,13 +2407,18 @@ class ModernVocabularyGui:
             left,
             text="Fix selected card",
             command=self._fix_selected_existing_card,
-        ).grid(row=17, column=0, sticky="ew", padx=18, pady=(0, 18))
+        ).grid(row=17, column=0, sticky="ew", padx=18, pady=(0, 8))
+        ctk.CTkButton(
+            left,
+            text="Fix selected audio",
+            command=self._fix_audio_selected_existing_card,
+        ).grid(row=18, column=0, sticky="ew", padx=18, pady=(0, 18))
 
         right = ctk.CTkFrame(layout, corner_radius=18)
         right.grid(row=0, column=1, sticky="nsew")
         right.grid_columnconfigure(0, weight=1)
         right.grid_rowconfigure(1, weight=2)
-        right.grid_rowconfigure(3, weight=1)
+        right.grid_rowconfigure(4, weight=1)
 
         header = ctk.CTkFrame(right, fg_color="transparent")
         header.grid(row=0, column=0, sticky="ew", padx=18, pady=(18, 8))
@@ -2427,12 +2432,48 @@ class ModernVocabularyGui:
         self._existing_scroll.grid(row=1, column=0, sticky="nsew", padx=18, pady=(0, 10))
         self._existing_scroll.grid_columnconfigure(0, weight=1)
 
+        # Keep the real Fix Cards actions visible on the right side.
+        # In previous builds they were pushed below the left panel and the tab
+        # looked like a preview-only screen.
+        action_row = ctk.CTkFrame(right, fg_color="transparent")
+        action_row.grid(row=2, column=0, sticky="ew", padx=18, pady=(0, 10))
+        action_row.grid_columnconfigure((0, 1, 2, 3, 4), weight=1)
+        ctk.CTkButton(
+            action_row,
+            text="Edit selected card",
+            command=self._fix_selected_existing_card,
+        ).grid(row=0, column=0, sticky="ew", padx=(0, 5))
+        ctk.CTkButton(
+            action_row,
+            text="Fix audio",
+            command=self._fix_audio_selected_existing_card,
+        ).grid(row=0, column=1, sticky="ew", padx=5)
+        ctk.CTkButton(
+            action_row,
+            text="Apply topic tag",
+            command=self._apply_topic_to_existing_selected,
+        ).grid(row=0, column=2, sticky="ew", padx=5)
+        ctk.CTkButton(
+            action_row,
+            text="Select all",
+            command=lambda: self._set_existing_selection(True),
+        ).grid(row=0, column=3, sticky="ew", padx=5)
+        ctk.CTkButton(
+            action_row,
+            text="Clear",
+            command=lambda: self._set_existing_selection(False),
+        ).grid(row=0, column=4, sticky="ew", padx=(5, 0))
+
         ctk.CTkLabel(right, text="Preview selected card", anchor="w").grid(
-            row=2, column=0, sticky="w", padx=18, pady=(0, 4)
+            row=3, column=0, sticky="w", padx=18, pady=(0, 4)
         )
         self._existing_preview = ctk.CTkTextbox(right, wrap="word", height=180, font=ctk.CTkFont(size=14))
-        self._existing_preview.grid(row=3, column=0, sticky="nsew", padx=18, pady=(0, 18))
-        self._existing_preview.insert("1.0", "Load flagged/leech/tagged cards, then preview and fix one selected card.")
+        self._existing_preview.grid(row=4, column=0, sticky="nsew", padx=18, pady=(0, 18))
+        self._existing_preview.insert(
+            "1.0",
+            "Load flagged/leech/tagged cards. Select exactly one card, then use Edit selected card "
+            "or Fix audio. Use Apply topic tag for bulk tagging selected cards."
+        )
         self._existing_preview.configure(state="disabled")
 
     def _find_existing_cards(self) -> None:
@@ -2662,6 +2703,224 @@ class ModernVocabularyGui:
         }
         path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
         return path
+
+
+    def _fix_audio_selected_existing_card(self) -> None:
+        """Open a one-card audio repair dialog for an existing Anki note."""
+        selected = self._selected_existing_cards()
+        if len(selected) != 1:
+            message = f"Fix audio needs exactly one selected card. Selected: {len(selected)}."
+            self._existing_progress_var.set(message)
+            messagebox.showwarning("Select one card", message)
+            return
+        if not self._speech_service or not self._tts_provider_var.get():
+            messagebox.showerror("TTS unavailable", "Configure at least one TTS provider first.")
+            return
+        note = selected[0]
+        self._preview_existing_card(self._existing_cards.index(note))
+        self._open_existing_audio_repair_dialog(note)
+
+    @staticmethod
+    def _sound_tag(media_filename: str) -> str:
+        return f"[sound:{media_filename}]"
+
+    @staticmethod
+    def _replace_or_append_sound_tag(current_value: str, media_filename: str) -> str:
+        """Preserve text and replace old Anki [sound:...] tags with a new one."""
+        sound = ModernVocabularyGui._sound_tag(media_filename)
+        current = str(current_value or "")
+        if re.search(r"\[sound:[^\]]+\]", current, flags=re.IGNORECASE):
+            return re.sub(r"\[sound:[^\]]+\]", sound, current, flags=re.IGNORECASE)
+        if current.strip():
+            return f"{current}<br>{sound}"
+        return sound
+
+    def _open_existing_audio_repair_dialog(self, note: dict[str, object]) -> None:
+        """Generate and replace audio for exactly one existing Anki note."""
+        fields = note.get("fields") if isinstance(note.get("fields"), dict) else {}
+        field_names = list(fields.keys())
+        if not field_names:
+            messagebox.showerror("Unsupported note", "This note has no readable fields.")
+            return
+
+        default_source = str(note.get("example_field") or note.get("word_field") or "").strip()
+        if not default_source or default_source not in fields:
+            for candidate in ("Example", "Sentence", "ExampleSentence", "Back", "Word", "Front", "Phrase", "Term"):
+                if candidate in fields and self._plain_text(str(fields.get(candidate, ""))):
+                    default_source = candidate
+                    break
+        default_source = default_source if default_source in fields else field_names[0]
+
+        default_target = str(note.get("audio_field") or "").strip()
+        dedicated_audio = default_target in fields and default_target in {"Audio", "WordAudio", "ExampleAudio", "SentenceAudio"}
+        if not default_target or default_target not in fields:
+            for candidate in ("Audio", "ExampleAudio", "SentenceAudio", "WordAudio"):
+                if candidate in fields:
+                    default_target = candidate
+                    dedicated_audio = True
+                    break
+        if not default_target or default_target not in fields:
+            default_target = "Back" if "Back" in fields else field_names[-1]
+            dedicated_audio = False
+
+        dialog = tk.Toplevel(self._root)
+        dialog.title(f"Fix audio: {note.get('word', 'selected card')}")
+        dialog.geometry("700x460")
+        dialog.transient(self._root)
+        dialog.lift()
+        dialog.focus_force()
+        dialog.grab_set()
+        dialog.grid_columnconfigure(1, weight=1)
+        dialog.grid_rowconfigure(6, weight=1)
+
+        source_var = tk.StringVar(value=default_source)
+        target_var = tk.StringVar(value=default_target)
+        mode_var = tk.StringVar(
+            value=(
+                "Replace target field with [sound]"
+                if dedicated_audio
+                else "Append/replace [sound] in target field"
+            )
+        )
+        status_var = tk.StringVar(value="Choose source/target, generate preview, then replace audio in Anki.")
+        generated: dict[str, TtsResult | None] = {"result": None}
+
+        tk.Label(dialog, text="Source text field", anchor="w").grid(row=0, column=0, sticky="w", padx=12, pady=(14, 6))
+        tk.OptionMenu(dialog, source_var, *field_names).grid(row=0, column=1, sticky="ew", padx=12, pady=(14, 6))
+
+        tk.Label(dialog, text="Target audio field", anchor="w").grid(row=1, column=0, sticky="w", padx=12, pady=6)
+        tk.OptionMenu(dialog, target_var, *field_names).grid(row=1, column=1, sticky="ew", padx=12, pady=6)
+
+        tk.Label(dialog, text="Write mode", anchor="w").grid(row=2, column=0, sticky="w", padx=12, pady=6)
+        tk.OptionMenu(
+            dialog,
+            mode_var,
+            "Replace target field with [sound]",
+            "Append/replace [sound] in target field",
+        ).grid(row=2, column=1, sticky="ew", padx=12, pady=6)
+
+        provider_summary = f"Provider: {self._tts_provider_var.get()} · Model: {self._tts_model_var.get()} · Voice: {self._tts_voice_var.get()}"
+        tk.Label(dialog, text=provider_summary, anchor="w", fg="gray").grid(
+            row=3, column=0, columnspan=2, sticky="ew", padx=12, pady=(4, 8)
+        )
+
+        tk.Label(dialog, text="Source preview", anchor="w").grid(row=4, column=0, sticky="nw", padx=12, pady=6)
+        preview = tk.Text(dialog, height=7, wrap="word")
+        preview.grid(row=4, column=1, sticky="nsew", padx=12, pady=6)
+
+        def refresh_preview(*_args: object) -> None:
+            source_field = source_var.get()
+            raw_text = fields.get(source_field, "")
+            text = self._plain_text(str(raw_text))
+            preview.delete("1.0", "end")
+            preview.insert("1.0", text)
+            if not text:
+                status_var.set(f"Selected source field '{source_field}' is empty.")
+            else:
+                status_var.set(f"Ready to generate audio from '{source_field}' → '{target_var.get()}'.")
+
+        source_var.trace_add("write", refresh_preview)
+        target_var.trace_add("write", refresh_preview)
+        mode_var.trace_add("write", refresh_preview)
+        refresh_preview()
+
+        tk.Label(dialog, textvariable=status_var, anchor="w", fg="gray").grid(
+            row=5, column=0, columnspan=2, sticky="ew", padx=12, pady=(4, 8)
+        )
+
+        buttons = tk.Frame(dialog)
+        buttons.grid(row=6, column=0, columnspan=2, sticky="ew", padx=12, pady=12)
+
+        def generate_preview() -> None:
+            source_text = preview.get("1.0", "end").strip()
+            if not source_text:
+                messagebox.showwarning("Missing text", "Choose a source field that contains text.")
+                return
+            provider_name = self._tts_provider_var.get()
+            model_name = self._tts_model_var.get()
+            voice_value = self._selected_tts_voice()
+            try:
+                status_var.set("Generating audio preview...")
+                dialog.update_idletasks()
+                result = self._speech_service.generate(
+                    provider_name,
+                    source_text,
+                    str(note.get("language") or self._language_var.get()),
+                    model_name,
+                    voice_value,
+                )
+            except Exception as exc:
+                LOGGER.exception("Fix Cards audio preview failed")
+                message = self._friendly_tts_error_message(exc)
+                status_var.set(message)
+                messagebox.showerror("TTS error", message)
+                return
+            generated["result"] = result
+            status_var.set(f"Audio preview ready: {result.path.name}")
+            self._record_activity(f"♪ Fix Cards audio preview: {note.get('word', 'selected card')}")
+            self._open_audio_file(result.path)
+
+        def play_preview() -> None:
+            result = generated.get("result")
+            if result is None:
+                messagebox.showwarning("No preview", "Generate audio preview first.")
+                return
+            self._open_audio_file(result.path)
+
+        def replace_audio() -> None:
+            result = generated.get("result")
+            if result is None:
+                messagebox.showwarning("No preview", "Generate audio preview first.")
+                return
+            target_field = target_var.get().strip()
+            if not target_field or target_field not in fields:
+                messagebox.showerror("Invalid target", "Choose an existing target field.")
+                return
+            current_value = str(fields.get(target_field, "") or "")
+            has_existing_audio = "[sound:" in current_value.casefold()
+            if has_existing_audio:
+                if not messagebox.askyesno(
+                    "Replace existing audio?",
+                    f"Field '{target_field}' already contains audio. Replace the existing [sound:...] tag?",
+                ):
+                    status_var.set("Audio replace cancelled. Nothing was changed in Anki.")
+                    return
+            try:
+                media_name = self._anki_client.store_media_file(result.path)
+                if mode_var.get() == "Replace target field with [sound]":
+                    updated_value = self._sound_tag(media_name)
+                else:
+                    updated_value = self._replace_or_append_sound_tag(current_value, media_name)
+                backup_path = self._backup_existing_note_update(
+                    note,
+                    {target_field: updated_value},
+                    "audio repair",
+                )
+                self._anki_client.update_note_fields(int(note["note_id"]), {target_field: updated_value})
+                self._anki_client.add_tags_to_notes([int(note["note_id"])], "ai_audio_fixed")
+            except Exception as exc:
+                LOGGER.exception("Could not replace existing-card audio")
+                messagebox.showerror("Anki audio update error", str(exc))
+                status_var.set("Audio update failed. See logs for details.")
+                return
+            fields[target_field] = updated_value
+            note["fields"] = fields
+            note["audio"] = updated_value
+            note["audio_field"] = target_field
+            note["audio_status"] = "has_audio"
+            note["action_status"] = "audio_replaced"
+            tags = list(note.get("tags") or [])
+            if "ai_audio_fixed" not in tags:
+                tags.append("ai_audio_fixed")
+            note["tags"] = tags
+            self._render_existing_cards(f"Audio replaced for {note.get('word', 'selected card')}. Backup: {backup_path}")
+            self._record_activity(f"Replaced audio for existing card: {note.get('word', 'selected card')}")
+            dialog.destroy()
+
+        tk.Button(buttons, text="Generate audio preview", command=generate_preview).pack(side="left")
+        tk.Button(buttons, text="Play preview", command=play_preview).pack(side="left", padx=(8, 0))
+        tk.Button(buttons, text="Replace audio in Anki", command=replace_audio).pack(side="left", padx=(8, 0))
+        tk.Button(buttons, text="Cancel", command=dialog.destroy).pack(side="left", padx=(8, 0))
 
     def _fix_selected_existing_card(self) -> None:
         selected = self._selected_existing_cards()
@@ -2971,6 +3230,25 @@ class ModernVocabularyGui:
             f"Created: {test_path.name} and {key_path.name}"
         )
         self._record_activity("Printable test and answer key created")
+
+    def _plain_text(self, value: object) -> str:
+        """Return a safe plain-text preview from Anki field values.
+
+        Anki fields often contain HTML snippets, line breaks, and [sound:...] tags.
+        The Fix Cards and Speech / Audio views use this helper only for preview
+        and source-text extraction, so it must be conservative and never raise.
+        """
+        if value is None:
+            return ""
+        text = str(value)
+        text = re.sub(r"\[sound:[^\]]+\]", "", text, flags=re.IGNORECASE)
+        text = re.sub(r"<\s*br\s*/?\s*>", "\n", text, flags=re.IGNORECASE)
+        text = re.sub(r"</\s*(div|p|li|tr|h[1-6])\s*>", "\n", text, flags=re.IGNORECASE)
+        text = re.sub(r"<[^>]+>", "", text)
+        text = html.unescape(text)
+        text = re.sub(r"[ \t\r\f\v]+", " ", text)
+        text = re.sub(r"\n\s*\n+", "\n", text)
+        return text.strip()
 
     def _record_activity(self, text: str) -> None:
         previous = [part.strip() for part in self._activity_var.get().split(" | ") if part.strip()]

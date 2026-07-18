@@ -1168,3 +1168,21 @@ Rows show an action status such as `found`, `topic_tagged`, or `saved_to_anki`.
 - Speech / Audio refreshes progress after each item.
 - Fix Cards editor is focused/modal when opened.
 - UI wording uses `topic/context`, not mixed-language labels.
+
+## v8.1.3.3 Fix Cards audio repair
+
+`Fix Cards` now includes a targeted audio repair action for one existing Anki note.
+
+Workflow:
+
+1. Load cards with `Find cards`, `Load flagged`, `Load needs_fix`, or `Find words from list`.
+2. Select exactly one card.
+3. Click `Fix audio` / `Fix selected audio`.
+4. Choose the source text field, for example `Example`, `Back`, `Word`, or `Front`.
+5. Choose the target field.
+6. Generate and listen to an audio preview.
+7. Click `Replace audio in Anki`.
+
+The update is written to the same Anki note, so review history is preserved. If the target field already contains `[sound:...]`, the app asks for confirmation before replacing it. A local backup is written to `existing_card_backups/` before the update, and the note receives the tag `ai_audio_fixed`.
+
+For old Basic cards without a dedicated `Audio` field, use `Append/replace [sound] in target field` and choose a visible field such as `Back`.
