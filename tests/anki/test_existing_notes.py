@@ -66,3 +66,78 @@ def test_audio_backfill_uses_broad_existing_note_scanner() -> None:
     assert client.calls == [
         {"search_query": "note:Basic", "missing_audio_only": True, "words": None}
     ]
+
+
+def test_summarise_note_detects_sound_in_legacy_back_field() -> None:
+    client = AnkiClient("http://localhost:8765", "Deck")
+    note = {
+        "noteId": 789,
+        "modelName": "Basic",
+        "tags": [],
+        "fields": {
+            "Front": {"value": "outlast"},
+            "Back": {"value": "przetrwać<br>[sound:outlast.mp3]"},
+        },
+    }
+
+    summary = client._summarise_note(note)
+
+    assert summary["audio_field"] == "Back"
+    assert summary["audio_status"] == "has_audio"
+
+
+def test_existing_note_map_broad_scans_all_note_types() -> None:
+    class FakeAnkiClient(AnkiClient):
+        def __init__(self) -> None:
+            super().__init__("http://localhost:8765", "Deck")
+            self.queries = []
+
+        def _invoke(self, action, params=None):  # type: ignore[override]
+            if action == "findNotes":
+                self.queries.append(params["query"])
+                return [1, 2]
+            if action == "notesInfo":
+                return [
+                    {
+                        "noteId": 1,
+                        "modelName": "Basic",
+                        "tags": [],
+                        "fields": {"Front": {"value": "outlast"}, "Back": {"value": "przetrwać"}},
+                    },
+                    {
+                        "noteId": 2,
+                        "modelName": "AI Vocabulary Light Card",
+                        "tags": [],
+                        "fields": {"Word": {"value": "appeal"}, "Audio": {"value": ""}},
+                    },
+                ]
+            return None
+
+    client = FakeAnkiClient()
+
+    result = client.existing_note_map_broad()
+
+    assert set(result) == {"outlast", "appeal"}
+    assert result["outlast"]["model"] == "Basic"
+    assert client.queries == ['deck:"Deck"']
+
+
+def test_append_audio_to_note_appends_sound_to_existing_field() -> None:
+    class FakeAnkiClient(AnkiClient):
+        def __init__(self) -> None:
+            super().__init__("http://localhost:8765", "Deck")
+            self.updated_fields = None
+
+        def _invoke(self, action, params=None):  # type: ignore[override]
+            if action == "notesInfo":
+                return [{"fields": {"Back": {"value": "translation"}}}]
+            if action == "updateNoteFields":
+                self.updated_fields = params["note"]["fields"]
+                return None
+            return None
+
+    client = FakeAnkiClient()
+
+    client.append_audio_to_note(123, "outlast.mp3", "Back")
+
+    assert client.updated_fields == {"Back": "translation<br>[sound:outlast.mp3]"}

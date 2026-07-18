@@ -25,6 +25,7 @@ import customtkinter as ctk
 
 from src.ai.base import VocabularyAiClient
 from src.anki.client import AnkiClient, DuplicateNoteError
+from src.anki.templates import MODEL_NAME
 from src.domain.languages import LANGUAGE_TAGS
 from src.domain.models import ConversationFeedback, GrammarAnalysis, VocabularyCard
 from src.practice import PracticeItem, PracticeQuestion, PracticeService
@@ -92,6 +93,9 @@ class ModernVocabularyGui:
         self._speech_notes: list[dict[str, object]] = []
         self._speech_note_vars: list[ctk.BooleanVar] = []
         self._speech_search_var = ctk.StringVar(value="")
+        self._speech_source_field_var = ctk.StringVar(value="Auto: Example/Back/Word")
+        self._speech_target_field_var = ctk.StringVar(value="Audio")
+        self._speech_write_mode_var = ctk.StringVar(value="Use dedicated audio field")
         self._speech_progress_var = ctk.StringVar(value="Load cards with missing audio from the selected Anki deck.")
         self._speech_audio_status_by_note_id: dict[int, str] = {}
         self._speech_audio_error_by_note_id: dict[int, str] = {}
@@ -126,9 +130,9 @@ class ModernVocabularyGui:
         self._batch_add_all_stop_requested = False
         self._batch_add_all_indexes: list[int] = []
         self._batch_add_all_position = 0
-        self._batch_add_all_duplicate_policy: bool | None = None
-        self._batch_add_all_existing_notes: dict[str, int] = {}
-        self._batch_add_all_counts = {"added": 0, "updated": 0, "duplicates": 0, "failed": 0}
+        self._batch_add_all_duplicate_strategy: str | None = None
+        self._batch_add_all_existing_notes: dict[str, dict[str, object]] = {}
+        self._batch_add_all_counts = {"added": 0, "updated": 0, "duplicates": 0, "uncertain": 0, "failed": 0}
         self._activity_var = ctk.StringVar(value="")
 
         # Existing cards workflow state. This is deliberately separate from
@@ -871,6 +875,12 @@ class ModernVocabularyGui:
 
     def _format_batch_card_preview(self, item: dict[str, object], card: VocabularyCard) -> str:
         preview = self._format_card_preview(card, audio_status=item.get("audio_status"))
+        status = str(item.get("status", "")).strip()
+        if status:
+            preview += f"\n\nBATCH STATUS\n{status}"
+        error = str(item.get("error", "")).strip()
+        if error and status.startswith("duplicate"):
+            preview += f"\n{error}"
         topic = str(item.get("topic") or self._batch_topic_var.get()).strip()
         if topic:
             preview += f"\n\nTOPIC / DZIAŁ\n{topic}"
@@ -983,6 +993,8 @@ class ModernVocabularyGui:
             name: 0
             for name in (
                 "added",
+                "added_to_anki",
+                "updated_in_anki",
                 "skipped",
                 "invalid",
                 "pending",
@@ -991,6 +1003,9 @@ class ModernVocabularyGui:
                 "rate_limited",
                 "provider_failed",
                 "duplicate",
+                "duplicate_found",
+                "duplicate_uncertain",
+                "duplicate_skipped",
             )
         }
         for item in self._batch_items:
@@ -998,9 +1013,11 @@ class ModernVocabularyGui:
             counts[status] = counts.get(status, 0) + 1
         current = self._batch_index + 1 if total else 0
         remaining = counts.get("pending", 0) + counts.get("ready", 0) + counts.get("rate_limited", 0)
+        added_total = counts.get("added", 0) + counts.get("added_to_anki", 0)
+        duplicate_total = counts.get("duplicate", 0) + counts.get("duplicate_found", 0) + counts.get("duplicate_uncertain", 0) + counts.get("duplicate_skipped", 0)
         self._batch_progress_var.set(
-            f"{current}/{total} · Added {counts.get('added', 0)} · "
-            f"Skipped {counts.get('skipped', 0)} · Invalid {counts.get('invalid', 0)} · "
+            f"{current}/{total} · Added {added_total} · Updated {counts.get('updated_in_anki', 0)} · "
+            f"Duplicates {duplicate_total} · Skipped {counts.get('skipped', 0)} · Invalid {counts.get('invalid', 0)} · "
             f"Failed {counts.get('error', 0) + counts.get('provider_failed', 0)} · "
             f"Rate limited {counts.get('rate_limited', 0)} · Remaining {remaining}"
         )
@@ -1141,6 +1158,16 @@ class ModernVocabularyGui:
             return "Provider rate limit. Switch provider and retry this item, or resume later."
         if status == "provider_failed":
             return "Provider stopped the process. Switch provider and retry failed/rate-limited items."
+        if status == "duplicate_found":
+            return "Duplicate found in Anki. Review it before adding or choose an explicit duplicate strategy."
+        if status == "duplicate_uncertain":
+            return "Legacy/uncertain duplicate found. It was not auto-updated; use Fix Cards to inspect it."
+        if status == "duplicate_skipped":
+            return "Duplicate was skipped. Existing Anki card was not changed."
+        if status == "added_to_anki":
+            return "Added to Anki."
+        if status == "updated_in_anki":
+            return "Existing Anki note was updated."
         return ""
 
     def _stop_batch_on_provider_error(
@@ -1691,7 +1718,7 @@ class ModernVocabularyGui:
             counts = self._batch_add_all_counts
             message = (
                 f"Add all ready stopped: {counts['added']} added, {counts['updated']} updated, "
-                f"{counts['duplicates']} duplicates left, {counts['failed']} failed. "
+                f"{counts['duplicates']} duplicates skipped, {counts.get('uncertain', 0)} uncertain, {counts['failed']} failed. "
                 f"Progress saved: {self._batch_autosave_path}"
             )
         else:
@@ -1729,6 +1756,85 @@ class ModernVocabularyGui:
             f"Prepared {len(retryable_indexes)} failed/rate-limited item(s) for retry with {self._provider_var.get()}."
         )
         self._auto_generate_pending_batch_cards()
+
+    def _ask_duplicate_add_strategy(self, summary: str) -> str | None:
+        """Ask for an explicit duplicate strategy without ambiguous Yes/No buttons."""
+        dialog = tk.Toplevel(self._root)
+        dialog.title("Duplicate precheck")
+        dialog.geometry("560x330")
+        dialog.transient(self._root)
+        dialog.grab_set()
+        dialog.grid_columnconfigure(0, weight=1)
+        result = {"value": None}
+
+        tk.Label(dialog, text="Duplicate check before adding to Anki", font=("Arial", 13, "bold"), anchor="w").grid(
+            row=0, column=0, sticky="ew", padx=16, pady=(16, 8)
+        )
+        text = tk.Text(dialog, height=8, wrap="word")
+        text.insert("1.0", summary)
+        text.configure(state="disabled")
+        text.grid(row=1, column=0, sticky="nsew", padx=16, pady=(0, 12))
+
+        button_frame = tk.Frame(dialog)
+        button_frame.grid(row=2, column=0, sticky="ew", padx=16, pady=(0, 16))
+        button_frame.grid_columnconfigure((0, 1), weight=1)
+
+        def choose(value: str | None) -> None:
+            result["value"] = value
+            dialog.destroy()
+
+        tk.Button(button_frame, text="Add new only / skip duplicates", command=lambda: choose("add_new_only")).grid(
+            row=0, column=0, sticky="ew", padx=(0, 6), pady=4
+        )
+        tk.Button(button_frame, text="Update safe duplicates", command=lambda: choose("update_duplicates")).grid(
+            row=0, column=1, sticky="ew", padx=(6, 0), pady=4
+        )
+        tk.Button(button_frame, text="Review duplicates first", command=lambda: choose("review_duplicates")).grid(
+            row=1, column=0, sticky="ew", padx=(0, 6), pady=4
+        )
+        tk.Button(button_frame, text="Cancel", command=lambda: choose(None)).grid(
+            row=1, column=1, sticky="ew", padx=(6, 0), pady=4
+        )
+        self._root.wait_window(dialog)
+        return result["value"]
+
+    def _duplicate_precheck_summary(
+        self,
+        indexes: list[int],
+        existing_map: dict[str, dict[str, object]],
+    ) -> tuple[str, dict[str, int]]:
+        """Build duplicate precheck text and counts for ready Batch items."""
+        counts = {"new": 0, "safe_duplicates": 0, "uncertain_duplicates": 0}
+        examples: list[str] = []
+        for index in indexes:
+            card = self._card_from_batch_payload(self._batch_items[index].get("card"))
+            if card is None:
+                continue
+            normalized = self._normalise_anki_value(card.word_or_phrase)
+            existing = existing_map.get(normalized)
+            if existing is None:
+                counts["new"] += 1
+                continue
+            model = str(existing.get("model") or "")
+            duplicate_count = int(existing.get("duplicate_count", 1) or 1)
+            if model == MODEL_NAME and duplicate_count == 1:
+                counts["safe_duplicates"] += 1
+                label = "safe update"
+            else:
+                counts["uncertain_duplicates"] += 1
+                label = f"review needed · {model or 'unknown model'}"
+            if len(examples) < 12:
+                examples.append(f"- {card.word_or_phrase}: duplicate found ({label})")
+        summary = (
+            "Precheck completed:\n"
+            f"{counts['new']} new cards\n"
+            f"{counts['safe_duplicates']} safe duplicates in {MODEL_NAME}\n"
+            f"{counts['uncertain_duplicates']} uncertain/legacy duplicates\n\n"
+            "Choose what to do. Legacy/Basic duplicates are never auto-updated.\n"
+        )
+        if examples:
+            summary += "\nExamples:\n" + "\n".join(examples)
+        return summary, counts
 
     def _start_add_all_ready_batch_cards(self) -> None:
         """Start safe step-by-step adding of all ready Batch cards."""
@@ -1768,28 +1874,49 @@ class ModernVocabularyGui:
                 self._batch_status_var.set("Add all ready cancelled because of quality warnings.")
                 return
 
-        duplicate_policy = messagebox.askyesnocancel(
-            "Duplicate handling",
-            "If duplicate cards are found, update the existing Anki cards?\n\n"
-            "Yes = update duplicates\n"
-            "No = leave duplicates for manual review\n"
-            "Cancel = stop",
-        )
-        if duplicate_policy is None:
-            return
-
         try:
             self._set_selected_deck()
-            self._batch_add_all_existing_notes = self._anki_client.existing_vocabulary_note_map()
+            self._batch_status_var.set("Checking duplicates before adding to Anki...")
+            self._status_var.set(self._batch_status_var.get())
+            self._root.update_idletasks()
+            self._batch_add_all_existing_notes = self._anki_client.existing_note_map_broad()
         except Exception as exc:
             LOGGER.exception("Could not prepare Add all ready")
             messagebox.showerror("Anki error", str(exc))
             return
 
+        precheck_text, precheck_counts = self._duplicate_precheck_summary(indexes, self._batch_add_all_existing_notes)
+        if precheck_counts["safe_duplicates"] or precheck_counts["uncertain_duplicates"]:
+            strategy = self._ask_duplicate_add_strategy(precheck_text)
+            if strategy is None:
+                self._batch_status_var.set("Add all ready cancelled before adding anything.")
+                self._status_var.set(self._batch_status_var.get())
+                return
+            if strategy == "review_duplicates":
+                for index in indexes:
+                    card = self._card_from_batch_payload(self._batch_items[index].get("card"))
+                    if card is None:
+                        continue
+                    existing = self._batch_add_all_existing_notes.get(self._normalise_anki_value(card.word_or_phrase))
+                    if existing:
+                        model = str(existing.get("model") or "")
+                        self._batch_items[index]["status"] = "duplicate_found" if model == MODEL_NAME else "duplicate_uncertain"
+                        self._batch_items[index]["error"] = f"Duplicate exists in Anki model: {model or 'unknown model'}. Review before adding."
+                self._autosave_batch_session("duplicate review prepared")
+                self._update_batch_progress()
+                self._show_current_batch_item(generate=False)
+                message = "Duplicate review prepared. No cards were added. Check duplicate_found / duplicate_uncertain rows."
+                self._batch_status_var.set(message)
+                self._status_var.set(message)
+                return
+        else:
+            strategy = "add_new_only"
+            self._batch_status_var.set(precheck_text.replace("\n", " · "))
+
         self._batch_add_all_indexes = indexes
         self._batch_add_all_position = 0
-        self._batch_add_all_duplicate_policy = bool(duplicate_policy)
-        self._batch_add_all_counts = {"added": 0, "updated": 0, "duplicates": 0, "failed": 0}
+        self._batch_add_all_duplicate_strategy = strategy
+        self._batch_add_all_counts = {"added": 0, "updated": 0, "duplicates": 0, "uncertain": 0, "failed": 0}
         self._batch_add_all_running = True
         self._batch_add_all_paused = False
         self._batch_add_all_stop_requested = False
@@ -1807,7 +1934,7 @@ class ModernVocabularyGui:
             counts = self._batch_add_all_counts
             message = (
                 f"Add all ready stopped: {counts['added']} added, {counts['updated']} updated, "
-                f"{counts['duplicates']} duplicates left, {counts['failed']} failed. "
+                f"{counts['duplicates']} duplicates skipped, {counts.get('uncertain', 0)} uncertain, {counts['failed']} failed. "
                 f"Progress saved: {self._batch_autosave_path}"
             )
             self._batch_status_var.set(message)
@@ -1827,7 +1954,7 @@ class ModernVocabularyGui:
             counts = self._batch_add_all_counts
             message = (
                 f"Add all ready finished: {counts['added']} added, "
-                f"{counts['updated']} updated, {counts['duplicates']} duplicates left, "
+                f"{counts['updated']} updated, {counts['duplicates']} duplicates skipped, {counts.get('uncertain', 0)} uncertain, "
                 f"{counts['failed']} failed. Autosave: {self._batch_autosave_path}"
             )
             self._batch_status_var.set(message)
@@ -1861,25 +1988,40 @@ class ModernVocabularyGui:
 
         try:
             normalized = self._normalise_anki_value(card.word_or_phrase)
-            existing_note_id = self._batch_add_all_existing_notes.get(normalized)
-            if existing_note_id is not None:
-                if self._batch_add_all_duplicate_policy:
+            existing_note = self._batch_add_all_existing_notes.get(normalized)
+            strategy = self._batch_add_all_duplicate_strategy or "add_new_only"
+            if existing_note is not None:
+                model = str(existing_note.get("model") or "")
+                duplicate_count = int(existing_note.get("duplicate_count", 1) or 1)
+                existing_note_id = int(existing_note.get("note_id", 0) or 0)
+                if strategy == "update_duplicates" and model == MODEL_NAME and duplicate_count == 1 and existing_note_id > 0:
                     self._anki_client.update_card_by_note_id(
                         existing_note_id, card, provider_name,
                         extra_tags=self._topic_tags_for_batch_item(item),
                     )
-                    item["status"] = "added"
+                    item["status"] = "updated_in_anki"
+                    item.pop("error", None)
                     self._batch_add_all_counts["updated"] += 1
+                elif strategy == "update_duplicates":
+                    item["status"] = "duplicate_uncertain"
+                    item["error"] = f"Duplicate exists in {model or 'unknown model'} and was not auto-updated. Use Fix Cards to review it."
+                    self._batch_add_all_counts["uncertain"] += 1
                 else:
-                    item["status"] = "duplicate"
-                    item["error"] = "Existing Anki card was not updated."
+                    item["status"] = "duplicate_skipped"
+                    item["error"] = "Duplicate exists in Anki and was skipped by selected strategy."
                     self._batch_add_all_counts["duplicates"] += 1
             else:
                 self._anki_client.add_card_without_duplicate_scan(
                     card, provider_name, extra_tags=self._topic_tags_for_batch_item(item)
                 )
-                self._batch_add_all_existing_notes[normalized] = -1
-                item["status"] = "added"
+                self._batch_add_all_existing_notes[normalized] = {
+                    "note_id": -1,
+                    "model": MODEL_NAME,
+                    "word": card.word_or_phrase,
+                    "duplicate_count": 1,
+                }
+                item["status"] = "added_to_anki"
+                item.pop("error", None)
                 self._batch_add_all_counts["added"] += 1
 
         except Exception as exc:
@@ -2077,13 +2219,13 @@ class ModernVocabularyGui:
             text_color=("gray35", "gray75"),
         ).grid(row=1, column=0, sticky="ew", padx=18, pady=(0, 10))
 
-        ctk.CTkLabel(left, text="Extra Anki query").grid(
+        ctk.CTkLabel(left, text="Optional Anki filter").grid(
             row=2, column=0, sticky="w", padx=18, pady=(4, 4)
         )
         ctk.CTkEntry(
             left,
             textvariable=self._existing_search_var,
-            placeholder_text='e.g. tag:needs_fix, is:due, word text',
+            placeholder_text='Examples: tag:needs_fix, is:due, flag:1. Empty = selected deck.',
         ).grid(row=3, column=0, sticky="ew", padx=18, pady=(0, 8))
 
         ctk.CTkLabel(left, text="Tag filter").grid(row=4, column=0, sticky="w", padx=18, pady=(4, 4))
@@ -2253,11 +2395,25 @@ class ModernVocabularyGui:
             LOGGER.exception("Existing-card search failed")
             messagebox.showerror("Anki error", str(exc))
             return
-        suffix = " from pasted words" if words else ""
         query_label = self._compose_existing_cards_query() or "selected deck"
-        self._render_existing_cards(
-            f"Loaded {len(self._existing_cards)} card(s){suffix}. Filter: {query_label}"
-        )
+        if words:
+            found = {self._normalise_anki_value(str(note.get("word", ""))) for note in self._existing_cards}
+            missing = [word for word in words if self._normalise_anki_value(word) not in found]
+            for note in self._existing_cards:
+                note["action_status"] = "found"
+            message = (
+                f"Find from word list: {len(self._existing_cards)} found, "
+                f"{len(missing)} not found. Filter: {query_label}"
+            )
+            if missing:
+                self._set_existing_preview(
+                    "NOT FOUND FROM LIST\n" + "\n".join(f"- {word}" for word in missing[:80])
+                )
+        else:
+            for note in self._existing_cards:
+                note.setdefault("action_status", "found")
+            message = f"Loaded {len(self._existing_cards)} card(s). Filter: {query_label}"
+        self._render_existing_cards(message)
 
     def _render_existing_cards(self, progress_message: str | None = None) -> None:
         for widget in self._existing_scroll.winfo_children():
@@ -2271,8 +2427,9 @@ class ModernVocabularyGui:
             quality_tags = [tag for tag in tags if str(tag) in {"leech", "needs_fix", "needs_audio_fix", "needs_example_fix", "needs_topic_fix"}]
             tag_text = ", ".join([*topic_tags[:2], *quality_tags[:3]])
             tag_suffix = f" · {tag_text}" if tag_text else ""
+            action_status = str(note.get("action_status") or "found")
             label = (
-                f"{note.get('word', '—')} · {note.get('model', 'unknown model')}"
+                f"[{action_status}] {note.get('word', '—')} · {note.get('model', 'unknown model')}"
                 f" · audio:{note.get('audio_status', 'unknown')}"
                 f"{tag_suffix}"
             )
@@ -2319,6 +2476,8 @@ class ModernVocabularyGui:
             "",
             f"AUDIO FIELD\n{note.get('audio_field') or '—'}",
             "",
+            f"ACTION STATUS\n{note.get('action_status') or 'found'}",
+            "",
             f"EXAMPLE\n{note.get('example') or '—'}",
             "",
             f"TAGS\n{', '.join(note.get('tags') or []) or '—'}",
@@ -2357,6 +2516,7 @@ class ModernVocabularyGui:
             if tag not in tags:
                 tags.append(tag)
             note["tags"] = tags
+            note["action_status"] = "topic_tagged"
         self._render_existing_cards(f"Applied {tag} to {len(note_ids)} card(s).")
         self._record_activity(f"Applied topic tag: {tag}")
 
@@ -2520,6 +2680,7 @@ class ModernVocabularyGui:
             note["fields"] = note_fields
             note["word"] = updated_card.word_or_phrase
             note["example"] = updated_card.example
+            note["action_status"] = "saved_to_anki"
             self._render_existing_cards(f"Updated existing card. Backup: {backup_path}")
             self._record_activity(f"Fixed existing card: {updated_card.word_or_phrase}")
             editor.destroy()
@@ -2593,27 +2754,66 @@ class ModernVocabularyGui:
 
         search = ctk.CTkFrame(frame, corner_radius=18)
         search.grid(row=1, column=0, sticky="ew", pady=(0, 10))
-        search.grid_columnconfigure(1, weight=1)
-        ctk.CTkLabel(search, text="Extra Anki query").grid(row=0, column=0, padx=(16, 8), pady=12)
+        search.grid_columnconfigure((1, 3, 5), weight=1)
+        ctk.CTkLabel(search, text="Optional Anki filter").grid(row=0, column=0, padx=(16, 8), pady=(12, 6))
         ctk.CTkEntry(
             search,
             textvariable=self._speech_search_var,
-            placeholder_text='optional, e.g. tag:topic_character, note:Basic, is:due',
-        ).grid(row=0, column=1, sticky="ew", padx=(0, 16), pady=12)
+            placeholder_text='Examples: tag:topic_character, note:Basic, is:due. Empty = selected deck.',
+        ).grid(row=0, column=1, columnspan=5, sticky="ew", padx=(0, 16), pady=(12, 6))
+
+        ctk.CTkLabel(search, text="Source text field").grid(row=1, column=0, padx=(16, 8), pady=6)
+        self._speech_source_field_box = ctk.CTkComboBox(
+            search,
+            variable=self._speech_source_field_var,
+            values=[
+                "Auto: Example/Back/Word",
+                "Example",
+                "Sentence",
+                "ExampleSentence",
+                "Back",
+                "Front",
+                "Word",
+                "Phrase",
+                "Term",
+            ],
+        )
+        self._speech_source_field_box.grid(row=1, column=1, sticky="ew", padx=(0, 16), pady=6)
+
+        ctk.CTkLabel(search, text="Target audio field").grid(row=1, column=2, padx=(0, 8), pady=6)
+        self._speech_target_field_box = ctk.CTkComboBox(
+            search,
+            variable=self._speech_target_field_var,
+            values=["Audio", "ExampleAudio", "SentenceAudio", "WordAudio", "Back", "Example", "Front"],
+        )
+        self._speech_target_field_box.grid(row=1, column=3, sticky="ew", padx=(0, 16), pady=6)
+
+        ctk.CTkLabel(search, text="Write mode").grid(row=1, column=4, padx=(0, 8), pady=6)
+        self._speech_write_mode_box = ctk.CTkComboBox(
+            search,
+            variable=self._speech_write_mode_var,
+            values=["Use dedicated audio field", "Append [sound] to existing field"],
+            state="readonly",
+        )
+        self._speech_write_mode_box.grid(row=1, column=5, sticky="ew", padx=(0, 16), pady=6)
+
         ctk.CTkLabel(
             search,
-            text="Audio scans all note types in the selected deck and filters missing/malformed audio fields.",
+            text="If old cards have no Audio field, choose Append mode and target Back/Example. Generate is enabled only for ready rows.",
             text_color=("gray35", "gray75"),
-        ).grid(row=1, column=0, columnspan=2, sticky="w", padx=16, pady=(0, 12))
+        ).grid(row=2, column=0, columnspan=6, sticky="w", padx=16, pady=(0, 12))
 
         actions = ctk.CTkFrame(frame, corner_radius=18)
         actions.grid(row=2, column=0, sticky="ew", pady=(0, 10))
         ctk.CTkButton(actions, text="Find missing audio", command=self._load_speech_notes).pack(side="left", padx=16, pady=14)
-        ctk.CTkButton(actions, text="Select all", command=lambda: [v.set(True) for v in self._speech_note_vars]).pack(side="left", padx=(0, 8), pady=14)
+        ctk.CTkButton(actions, text="Select ready", command=self._select_ready_speech_notes).pack(side="left", padx=(0, 8), pady=14)
         ctk.CTkButton(actions, text="Clear", command=lambda: [v.set(False) for v in self._speech_note_vars]).pack(side="left", padx=(0, 8), pady=14)
-        ctk.CTkButton(actions, text="Generate audio for selected", command=self._generate_audio_for_existing).pack(side="left", padx=(0, 8), pady=14)
-        ctk.CTkButton(actions, text="Pause audio", command=self._pause_existing_audio_batch).pack(side="left", padx=(0, 8), pady=14)
-        ctk.CTkButton(actions, text="Stop audio", command=self._stop_existing_audio_batch).pack(side="left", padx=(0, 8), pady=14)
+        self._generate_audio_button = ctk.CTkButton(actions, text="Generate audio for selected", command=self._generate_audio_for_existing)
+        self._generate_audio_button.pack(side="left", padx=(0, 8), pady=14)
+        self._pause_audio_button = ctk.CTkButton(actions, text="Pause audio", command=self._pause_existing_audio_batch, state="disabled")
+        self._pause_audio_button.pack(side="left", padx=(0, 8), pady=14)
+        self._stop_audio_button = ctk.CTkButton(actions, text="Stop audio", command=self._stop_existing_audio_batch, state="disabled")
+        self._stop_audio_button.pack(side="left", padx=(0, 8), pady=14)
         ctk.CTkButton(actions, text="Preview voice", command=self._preview_tts_voice_sample).pack(side="left", padx=(0, 8), pady=14)
         ctk.CTkLabel(actions, textvariable=self._speech_progress_var).pack(side="right", padx=16, pady=14)
 
@@ -2992,6 +3192,99 @@ class ModernVocabularyGui:
         self._record_activity(f"♪ Voice preview: {voice_label}")
         self._open_audio_file(result.path)
 
+    def _set_audio_batch_controls_state(self, running: bool) -> None:
+        """Enable Pause/Stop only while a long audio batch is running."""
+        for name, state in (
+            ("_pause_audio_button", "normal" if running else "disabled"),
+            ("_stop_audio_button", "normal" if running else "disabled"),
+        ):
+            button = getattr(self, name, None)
+            if button is not None:
+                button.configure(state=state)
+
+    def _speech_source_text_for_note(self, note: dict[str, object]) -> tuple[str, str]:
+        """Return source text and source field name for TTS generation."""
+        fields = note.get("fields") if isinstance(note.get("fields"), dict) else {}
+        selected = self._speech_source_field_var.get().strip()
+        if selected and not selected.startswith("Auto"):
+            return self._plain_text(str(fields.get(selected, ""))), selected
+        for field_name in ("Example", "Sentence", "ExampleSentence", "Back", "Word", "Front", "Phrase", "Term"):
+            if field_name in fields:
+                value = self._plain_text(str(fields.get(field_name, "")))
+                if value:
+                    return value, field_name
+        return str(note.get("example") or note.get("word") or "").strip(), "auto"
+
+    def _speech_target_field_for_note(self, note: dict[str, object]) -> str:
+        """Return the writable field where [sound:...] should be placed."""
+        fields = note.get("fields") if isinstance(note.get("fields"), dict) else {}
+        target = self._speech_target_field_var.get().strip()
+        if self._speech_write_mode_var.get() == "Append [sound] to existing field":
+            return target if target in fields else ""
+        if target and target in fields:
+            return target
+        audio_field = str(note.get("audio_field") or "").strip()
+        return audio_field if audio_field in fields else ""
+
+    def _field_has_audio(self, note: dict[str, object], field_name: str) -> bool:
+        fields = note.get("fields") if isinstance(note.get("fields"), dict) else {}
+        return "[sound:" in str(fields.get(field_name, "")).casefold()
+
+    def _speech_note_readiness(self, note: dict[str, object]) -> tuple[bool, str, str, str, str]:
+        """Return readiness tuple for UI and batch selection.
+
+        Returns:
+            can_generate, status, detail, source_text, target_field
+        """
+        note_id = int(note["note_id"])
+        current_status = self._speech_audio_status_by_note_id.get(
+            note_id, str(note.get("audio_status") or "missing_audio")
+        )
+        if current_status in {"audio_ready", "updated_in_anki", "provider_failed", "audio_error"}:
+            return False, current_status, self._speech_audio_error_by_note_id.get(note_id, ""), "", ""
+        source_text, source_field = self._speech_source_text_for_note(note)
+        target_field = self._speech_target_field_for_note(note)
+        write_mode = self._speech_write_mode_var.get()
+        if not source_text:
+            return False, "needs_source_text", "Choose a source text field that contains text.", "", target_field
+        if not target_field:
+            if write_mode == "Append [sound] to existing field":
+                return False, "needs_append_target_field", "Target field does not exist on this note type.", source_text, ""
+            return False, "needs_audio_field", "This note type has no selected Audio/ExampleAudio field.", source_text, ""
+        if self._field_has_audio(note, target_field) or str(note.get("audio_status")) == "has_audio":
+            return False, "has_audio", f"{target_field} already contains [sound:...].", source_text, target_field
+        return True, "ready_for_audio", f"Source: {source_field} → Target: {target_field}", source_text, target_field
+
+    def _select_ready_speech_notes(self) -> None:
+        for note, var in zip(self._speech_notes, self._speech_note_vars):
+            can_generate, *_ = self._speech_note_readiness(note)
+            var.set(can_generate)
+        self._render_speech_notes("Selected only cards that are ready for audio generation.")
+
+    def _speech_scan_summary(self) -> str:
+        counts = {
+            "ready_for_audio": 0,
+            "has_audio": 0,
+            "needs_audio_field": 0,
+            "needs_append_target_field": 0,
+            "needs_source_text": 0,
+            "malformed_audio": 0,
+            "audio_error": 0,
+            "provider_failed": 0,
+        }
+        for note in self._speech_notes:
+            can_generate, status, *_ = self._speech_note_readiness(note)
+            key = "ready_for_audio" if can_generate else status
+            counts[key] = counts.get(key, 0) + 1
+        return (
+            "Scan completed: "
+            f"{counts.get('ready_for_audio', 0)} ready for audio, "
+            f"{counts.get('has_audio', 0)} already have audio, "
+            f"{counts.get('needs_audio_field', 0) + counts.get('needs_append_target_field', 0)} need a target audio field, "
+            f"{counts.get('needs_source_text', 0)} need source text, "
+            f"{counts.get('malformed_audio', 0)} malformed."
+        )
+
     def _load_speech_notes(self) -> None:
         """Load missing/malformed audio from all supported note types in the deck."""
         try:
@@ -3009,10 +3302,10 @@ class ModernVocabularyGui:
         self._speech_audio_path_by_note_id = {}
         for note in self._speech_notes:
             note_id = int(note["note_id"])
-            self._speech_audio_status_by_note_id[note_id] = str(note.get("audio_status") or "pending_audio")
+            self._speech_audio_status_by_note_id[note_id] = str(note.get("audio_status") or "missing_audio")
         extra = self._speech_search_var.get().strip()
         suffix = f" · filter: {extra}" if extra else ""
-        self._render_speech_notes(f"{len(self._speech_notes)} cards with missing/malformed audio{suffix}")
+        self._render_speech_notes(f"{self._speech_scan_summary()}{suffix}")
 
     def _render_speech_notes(self, progress_message: str | None = None) -> None:
         """Render the current existing-card audio list without reloading from Anki."""
@@ -3022,19 +3315,31 @@ class ModernVocabularyGui:
         for index, note in enumerate(self._speech_notes):
             note_id = int(note["note_id"])
             self._speech_audio_status_by_note_id.setdefault(
-                note_id, str(note.get("audio_status") or "pending_audio")
+                note_id, str(note.get("audio_status") or "missing_audio")
             )
-            status = self._speech_audio_status_by_note_id.get(note_id, "pending_audio")
-            audio_field = str(note.get("audio_field") or "").strip()
-            can_generate = bool(audio_field) and status not in {"audio_ready", "updated_in_anki", "skipped", "has_audio"}
+            can_generate, status, detail, source_text, target_field = self._speech_note_readiness(note)
             var = ctk.BooleanVar(value=can_generate)
             self._speech_note_vars.append(var)
-            audio_label = audio_field or "no supported audio field"
-            example = str(note.get("example") or "")
-            label = f"[{status}] {note['word']} · {audio_label} — {example}"
-            ctk.CTkCheckBox(self._speech_scroll, text=label, variable=var).grid(
-                row=index, column=0, sticky="w", padx=12, pady=6
-            )
+            word = str(note.get("word") or "—")
+            model = str(note.get("model") or "unknown model")
+            source_preview = source_text[:90] + ("..." if len(source_text) > 90 else "")
+            if status == "ready_for_audio":
+                label = f"[ready] {word} · {model} · {detail} — {source_preview}"
+            elif status == "needs_audio_field":
+                label = f"[needs audio field] {word} · {model} · choose a target Audio field or Append mode"
+            elif status == "needs_append_target_field":
+                label = f"[target field missing] {word} · {model} · target '{self._speech_target_field_var.get()}' does not exist"
+            elif status == "needs_source_text":
+                label = f"[needs source text] {word} · {model} · choose Front/Back/Example/Word as source"
+            elif status == "has_audio":
+                label = f"[has audio] {word} · {model} · {detail}"
+            else:
+                error = self._speech_audio_error_by_note_id.get(note_id, "")
+                label = f"[{status}] {word} · {model} · {error or detail}"
+            checkbox = ctk.CTkCheckBox(self._speech_scroll, text=label, variable=var)
+            if not can_generate:
+                checkbox.configure(state="disabled")
+            checkbox.grid(row=index, column=0, sticky="w", padx=12, pady=6)
         if progress_message is not None:
             self._speech_progress_var.set(progress_message)
 
@@ -3062,7 +3367,9 @@ class ModernVocabularyGui:
                     "word": note.get("word", ""),
                     "example": note.get("example", ""),
                     "language": note.get("language", ""),
-                    "audio_field": note.get("audio_field", "Audio"),
+                    "audio_field": note.get("_target_audio_field") or note.get("audio_field", "Audio"),
+                    "source_text": note.get("_source_text") or note.get("example", ""),
+                    "write_mode": note.get("_write_mode") or self._speech_write_mode_var.get(),
                     "status": self._speech_audio_status_by_note_id.get(note_id, "pending_audio"),
                     "audio_path": self._speech_audio_path_by_note_id.get(note_id, ""),
                     "error": self._speech_audio_error_by_note_id.get(note_id, ""),
@@ -3131,12 +3438,33 @@ class ModernVocabularyGui:
         if self._speech_audio_running:
             self._speech_progress_var.set("Audio generation is already running.")
             return
-        selected = [
+        selected_raw = [
             note for note, var in zip(self._speech_notes, self._speech_note_vars) if var.get()
         ]
-        if not selected:
-            messagebox.showwarning("No cards selected", "Select at least one card.")
+        if not selected_raw:
+            messagebox.showwarning("No cards selected", "Select at least one ready card.")
             return
+        selected: list[dict[str, object]] = []
+        blocked: list[str] = []
+        for note in selected_raw:
+            can_generate, status, detail, source_text, target_field = self._speech_note_readiness(note)
+            if not can_generate:
+                blocked.append(f"{note.get('word', '—')}: {status}")
+                continue
+            prepared = dict(note)
+            prepared["_source_text"] = source_text
+            prepared["_target_audio_field"] = target_field
+            prepared["_write_mode"] = self._speech_write_mode_var.get()
+            selected.append(prepared)
+        if not selected:
+            message = "No selected cards are ready for audio. " + self._speech_scan_summary()
+            self._speech_progress_var.set(message)
+            messagebox.showwarning("No ready cards", message)
+            return
+        if blocked:
+            self._speech_progress_var.set(
+                f"Generating {len(selected)} ready card(s). Skipping {len(blocked)} not-ready selection(s)."
+            )
         if not self._speech_service or not self._tts_provider_var.get():
             messagebox.showerror("TTS unavailable", "Configure at least one TTS provider.")
             return
@@ -3147,6 +3475,7 @@ class ModernVocabularyGui:
         self._speech_audio_stop_requested.clear()
         self._speech_audio_pause_requested.clear()
         self._speech_audio_running = True
+        self._set_audio_batch_controls_state(True)
         self._speech_audio_autosave_path = None
         self._autosave_audio_progress("before audio generation", provider_name, model_name, voice_label, voice_value)
         self._speech_progress_var.set(f"Generating 0/{len(selected)}...")
@@ -3258,8 +3587,9 @@ class ModernVocabularyGui:
 
                 note_id = int(note["note_id"])
                 current_status = self._speech_audio_status_by_note_id.get(note_id, "pending_audio")
-                audio_field = str(note.get("audio_field") or "").strip()
-                example_text = str(note.get("example") or "").strip()
+                audio_field = str(note.get("_target_audio_field") or note.get("audio_field") or "").strip()
+                source_text = str(note.get("_source_text") or note.get("example") or note.get("word") or "").strip()
+                write_mode = str(note.get("_write_mode") or "Use dedicated audio field")
                 if current_status in {"audio_ready", "updated_in_anki", "has_audio"}:
                     skipped_done += 1
                     self._root.after(
@@ -3268,11 +3598,11 @@ class ModernVocabularyGui:
                         f"Skipping already generated {index}/{len(notes)} · Updated {completed} · Skipped {skipped_done} · Failed {errors}",
                     )
                     continue
-                if not audio_field or not example_text:
+                if not audio_field or not source_text:
                     skipped_done += 1
                     self._speech_audio_status_by_note_id[note_id] = "skipped"
                     self._speech_audio_error_by_note_id[note_id] = (
-                        "Missing supported audio field." if not audio_field else "Missing example text for TTS."
+                        "Missing target audio field." if not audio_field else "Missing source text for TTS."
                     )
                     self._root.after(
                         0,
@@ -3292,8 +3622,8 @@ class ModernVocabularyGui:
                 try:
                     result = self._speech_service.generate(
                         provider_name,
-                        str(note["example"]),
-                        str(note["language"]),
+                        source_text,
+                        str(note.get("language") or self._language_var.get()),
                         model_name,
                         voice_value,
                     )
@@ -3311,8 +3641,19 @@ class ModernVocabularyGui:
                         voice_value,
                     )
                     media_name = self._anki_client.store_media_file(result.path)
-                    self._anki_client.attach_audio_to_note(note_id, media_name, audio_field)
+                    if write_mode == "Append [sound] to existing field":
+                        self._anki_client.append_audio_to_note(note_id, media_name, audio_field)
+                    else:
+                        self._anki_client.attach_audio_to_note(note_id, media_name, audio_field)
                     self._speech_audio_status_by_note_id[note_id] = "updated_in_anki"
+                    fields = note.get("fields") if isinstance(note.get("fields"), dict) else {}
+                    if write_mode == "Append [sound] to existing field" and audio_field in fields:
+                        fields[audio_field] = f"{fields.get(audio_field, '')}<br>[sound:{media_name}]" if fields.get(audio_field) else f"[sound:{media_name}]"
+                    elif audio_field in fields:
+                        fields[audio_field] = f"[sound:{media_name}]"
+                    note["fields"] = fields
+                    note["audio_field"] = audio_field
+                    note["audio_status"] = "has_audio"
                     completed += 1
                 except Exception as exc:
                     errors += 1
@@ -3390,6 +3731,7 @@ class ModernVocabularyGui:
             self._speech_audio_running = False
             self._speech_audio_pause_requested.clear()
             self._speech_audio_stop_requested.clear()
+            self._root.after(0, self._set_audio_batch_controls_state, False)
 
     def _analyze_grammar_sentence(self) -> None:
         """Generate and preview a sentence-first grammar analysis."""

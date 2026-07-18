@@ -1098,3 +1098,65 @@ Behavior:
 
 This prevents rapid retry loops that can repeatedly call the provider after a
 rate-limit response.
+
+---
+
+## v8.1.2 UI logic cleanup
+
+### Speech / Audio
+
+`Speech / Audio` is now the only place for missing-audio backfill.
+
+Use:
+
+1. Select the Anki deck.
+2. Optional: add an Anki filter such as `tag:topic_character`, `note:Basic`, or `is:due`.
+3. Choose the source text field for TTS.
+4. Choose the target audio field.
+5. Choose the write mode.
+6. Click `Find missing audio`.
+7. Click `Select ready`.
+8. Click `Generate audio for selected`.
+
+For old Basic cards without an `Audio` field, use legacy append mode:
+
+```text
+Source text field: Front / Back / Example
+Target audio field: Back
+Write mode: Append [sound] to existing field
+```
+
+This appends `[sound:...]` to an existing field without changing the note type.
+
+`Pause audio` and `Stop audio` are enabled only while an audio batch is running.
+
+### Batch duplicate precheck
+
+`Add all ready` now performs an explicit duplicate precheck before writing to Anki.
+
+The app shows:
+
+- new cards;
+- safe duplicates in the current app note type;
+- uncertain/legacy duplicates.
+
+The user must choose one explicit action:
+
+- `Add new only / skip duplicates`;
+- `Update safe duplicates`;
+- `Review duplicates first`;
+- `Cancel`.
+
+Legacy/Basic duplicates are not auto-updated. They are marked for review instead.
+
+### Fix Cards
+
+`Fix Cards` is for maintenance of existing Anki notes:
+
+- search by optional Anki filter;
+- load flagged/leech/needs_fix cards;
+- find notes from a pasted word list;
+- apply topic tags;
+- edit one selected note and save it back to the same Anki note.
+
+Rows show an action status such as `found`, `topic_tagged`, or `saved_to_anki`.
