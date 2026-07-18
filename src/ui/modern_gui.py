@@ -79,6 +79,9 @@ class ModernVocabularyGui:
         self._speech_notes: list[dict[str, object]] = []
         self._speech_note_vars: list[ctk.BooleanVar] = []
         self._speech_progress_var = ctk.StringVar(value="Load existing cards with missing audio.")
+        self._speech_audio_status_by_note_id: dict[int, str] = {}
+        self._speech_audio_error_by_note_id: dict[int, str] = {}
+        self._speech_audio_path_by_note_id: dict[int, str] = {}
 
         self._grammar_sentence_var = ctk.StringVar()
         self._generated_grammar: GrammarAnalysis | None = None
@@ -558,7 +561,7 @@ class ModernVocabularyGui:
             current_row,
             text="Generate / Regenerate",
             width=170,
-            command=self._generate_current_batch_card,
+            command=lambda: self._generate_current_batch_card("generate_selected"),
         ).grid(row=0, column=1)
 
         ctk.CTkLabel(
@@ -585,16 +588,18 @@ class ModernVocabularyGui:
         ctk.CTkButton(buttons, text="Add to Anki", command=self._add_current_batch_card).grid(
             row=0, column=2, sticky="ew", padx=4
         )
-        ctk.CTkButton(buttons, text="Regenerate", command=self._generate_current_batch_card).grid(
-            row=0, column=3, sticky="ew", padx=4
-        )
+        ctk.CTkButton(
+            buttons,
+            text="Regenerate",
+            command=lambda: self._generate_current_batch_card("regenerate_selected"),
+        ).grid(row=0, column=3, sticky="ew", padx=4)
         ctk.CTkButton(buttons, text="Next", command=self._batch_next).grid(
             row=0, column=4, sticky="ew", padx=(4, 0)
         )
 
         bulk_buttons = ctk.CTkFrame(right, fg_color="transparent")
         bulk_buttons.grid(row=6, column=0, sticky="ew", padx=18, pady=(0, 18))
-        bulk_buttons.grid_columnconfigure((0, 1), weight=1)
+        bulk_buttons.grid_columnconfigure((0, 1, 2), weight=1)
         ctk.CTkButton(
             bulk_buttons,
             text="Auto-generate pending",
@@ -602,9 +607,14 @@ class ModernVocabularyGui:
         ).grid(row=0, column=0, sticky="ew", padx=(0, 5))
         ctk.CTkButton(
             bulk_buttons,
+            text="Retry failed/rate-limited",
+            command=self._retry_failed_or_rate_limited_batch_cards,
+        ).grid(row=0, column=1, sticky="ew", padx=5)
+        ctk.CTkButton(
+            bulk_buttons,
             text="Add all ready",
             command=self._start_add_all_ready_batch_cards,
-        ).grid(row=0, column=1, sticky="ew", padx=(5, 0))
+        ).grid(row=0, column=2, sticky="ew", padx=(5, 0))
 
     def _build_practice_tab(self, parent: ctk.CTkFrame) -> None:
         """Build interactive practice and printable test controls."""
@@ -714,8 +724,8 @@ class ModernVocabularyGui:
         self._batch_autosave_path = None
         self._batch_generated_card = None
         self._batch_generated_provider_name = None
-        self._show_current_batch_item(generate=True)
-        self._record_activity(f"Loaded {len(clean_words)} batch item(s)")
+        self._show_current_batch_item(generate=False)
+        self._record_activity(f"Loaded {len(clean_words)} batch item(s) without generation")
         self._autosave_batch_session("list loaded")
 
     def _load_batch_txt(self) -> None:
@@ -782,10 +792,11 @@ class ModernVocabularyGui:
                 title="BATCH ITEM",
                 word=str(item.get("word", "")),
                 status=str(item.get("status", "pending")),
-                detail=str(item.get("error", "")),
+                detail=self._friendly_batch_item_detail(item),
             )
-        if generate and item["status"] not in {"added", "skipped", "error", "invalid", "rate_limited"}:
-            self._generate_current_batch_card()
+        # Important: showing/selecting an item must never call an AI provider.
+        # Generation is allowed only through explicit buttons such as
+        # Generate selected, Auto-generate pending, or Retry failed/rate-limited.
 
     def _update_batch_progress(self) -> None:
         total = len(self._batch_items)
@@ -833,14 +844,75 @@ class ModernVocabularyGui:
             blocks.extend(["", "SAFE NEXT ACTIONS", actions])
         self._set_batch_preview("\n".join(blocks))
 
+    @staticmethod
+    def _is_provider_rate_limit_detail(detail: str) -> bool:
+        lowered = detail.lower()
+        return any(
+            token in lowered
+            for token in (
+                "429",
+                "too many requests",
+                "resource_exhausted",
+                "quota exceeded",
+                "rate limit",
+            )
+        )
+
+    @staticmethod
+    def _friendly_generation_error_detail(detail: str) -> str:
+        """Convert provider raw errors into concise UI text.
+
+        The raw exception remains in logs/autosave; this summary is for the
+        Batch preview/status area so users are not shown huge JSON payloads.
+        """
+        lowered = detail.lower()
+        model = "Gemini"
+        model_match = re.search(r"model[:=]\s*['\"]?([\w.\-]+)", detail)
+        if model_match:
+            model = model_match.group(1)
+        elif "gemini-2.5-flash" in lowered:
+            model = "gemini-2.5-flash"
+
+        retry_match = re.search(r"retry(?:delay| in)?[^0-9]*(\d+(?:\.\d+)?)\s*s", detail, re.IGNORECASE)
+        retry_hint = f" Retry suggested in about {retry_match.group(1)} seconds." if retry_match else ""
+
+        if "resource_exhausted" in lowered or "quota exceeded" in lowered or "429" in lowered:
+            return (
+                f"Provider quota/rate limit reached for {model}. "
+                "The current item was saved as rate_limited. "
+                "Switch provider and retry failed/rate-limited items, or resume later."
+                f"{retry_hint}"
+            )
+        if "401" in lowered or "unauthorized" in lowered:
+            return "Provider API key was rejected. Check the API key or switch provider."
+        if "403" in lowered or "forbidden" in lowered:
+            return "Provider rejected this request. Check provider access/model or switch provider."
+        if "402" in lowered or "payment required" in lowered:
+            return "Provider billing, credits, or voice access problem. Switch provider or check provider dashboard."
+        return detail
+
+    def _friendly_batch_item_detail(self, item: dict[str, object]) -> str:
+        status = str(item.get("status", "pending"))
+        raw_error = str(item.get("error", ""))
+        if raw_error:
+            return self._friendly_generation_error_detail(raw_error)
+        if status == "pending":
+            return "Not generated yet. Click Generate / Regenerate or Auto-generate pending."
+        if status == "ready":
+            return "Generated and ready for review."
+        if status == "rate_limited":
+            return "Provider rate limit. Switch provider and retry this item, or resume later."
+        return ""
+
     def _stop_batch_on_rate_limit(self, word: str, detail: str) -> None:
         """Stop Auto Batch and keep one stable UI state after provider rate limits."""
         self._batch_auto_generate_running = False
         self._autosave_batch_session(f"rate limit: {word}")
         autosave = str(self._batch_autosave_path) if self._batch_autosave_path else "not available"
+        friendly_detail = self._friendly_generation_error_detail(detail)
         message = (
-            "Auto Batch stopped: provider rate limit. "
-            "The session was autosaved. Resume later or switch provider."
+            "Auto Batch stopped: provider quota/rate limit. "
+            "Switch provider and retry failed/rate-limited items, or resume later."
         )
         self._batch_status_var.set(f"{message} Autosave: {autosave}")
         self._status_var.set(message)
@@ -848,17 +920,18 @@ class ModernVocabularyGui:
             title="AUTO BATCH STOPPED",
             word=word,
             status="rate_limited",
-            detail=f"{detail}\n\nAutosave: {autosave}",
+            detail=f"{friendly_detail}\n\nAutosave: {autosave}",
             actions=(
-                "- Wait and resume later\n"
+                "- Switch provider\n"
+                "- Retry failed/rate-limited\n"
                 "- Add all ready cards now\n"
-                "- Switch provider and regenerate pending items later"
+                "- Resume later from autosave"
             ),
         )
         self._record_activity("Auto Batch stopped: rate limit")
         LOGGER.warning("Auto Batch stopped because of rate limit for word=%s detail=%s", word, detail)
 
-    def _generate_current_batch_card(self) -> None:
+    def _generate_current_batch_card(self, generation_trigger: str = "generate_selected") -> None:
         if not self._batch_items:
             messagebox.showerror("No list", "Load a vocabulary list first.")
             return
@@ -869,6 +942,13 @@ class ModernVocabularyGui:
         item = self._batch_items[self._batch_index]
         item["word"] = word
         provider_name = self._provider_var.get()
+        LOGGER.info(
+            "Batch generation start: trigger=%s index=%s word=%s provider=%s",
+            generation_trigger,
+            self._batch_index,
+            word,
+            provider_name,
+        )
         self._batch_status_var.set(
             f"Generating {self._batch_index + 1}/{len(self._batch_items)}: {word}..."
         )
@@ -885,7 +965,7 @@ class ModernVocabularyGui:
             item["status"] = "error"
             item["error"] = detail
             self._batch_generated_card = None
-            if "429" in detail or "Too Many Requests" in detail:
+            if self._is_provider_rate_limit_detail(detail):
                 item["status"] = "rate_limited"
                 message = f"Rate limit while generating: {word}. Session autosaved."
                 self._batch_status_var.set(message)
@@ -894,7 +974,7 @@ class ModernVocabularyGui:
             else:
                 message = f"Generation error: {word} — {exc}"
                 self._batch_status_var.set(message)
-                self._set_batch_status_card("GENERATION ERROR", word, "error", detail)
+                self._set_batch_status_card("GENERATION ERROR", word, "error", self._friendly_generation_error_detail(detail))
                 self._update_batch_progress()
                 self._autosave_batch_session(f"generation error: {word}")
             LOGGER.exception("Batch generation failed for word=%s", word)
@@ -978,7 +1058,7 @@ class ModernVocabularyGui:
     def _advance_batch_after_action(self) -> None:
         if self._batch_index < len(self._batch_items) - 1:
             self._batch_index += 1
-            self._show_current_batch_item(generate=True)
+            self._show_current_batch_item(generate=False)
         else:
             self._batch_status_var.set("Batch finished. Review progress or save the session.")
             self._status_var.set(self._batch_status_var.get())
@@ -991,7 +1071,7 @@ class ModernVocabularyGui:
     def _batch_next(self) -> None:
         if self._batch_items and self._batch_index < len(self._batch_items) - 1:
             self._batch_index += 1
-            self._show_current_batch_item(generate=True)
+            self._show_current_batch_item(generate=False)
 
     def _clear_batch(self) -> None:
         self._batch_items.clear()
@@ -1120,7 +1200,7 @@ class ModernVocabularyGui:
         self._root.update_idletasks()
 
         try:
-            self._generate_current_batch_card()
+            self._generate_current_batch_card("auto_generate_pending")
         except Exception as exc:
             LOGGER.exception("Auto-generation failed for %s", word)
             item = self._batch_items[next_index]
@@ -1128,7 +1208,7 @@ class ModernVocabularyGui:
             item["error"] = str(exc)
             self._autosave_batch_session(f"auto-generation exception: {word}")
 
-            if "429" in str(exc) or "Too Many Requests" in str(exc):
+            if self._is_provider_rate_limit_detail(str(exc)):
                 item["status"] = "rate_limited"
                 self._stop_batch_on_rate_limit(word, str(exc))
                 return
@@ -1143,6 +1223,36 @@ class ModernVocabularyGui:
             LOGGER.info("Skipping failed batch item after one attempt: %s", word)
 
         self._root.after(1600, self._auto_generate_next_pending_batch_card)
+
+    def _retry_failed_or_rate_limited_batch_cards(self) -> None:
+        """Retry failed/rate-limited Batch items with the currently selected provider."""
+        if not self._batch_items:
+            messagebox.showerror("No list", "Load a vocabulary list first.")
+            return
+
+        retryable_statuses = {"error", "rate_limited"}
+        retryable_indexes = [
+            index
+            for index, item in enumerate(self._batch_items)
+            if str(item.get("status")) in retryable_statuses
+        ]
+        if not retryable_indexes:
+            self._batch_status_var.set("No failed or rate-limited items to retry.")
+            return
+
+        for index in retryable_indexes:
+            item = self._batch_items[index]
+            item["status"] = "pending"
+            item["previous_error"] = item.pop("error", "")
+            item["retry_provider"] = self._provider_var.get()
+
+        self._batch_index = retryable_indexes[0]
+        self._show_current_batch_item(generate=False)
+        self._autosave_batch_session("retry failed/rate-limited prepared")
+        self._batch_status_var.set(
+            f"Prepared {len(retryable_indexes)} failed/rate-limited item(s) for retry with {self._provider_var.get()}."
+        )
+        self._auto_generate_pending_batch_cards()
 
     def _start_add_all_ready_batch_cards(self) -> None:
         """Start safe step-by-step adding of all ready Batch cards."""
@@ -1447,6 +1557,7 @@ class ModernVocabularyGui:
         ctk.CTkButton(actions, text="Load cards with missing audio", command=self._load_speech_notes).pack(side="left", padx=16, pady=14)
         ctk.CTkButton(actions, text="Select all", command=lambda: [v.set(True) for v in self._speech_note_vars]).pack(side="left", padx=(0, 8), pady=14)
         ctk.CTkButton(actions, text="Generate audio for selected", command=self._generate_audio_for_existing).pack(side="left", padx=(0, 8), pady=14)
+        ctk.CTkButton(actions, text="Preview voice", command=self._preview_tts_voice_sample).pack(side="left", padx=(0, 8), pady=14)
         ctk.CTkLabel(actions, textvariable=self._speech_progress_var).pack(side="right", padx=16, pady=14)
 
         self._speech_scroll = ctk.CTkScrollableFrame(frame, corner_radius=18)
@@ -1757,6 +1868,59 @@ class ModernVocabularyGui:
         else:
             subprocess.Popen(["xdg-open", str(path)])
 
+    def _preview_tts_voice_sample(self) -> None:
+        """Generate and play a short voice sample after explicit user action."""
+        if not self._speech_service or not self._tts_provider_var.get():
+            messagebox.showerror("TTS unavailable", "Configure at least one TTS provider.")
+            return
+
+        sample_by_language = {
+            "English": "This is a short pronunciation sample.",
+            "Spanish": "Esta es una pequeña muestra de pronunciación.",
+            "Polish": "To jest krótka próbka wymowy.",
+        }
+        language = self._language_var.get()
+        sample_text = sample_by_language.get(language, "This is a short pronunciation sample.")
+        provider_name = self._tts_provider_var.get()
+        model_name = self._tts_model_var.get()
+        voice_label = self._tts_voice_var.get()
+        voice_value = self._selected_tts_voice()
+
+        LOGGER.info(
+            "TTS voice preview start: provider=%s model=%s voice_label=%s voice_value=%s language=%s",
+            provider_name,
+            model_name,
+            voice_label,
+            voice_value,
+            language,
+        )
+        self._speech_progress_var.set(f"Previewing voice: {voice_label}...")
+        self._root.update_idletasks()
+        try:
+            result = self._speech_service.generate(
+                provider_name,
+                sample_text,
+                language,
+                model_name,
+                voice_value,
+            )
+        except Exception as exc:
+            LOGGER.exception(
+                "TTS voice preview failed: provider=%s model=%s voice_label=%s voice_value=%s",
+                provider_name,
+                model_name,
+                voice_label,
+                voice_value,
+            )
+            message = self._friendly_tts_error_message(exc)
+            self._speech_progress_var.set(message)
+            messagebox.showerror("TTS preview error", message)
+            return
+
+        self._speech_progress_var.set(f"Voice preview ready: {result.path.name}")
+        self._record_activity(f"♪ Voice preview: {voice_label}")
+        self._open_audio_file(result.path)
+
     def _load_speech_notes(self) -> None:
         try:
             self._set_selected_deck()
@@ -1770,9 +1934,12 @@ class ModernVocabularyGui:
             widget.destroy()
         self._speech_note_vars = []
         for index, note in enumerate(self._speech_notes):
+            note_id = int(note["note_id"])
+            self._speech_audio_status_by_note_id.setdefault(note_id, "pending_audio")
             var = ctk.BooleanVar(value=True)
             self._speech_note_vars.append(var)
-            label = f"{note['word']} — {note['example']}"
+            status = self._speech_audio_status_by_note_id.get(note_id, "pending_audio")
+            label = f"[{status}] {note['word']} — {note['example']}"
             ctk.CTkCheckBox(self._speech_scroll, text=label, variable=var).grid(
                 row=index, column=0, sticky="w", padx=12, pady=6
             )
@@ -1836,10 +2003,23 @@ class ModernVocabularyGui:
         voice_value: str,
     ) -> None:
         completed = 0
+        skipped_done = 0
         errors = 0
         stopped = False
         stop_message = ""
+        failed_index = None
         for index, note in enumerate(notes, start=1):
+            note_id = int(note["note_id"])
+            current_status = self._speech_audio_status_by_note_id.get(note_id, "pending_audio")
+            if current_status in {"audio_ready", "updated_in_anki"}:
+                skipped_done += 1
+                self._root.after(
+                    0, self._speech_progress_var.set,
+                    f"Skipping already generated {index}/{len(notes)} · Added {completed} · Skipped {skipped_done} · Errors {errors}",
+                )
+                continue
+
+            self._speech_audio_status_by_note_id[note_id] = "pending_audio"
             try:
                 result = self._speech_service.generate(
                     provider_name,
@@ -1848,6 +2028,8 @@ class ModernVocabularyGui:
                     model_name,
                     voice_value,
                 )
+                self._speech_audio_status_by_note_id[note_id] = "audio_ready"
+                self._speech_audio_path_by_note_id[note_id] = str(result.path)
                 LOGGER.info(
                     "Existing-card TTS ready: note_id=%s word=%s path=%s cached=%s provider=%s model=%s voice_label=%s voice_value=%s",
                     note.get("note_id"),
@@ -1860,11 +2042,16 @@ class ModernVocabularyGui:
                     voice_value,
                 )
                 media_name = self._anki_client.store_media_file(result.path)
-                self._anki_client.attach_audio_to_note(int(note["note_id"]), media_name)
+                self._anki_client.attach_audio_to_note(note_id, media_name)
+                self._speech_audio_status_by_note_id[note_id] = "updated_in_anki"
                 completed += 1
             except Exception as exc:
                 errors += 1
+                failed_index = index
                 stop_message = self._friendly_tts_error_message(exc)
+                status = "provider_failed" if self._is_fatal_tts_error(exc) else "audio_error"
+                self._speech_audio_status_by_note_id[note_id] = status
+                self._speech_audio_error_by_note_id[note_id] = str(exc)
                 LOGGER.exception(
                     "Existing-card audio generation/update failed: note_id=%s word=%s example=%s fatal=%s error=%s",
                     note.get("note_id"),
@@ -1876,22 +2063,27 @@ class ModernVocabularyGui:
                 if self._is_fatal_tts_error(exc):
                     stopped = True
                     LOGGER.warning(
-                        "Stopping existing-card TTS batch after fatal provider error: provider=%s model=%s voice_label=%s voice_value=%s status=%s",
+                        "Stopping existing-card TTS batch after fatal provider error: provider=%s model=%s voice_label=%s voice_value=%s status=%s failed_index=%s note_id=%s",
                         provider_name,
                         model_name,
                         voice_label,
                         voice_value,
                         self._http_status_from_exception(exc),
+                        index,
+                        note_id,
                     )
                     break
             self._root.after(
                 0, self._speech_progress_var.set,
-                f"Generating {index}/{len(notes)} · Added {completed} · Errors {errors}",
+                f"Generating {index}/{len(notes)} · Added {completed} · Skipped {skipped_done} · Errors {errors}",
             )
         if stopped:
             final_message = (
-                f"Stopped after fatal TTS error. Added {completed}. Errors {errors}. "
-                f"{stop_message} See logs/ai_anki_app.log"
+                f"Stopped after fatal TTS error. Added {completed}. "
+                f"Skipped already done {skipped_done}. Errors {errors}. "
+                f"Failed at item {failed_index}. {stop_message} "
+                "Switch provider and click Generate audio for selected to continue pending/failed only. "
+                "See logs/ai_anki_app.log"
             )
             self._root.after(0, self._speech_progress_var.set, final_message)
             self._root.after(0, self._record_activity, final_message)
