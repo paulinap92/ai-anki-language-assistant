@@ -1186,3 +1186,34 @@ Workflow:
 The update is written to the same Anki note, so review history is preserved. If the target field already contains `[sound:...]`, the app asks for confirmation before replacing it. A local backup is written to `existing_card_backups/` before the update, and the note receives the tag `ai_audio_fixed`.
 
 For old Basic cards without a dedicated `Audio` field, use `Append/replace [sound] in target field` and choose a visible field such as `Back`.
+
+## v8.1.4 prompt quality and validation
+
+The vocabulary prompt now uses `v5-topic-quality-validation`.
+
+Topic/context remains user-defined. You can type any Batch topic, for example:
+
+- `character / personality traits`
+- `Mundo laboral`
+- `Spanish bureaucracy and appointments`
+- `food culture and restaurants`
+
+The app treats the user topic as a hard context constraint in the prompt. Known topic presets only add optional extra hints; they do not replace the user's text and they do not limit the allowed topics.
+
+Generated cards now include provider self-check fields:
+
+- `topic_fit`
+- `topic_warning`
+- `quality_warnings`
+
+The app also runs local validation before adding cards to Anki. It checks for obvious problems such as:
+
+- changed input phrase,
+- wrong target language,
+- wrong explanation language,
+- Cyrillic in Polish/Spanish/English/German/Italian explanation fields,
+- Polish mistakes such as `nostalgja`, `głęboka smutek`, or `область живота`,
+- empty required fields,
+- weak provider topic fit.
+
+Warnings are shown in preview/autosave and require confirmation before adding to Anki. This validation is intentionally lightweight; it is not a full grammar checker.

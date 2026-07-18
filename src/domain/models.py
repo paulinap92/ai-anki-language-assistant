@@ -25,6 +25,18 @@ class VocabularyCard(BaseModel):
     collocations: list[str] = Field(description="Common phrases, collocations, or usage patterns.")
     grammar_note: str = Field(description="Short grammar or usage note in Polish.")
     audio: str = Field(default="", description="Anki sound reference for the example sentence.")
+    topic_fit: str = Field(
+        default="",
+        description="Provider self-check for topic fit: ok, weak, mismatch, or not_applicable.",
+    )
+    topic_warning: str = Field(
+        default="",
+        description="Provider explanation when the example may not fit the user topic/context.",
+    )
+    quality_warnings: list[str] = Field(
+        default_factory=list,
+        description="Provider self-check warnings surfaced before adding to Anki.",
+    )
 
 
 class ConversationStart(BaseModel):

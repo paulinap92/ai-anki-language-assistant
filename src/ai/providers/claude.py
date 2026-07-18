@@ -11,6 +11,7 @@ from src.ai.prompts import (
     build_grammar_analysis_prompt,
     build_vocabulary_prompt,
 )
+from src.quality import validate_vocabulary_card
 from src.domain.models import (
     ConversationFeedback,
     ConversationStart,
@@ -63,6 +64,7 @@ class ClaudeVocabularyClient(VocabularyAiClient):
         word_or_phrase: str,
         target_language: str,
         explanation_language: str = "Polish",
+        topic_context: str = "",
     ) -> VocabularyCard:
         """Generate a vocabulary flashcard with Claude."""
         raw_text = self._generate_text(
@@ -70,9 +72,19 @@ class ClaudeVocabularyClient(VocabularyAiClient):
                 word_or_phrase,
                 target_language,
                 explanation_language,
+                topic_context,
             )
         )
         card = self._parse_card_response(raw_text, self.provider_name)
+        warnings = validate_vocabulary_card(
+            card,
+            expected_input=word_or_phrase,
+            expected_target_language=target_language,
+            expected_explanation_language=explanation_language,
+            topic_context=topic_context,
+        )
+        if warnings:
+            card.quality_warnings = list(dict.fromkeys([*card.quality_warnings, *warnings]))
 
         if (
             card.is_valid

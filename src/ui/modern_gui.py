@@ -29,6 +29,7 @@ from src.anki.templates import MODEL_NAME
 from src.domain.languages import LANGUAGE_TAGS
 from src.domain.models import ConversationFeedback, GrammarAnalysis, VocabularyCard
 from src.practice import PracticeItem, PracticeQuestion, PracticeService
+from src.quality import validate_vocabulary_card
 from src.speech import SpeechService
 from src.speech.models import TtsResult
 from src.speech.voice_presets import get_voice_by_label, get_voice_labels
@@ -971,7 +972,11 @@ class ModernVocabularyGui:
             self._batch_generated_card = updated_card
             self._batch_generated_provider_name = str(item.get("provider_name") or self._provider_var.get())
             self._batch_word_var.set(updated_card.word_or_phrase)
-            warnings = self._quality_warnings_for_card(updated_card)
+            warnings = self._quality_warnings_for_card(
+                updated_card,
+                expected_input=str(item.get("word") or updated_card.word_or_phrase),
+                topic_context=str(item.get("topic") or self._current_batch_topic()),
+            )
             if warnings:
                 item["quality_warnings"] = warnings
             else:
@@ -1291,10 +1296,12 @@ class ModernVocabularyGui:
         item["card"] = self._card_to_batch_payload(card)
         item["provider_name"] = provider_name
         item.pop("error", None)
-        quality_warnings = self._quality_warnings_for_card(card)
-        topic_warnings = self._topic_warnings_for_card(card, topic_context)
-        quality_warnings.extend(topic_warnings)
-        item["topic_status"] = "topic_warning" if topic_warnings else ("topic_ok" if topic_context else "")
+        quality_warnings = self._quality_warnings_for_card(
+            card,
+            expected_input=word,
+            topic_context=topic_context,
+        )
+        item["topic_status"] = card.topic_fit or ("topic_ok" if topic_context and not quality_warnings else "")
         if quality_warnings:
             item["quality_warnings"] = quality_warnings
         else:
@@ -1314,7 +1321,11 @@ class ModernVocabularyGui:
         if self._batch_generated_card is None:
             messagebox.showerror("No card", "Generate and review the current card first.")
             return
-        if not self._confirm_quality_warnings(self._batch_generated_card):
+        if not self._confirm_quality_warnings(
+            self._batch_generated_card,
+            expected_input=str(self._batch_items[self._batch_index].get("word") or self._batch_generated_card.word_or_phrase),
+            topic_context=str(self._batch_items[self._batch_index].get("topic") or self._current_batch_topic()),
+        ):
             self._batch_status_var.set("Add to Anki cancelled because of quality warnings.")
             return
         provider_name = self._batch_generated_provider_name or self._provider_var.get()
@@ -1471,6 +1482,9 @@ class ModernVocabularyGui:
             "suggested_correction": card.suggested_correction,
             "explanation_language": card.explanation_language,
             "audio": card.audio,
+            "topic_fit": card.topic_fit,
+            "topic_warning": card.topic_warning,
+            "quality_warnings": list(card.quality_warnings),
         }
 
     @staticmethod
@@ -1502,96 +1516,62 @@ class ModernVocabularyGui:
         topic = str((item or {}).get("topic") or self._current_batch_topic()).strip()
         return [self._topic_tag_from_value(topic)] if topic else []
 
-    def _topic_warnings_for_card(self, card: VocabularyCard, topic: str) -> list[str]:
-        topic_l = topic.casefold()
-        example_l = card.example.casefold()
-        warnings: list[str] = []
-        if not topic_l:
-            return warnings
-        if any(token in topic_l for token in ("character", "personality", "charakter")):
-            person_markers = [
-                " he ", " she ", " they ", " person ", " people ", " friend ",
-                " colleague ", " mother ", " father ", " sister ", " brother ",
-                " teacher ", " manager ", "someone", " her ", " his ", " their ",
-            ]
-            padded = f" {example_l} "
-            if not any(marker in padded for marker in person_markers):
-                warnings.append(
-                    "Topic warning: example may not clearly describe a person's character/personality."
-                )
-        return warnings
-
-    @staticmethod
-    def _contains_cyrillic(value: str) -> bool:
-        return bool(re.search(r"[\u0400-\u04FF]", value or ""))
-
-    @staticmethod
-    def _looks_like_mixed_polish_translation(value: str) -> bool:
-        lowered = (value or "").casefold()
-        suspicious_tokens = [" el ", " la ", " los ", " las ", " una ", " un ", " de ", " que "]
-        return any(token in f" {lowered} " for token in suspicious_tokens) and any(
-            char in lowered for char in "ąćęłńóśźż"
+    def _quality_warnings_for_card(
+        self,
+        card: VocabularyCard,
+        *,
+        expected_input: str = "",
+        topic_context: str = "",
+    ) -> list[str]:
+        """Return local quality warnings before sending a card to Anki."""
+        return validate_vocabulary_card(
+            card,
+            expected_input=expected_input or card.word_or_phrase,
+            expected_target_language=self._language_var.get().strip(),
+            expected_explanation_language=self._explanation_language_var.get().strip(),
+            topic_context=topic_context,
         )
-
-    def _quality_warnings_for_card(self, card: VocabularyCard) -> list[str]:
-        """Return lightweight warnings before sending a generated card to Anki."""
-        warnings: list[str] = []
-        target_language = self._language_var.get().strip()
-        if card.target_language.strip().casefold() != target_language.casefold():
-            warnings.append(
-                f"Target language mismatch: expected {target_language}, got {card.target_language}."
-            )
-
-        polish_fields = {
-            "translation/explanation": card.translation_pl,
-            "example translation": card.example_pl,
-            "grammar note": card.grammar_note,
-        }
-        if card.explanation_language.strip().casefold() == "polish":
-            for field_name, value in polish_fields.items():
-                if self._contains_cyrillic(value):
-                    warnings.append(f"Cyrillic characters detected in Polish {field_name}.")
-                if self._looks_like_mixed_polish_translation(value):
-                    warnings.append(f"Possible mixed-language text in Polish {field_name}.")
-
-        checks = {
-            "word/phrase": card.word_or_phrase,
-            "translation/explanation": card.translation_pl,
-            "example translation": card.example_pl,
-            "grammar note": card.grammar_note,
-            "definition": card.definition,
-            "example": card.example,
-        }
-        for field_name, value in checks.items():
-            lowered = (value or "").casefold()
-            if "nostalgja" in lowered:
-                warnings.append(f"Possible typo in {field_name}: 'nostalgja' → 'nostalgia'.")
-            if "głęboka smutek" in lowered:
-                warnings.append(f"Possible grammar error in {field_name}: 'głęboka smutek' → 'głęboki smutek'.")
-            if "область живота" in lowered:
-                warnings.append(f"Cyrillic phrase detected in {field_name}: 'область живота'.")
-
-        return warnings
 
     def _quality_warnings_for_batch_indexes(self, indexes: list[int]) -> list[str]:
         warnings: list[str] = []
         for index in indexes:
-            card = self._card_from_batch_payload(self._batch_items[index].get("card"))
+            item = self._batch_items[index]
+            card = self._card_from_batch_payload(item.get("card"))
             if card is None:
                 continue
-            card_warnings = self._quality_warnings_for_card(card)
+            card_warnings = self._quality_warnings_for_card(
+                card,
+                expected_input=str(item.get("word") or card.word_or_phrase),
+                topic_context=str(item.get("topic") or ""),
+            )
             if card_warnings:
                 warnings.append(f"{index + 1}. {card.word_or_phrase}: " + "; ".join(card_warnings[:3]))
         return warnings
 
-    def _confirm_quality_warnings(self, card: VocabularyCard) -> bool:
-        warnings = self._quality_warnings_for_card(card)
+    def _confirm_quality_warnings(
+        self,
+        card: VocabularyCard,
+        *,
+        expected_input: str = "",
+        topic_context: str = "",
+    ) -> bool:
+        warnings = self._quality_warnings_for_card(
+            card,
+            expected_input=expected_input or card.word_or_phrase,
+            topic_context=topic_context,
+        )
         if not warnings:
             return True
+        hard = [warning for warning in warnings if warning.startswith("HARD:")]
+        title = "Hard quality warnings" if hard else "Quality warnings"
+        message = (
+            "This card has hard quality warnings. Add it to Anki anyway?\n\n"
+            if hard
+            else "This card has quality warnings. Add it to Anki anyway?\n\n"
+        )
         return messagebox.askyesno(
-            "Quality warnings",
-            "This card has quality warnings. Add it to Anki anyway?\n\n"
-            + "\n".join(f"• {warning}" for warning in warnings),
+            title,
+            message + "\n".join(f"• {warning}" for warning in warnings),
         )
 
     def _auto_generate_pending_batch_cards(self) -> None:
@@ -3329,6 +3309,10 @@ class ModernVocabularyGui:
         synonyms = ", ".join(card.synonyms) if card.synonyms else "—"
         collocations = "\n".join(f"  • {item}" for item in card.collocations) if card.collocations else "—"
         audio_line = str(audio_status or card.audio or "not generated")
+        warnings = "\n".join(f"  • {item}" for item in card.quality_warnings) if card.quality_warnings else "—"
+        topic = card.topic_fit or "—"
+        if card.topic_warning:
+            topic += f" · {card.topic_warning}"
         return (
             "╭────────────────────────────────────────╮\n"
             f"  {card.word_or_phrase}\n"
@@ -3341,6 +3325,8 @@ class ModernVocabularyGui:
             f"SYNONYMS / ALTERNATIVES\n{synonyms}\n\n"
             f"COLLOCATIONS / USAGE\n{collocations}\n\n"
             f"GRAMMAR NOTE\n{card.grammar_note or '—'}\n\n"
+            f"TOPIC FIT\n{topic}\n\n"
+            f"QUALITY WARNINGS\n{warnings}\n\n"
             f"AUDIO\n{audio_line}"
         )
 

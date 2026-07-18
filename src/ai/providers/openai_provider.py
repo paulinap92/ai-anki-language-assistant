@@ -4,6 +4,7 @@ from openai import OpenAI
 
 from src.ai.base import VocabularyAiClient
 from src.domain.models import ConversationFeedback, ConversationStart, GrammarAnalysis, VocabularyCard
+from src.quality import validate_vocabulary_card
 from src.ai.prompts import (
     build_conversation_feedback_prompt,
     build_conversation_start_prompt,
@@ -45,6 +46,15 @@ class OpenAiVocabularyClient(VocabularyAiClient):
             build_vocabulary_prompt(word_or_phrase, target_language, explanation_language, topic_context)
         )
         card = self._parse_card_response(raw_text, self.provider_name)
+        warnings = validate_vocabulary_card(
+            card,
+            expected_input=word_or_phrase,
+            expected_target_language=target_language,
+            expected_explanation_language=explanation_language,
+            topic_context=topic_context,
+        )
+        if warnings:
+            card.quality_warnings = list(dict.fromkeys([*card.quality_warnings, *warnings]))
         if card.is_valid and card.word_or_phrase.strip().casefold() != word_or_phrase.strip().casefold():
             raise ValueError(
                 f"{self.provider_name} returned a different word or phrase: "
