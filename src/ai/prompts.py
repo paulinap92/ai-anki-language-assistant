@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 
-VOCABULARY_PROMPT_VERSION = "v5-topic-quality-validation"
+VOCABULARY_PROMPT_VERSION = "v7-natural-target-usage"
 EXPLANATION_LANGUAGES = ["Polish", "English", "Spanish", "German", "Italian", "No translation"]
 
 
@@ -131,7 +131,9 @@ Internal process:
 4. Identify the phrase-level meaning, natural collocations, grammar patterns, and normal usage.
 5. Apply the user topic/context if provided.
 6. Generate a simple, natural example that demonstrates the selected meaning.
-7. Run a final quality self-check for spelling, language mixing, topic fit, naturalness, collocations, and JSON validity.
+7. Verify that the example uses the target item itself, not a synonym or visually similar word.
+8. Verify that the collocation and translation sound natural, not merely grammatically possible.
+9. Run a final quality self-check for spelling, language mixing, topic fit, naturalness, collocations, and JSON validity.
 
 Validation rules:
 - If the input is misspelled, malformed, invented, or not a valid expression, set is_valid to false.
@@ -158,8 +160,15 @@ Definition and explanation rules:
 
 Example rules:
 {topic_rules}- Select context from the meaning and common usage of the expression.
+- The example sentence MUST use the target word/phrase itself or a correct inflected/conjugated form.
+- Do not replace the target with a synonym, near-synonym, correction, or visually similar word.
+- Do not use a different word just because it is semantically close.
+- Do not use a misspelled or visually similar form of the target.
+- For verbs in any language, use a real inflected/conjugated form of the target verb.
+- For reflexive/pronominal verbs, use a correct reflexive/pronominal form when appropriate.
 - Prefer common, realistic usage over creative or unusual examples.
 - Reject sentences that are grammatical but pragmatically unnatural.
+- The target should be used in a natural collocation. Avoid awkward literal combinations such as using "come across" with weather, "wear down" with abstract doubts, or "flow" with an object that does not naturally have a flow.
 - The sentence must sound natural to a native speaker and clearly demonstrate the meaning.
 
 Synonym and collocation rules:
@@ -173,7 +182,14 @@ Quality self-check rules:
 - Set topic_fit to one of: "ok", "weak", "mismatch", "not_applicable".
 - If no user topic/context was provided, use topic_fit "not_applicable" and topic_warning "".
 - If the topic fit is weak or mismatch, explain briefly in topic_warning.
-- Add a warning for any suspected language mixing, spelling issue, unnatural example, weak topic fit, empty required field, or uncertain translation.
+- Set example_uses_target to true only if the example contains the target item itself or a correct inflected/conjugated form.
+- Put the exact target form used in the example into used_form_in_example.
+- Set collocation_naturalness to one of: "ok", "weak", "bad".
+- Set translation_naturalness to one of: "ok", "weak", "bad".
+- Add a warning for any suspected language mixing, spelling issue, unnatural example, weak topic fit, empty required field, uncertain translation, or example that does not use the target item.
+- If the example uses a synonym or a visually similar but different word instead of the target item, mark it as a serious warning.
+- If the example technically uses the target but the collocation is strange, mark collocation_naturalness as "weak" or "bad" and explain in quality_warnings.
+- If the translation is literal, awkward, or unnatural in the explanation language, mark translation_naturalness as "weak" or "bad" and explain in quality_warnings.
 - Do not hide problems. If unsure, add a warning rather than pretending the card is perfect.
 
 Return ONLY valid JSON. Do not use markdown. Do not include comments outside JSON.
@@ -197,7 +213,11 @@ Return this exact JSON structure:
   "grammar_note": "string",
   "topic_fit": "ok",
   "topic_warning": "",
-  "quality_warnings": []
+  "quality_warnings": [],
+  "used_form_in_example": "string",
+  "example_uses_target": true,
+  "collocation_naturalness": "ok",
+  "translation_naturalness": "ok"
 }}
 """
 

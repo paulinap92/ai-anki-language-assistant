@@ -11,7 +11,7 @@ from src.ai.prompts import (
     build_grammar_analysis_prompt,
     build_vocabulary_prompt,
 )
-from src.quality import validate_vocabulary_card
+from src.quality import normalize_lexical_value, validate_vocabulary_card
 from src.domain.models import (
     ConversationFeedback,
     ConversationStart,
@@ -88,8 +88,8 @@ class ClaudeVocabularyClient(VocabularyAiClient):
 
         if (
             card.is_valid
-            and card.word_or_phrase.strip().casefold()
-            != word_or_phrase.strip().casefold()
+            and normalize_lexical_value(card.word_or_phrase)
+            != normalize_lexical_value(word_or_phrase)
         ):
             raise ValueError(
                 f"{self.provider_name} returned a different word or phrase: "

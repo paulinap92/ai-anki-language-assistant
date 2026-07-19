@@ -688,6 +688,25 @@ class ModernVocabularyGui:
             command=self._stop_batch_process,
         ).grid(row=0, column=4, sticky="ew", padx=(4, 0))
 
+        issue_buttons = ctk.CTkFrame(right, fg_color="transparent")
+        issue_buttons.grid(row=7, column=0, sticky="ew", padx=18, pady=(0, 18))
+        issue_buttons.grid_columnconfigure((0, 1, 2), weight=1)
+        ctk.CTkButton(
+            issue_buttons,
+            text="Go to first blocked",
+            command=self._go_to_first_blocked_batch_item,
+        ).grid(row=0, column=0, sticky="ew", padx=(0, 5))
+        ctk.CTkButton(
+            issue_buttons,
+            text="Next blocked / failed",
+            command=self._go_to_next_batch_issue,
+        ).grid(row=0, column=1, sticky="ew", padx=5)
+        ctk.CTkButton(
+            issue_buttons,
+            text="Show issue summary",
+            command=self._show_batch_issue_summary,
+        ).grid(row=0, column=2, sticky="ew", padx=(5, 0))
+
     def _build_practice_tab(self, parent: ctk.CTkFrame) -> None:
         """Build interactive practice and printable test controls."""
         layout = ctk.CTkFrame(parent, fg_color="transparent")
@@ -885,7 +904,7 @@ class ModernVocabularyGui:
             preview += f"\n{error}"
         topic = str(item.get("topic") or self._batch_topic_var.get()).strip()
         if topic:
-            preview += f"\n\nTOPIC / DZIAŁ\n{topic}"
+            preview += f"\n\nTOPIC / CONTEXT\n{topic}"
         topic_status = str(item.get("topic_status", "")).strip()
         if topic_status:
             preview += f"\nTopic status: {topic_status}"
@@ -1013,6 +1032,7 @@ class ModernVocabularyGui:
                 "duplicate_found",
                 "duplicate_uncertain",
                 "duplicate_skipped",
+                "blocked_quality_warning",
             )
         }
         for item in self._batch_items:
@@ -1025,7 +1045,7 @@ class ModernVocabularyGui:
         self._batch_progress_var.set(
             f"{current}/{total} · Added {added_total} · Updated {counts.get('updated_in_anki', 0)} · "
             f"Duplicates {duplicate_total} · Skipped {counts.get('skipped', 0)} · Invalid {counts.get('invalid', 0)} · "
-            f"Failed {counts.get('error', 0) + counts.get('provider_failed', 0) + counts.get('add_failed', 0)} · "
+            f"Failed {counts.get('error', 0) + counts.get('provider_failed', 0) + counts.get('add_failed', 0) + counts.get('blocked_quality_warning', 0)} · "
             f"Rate limited {counts.get('rate_limited', 0)} · Remaining {remaining}"
         )
 
@@ -1394,6 +1414,87 @@ class ModernVocabularyGui:
             self._batch_index -= 1
             self._show_current_batch_item(generate=False)
 
+    def _batch_issue_indexes(self) -> list[int]:
+        """Return indexes that need user attention in the current Batch queue."""
+        issue_statuses = {
+            "blocked_quality_warning",
+            "invalid",
+            "error",
+            "provider_failed",
+            "add_failed",
+            "rate_limited",
+            "duplicate_uncertain",
+        }
+        indexes: list[int] = []
+        for index, item in enumerate(self._batch_items):
+            status = str(item.get("status", "pending"))
+            warnings = item.get("quality_warnings")
+            has_hard_warning = isinstance(warnings, list) and any(
+                str(warning).startswith("HARD:") for warning in warnings
+            )
+            if status in issue_statuses or has_hard_warning:
+                indexes.append(index)
+        return indexes
+
+    def _go_to_batch_index(self, index: int, *, reason: str = "") -> None:
+        """Safely navigate to a Batch item and show it in the preview."""
+        if not self._batch_items:
+            self._batch_status_var.set("No batch loaded.")
+            return
+        self._batch_index = max(0, min(index, len(self._batch_items) - 1))
+        self._show_current_batch_item(generate=False)
+        if reason:
+            self._batch_status_var.set(reason)
+            self._status_var.set(reason)
+
+    def _go_to_first_blocked_batch_item(self) -> None:
+        """Jump to the first blocked/invalid Batch item."""
+        indexes = self._batch_issue_indexes()
+        if not indexes:
+            message = "No blocked, failed, invalid, rate-limited, or uncertain duplicate cards in this Batch."
+            self._batch_status_var.set(message)
+            self._status_var.set(message)
+            return
+        index = indexes[0]
+        self._go_to_batch_index(index, reason=f"Showing issue {index + 1}/{len(self._batch_items)}. Use Edit card or Regenerate, then Add all ready again.")
+
+    def _go_to_next_batch_issue(self) -> None:
+        """Jump to the next blocked/failed/invalid Batch item after the current one."""
+        indexes = self._batch_issue_indexes()
+        if not indexes:
+            message = "No blocked, failed, invalid, rate-limited, or uncertain duplicate cards in this Batch."
+            self._batch_status_var.set(message)
+            self._status_var.set(message)
+            return
+        later = [index for index in indexes if index > self._batch_index]
+        index = later[0] if later else indexes[0]
+        self._go_to_batch_index(index, reason=f"Showing issue {index + 1}/{len(self._batch_items)}. Use Edit card or Regenerate, then Add all ready again.")
+
+    def _show_batch_issue_summary(self) -> None:
+        """Show a concise, navigable issue summary for the current Batch."""
+        details = self._batch_issue_details({
+            "blocked_quality_warning",
+            "invalid",
+            "error",
+            "provider_failed",
+            "add_failed",
+            "rate_limited",
+            "duplicate_uncertain",
+        })
+        if not details:
+            message = "No blocked, failed, invalid, rate-limited, or uncertain duplicate cards in this Batch."
+            self._batch_status_var.set(message)
+            self._status_var.set(message)
+            messagebox.showinfo("Batch issues", message)
+            return
+        body = "\n".join(details[:25])
+        if len(details) > 25:
+            body += f"\n... and {len(details) - 25} more."
+        messagebox.showinfo(
+            "Batch issues",
+            "These cards need attention. Use 'Go to first blocked' or 'Next blocked / failed' to open them.\n\n" + body,
+        )
+
     def _batch_next(self) -> None:
         if self._batch_items and self._batch_index < len(self._batch_items) - 1:
             self._batch_index += 1
@@ -1485,6 +1586,10 @@ class ModernVocabularyGui:
             "topic_fit": card.topic_fit,
             "topic_warning": card.topic_warning,
             "quality_warnings": list(card.quality_warnings),
+            "used_form_in_example": card.used_form_in_example,
+            "example_uses_target": card.example_uses_target,
+            "collocation_naturalness": card.collocation_naturalness,
+            "translation_naturalness": card.translation_naturalness,
         }
 
     @staticmethod
@@ -1548,6 +1653,32 @@ class ModernVocabularyGui:
                 warnings.append(f"{index + 1}. {card.word_or_phrase}: " + "; ".join(card_warnings[:3]))
         return warnings
 
+    def _block_hard_quality_warnings_for_batch_indexes(self, indexes: list[int]) -> int:
+        """Mark ready Batch cards with hard warnings as blocked before Anki writes."""
+        blocked = 0
+        for index in indexes:
+            item = self._batch_items[index]
+            card = self._card_from_batch_payload(item.get("card"))
+            if card is None:
+                continue
+            card_warnings = self._quality_warnings_for_card(
+                card,
+                expected_input=str(item.get("word") or card.word_or_phrase),
+                topic_context=str(item.get("topic") or ""),
+            )
+            hard = [warning for warning in card_warnings if warning.startswith("HARD:")]
+            if not hard:
+                continue
+            item["status"] = "blocked_quality_warning"
+            item["quality_warnings"] = card_warnings
+            item["error"] = "Blocked before Anki write because of hard quality warning(s): " + "; ".join(hard[:3])
+            blocked += 1
+        if blocked:
+            self._autosave_batch_session("blocked hard quality warnings")
+            self._update_batch_progress()
+            self._show_current_batch_item(generate=False)
+        return blocked
+
     def _confirm_quality_warnings(
         self,
         card: VocabularyCard,
@@ -1563,15 +1694,17 @@ class ModernVocabularyGui:
         if not warnings:
             return True
         hard = [warning for warning in warnings if warning.startswith("HARD:")]
-        title = "Hard quality warnings" if hard else "Quality warnings"
-        message = (
-            "This card has hard quality warnings. Add it to Anki anyway?\n\n"
-            if hard
-            else "This card has quality warnings. Add it to Anki anyway?\n\n"
-        )
+        if hard:
+            messagebox.showerror(
+                "Hard quality warnings",
+                "This card is blocked and was not added to Anki. Edit the card first.\n\n"
+                + "\n".join(f"• {warning}" for warning in hard),
+            )
+            return False
         return messagebox.askyesno(
-            title,
-            message + "\n".join(f"• {warning}" for warning in warnings),
+            "Quality warnings",
+            "This card has quality warnings. Add it to Anki anyway?\n\n"
+            + "\n".join(f"• {warning}" for warning in warnings),
         )
 
     def _auto_generate_pending_batch_cards(self) -> None:
@@ -1584,17 +1717,19 @@ class ModernVocabularyGui:
             return
 
         resume = self._batch_auto_generate_paused
-        if not resume:
-            precheck_result = self._mark_pending_duplicates_before_auto_generation()
-            if precheck_result < 0:
-                self._autosave_batch_session("auto-generation cancelled: duplicate precheck failed")
-                return
-            if not any(str(item.get("status", "pending")) == "pending" and not item.get("card") for item in self._batch_items):
-                message = "Auto-generation skipped: all pending items already exist in Anki or are not ready for generation."
-                self._batch_status_var.set(message)
-                self._status_var.set(message)
-                self._autosave_batch_session("auto-generation skipped duplicates")
-                return
+        # Always precheck remaining pending items before Auto Batch calls a provider.
+        # This also covers paused/resumed sessions and old autosaves created before
+        # duplicate precheck metadata existed.
+        precheck_result = self._mark_pending_duplicates_before_auto_generation()
+        if precheck_result < 0:
+            self._autosave_batch_session("auto-generation cancelled: duplicate precheck failed")
+            return
+        if not any(str(item.get("status", "pending")) == "pending" and not item.get("card") for item in self._batch_items):
+            message = "Auto-generation skipped: all pending items already exist in Anki or are not ready for generation."
+            self._batch_status_var.set(message)
+            self._status_var.set(message)
+            self._autosave_batch_session("auto-generation skipped duplicates")
+            return
 
         self._batch_auto_generate_running = True
         self._batch_auto_generate_paused = False
@@ -1841,18 +1976,65 @@ class ModernVocabularyGui:
             return prefix + "Could not reach AnkiConnect. Open Anki and make sure AnkiConnect is running."
         return prefix + f"Anki update failed: {raw}"
 
+    def _batch_global_counts(self) -> dict[str, int]:
+        counts: dict[str, int] = {}
+        for item in self._batch_items:
+            status = str(item.get("status", "pending"))
+            counts[status] = counts.get(status, 0) + 1
+        return counts
+
+    def _batch_issue_details(self, statuses: set[str], limit: int = 6) -> list[str]:
+        details: list[str] = []
+        for item in self._batch_items:
+            status = str(item.get("status", "pending"))
+            if status not in statuses:
+                continue
+            word = str(item.get("word") or "—")
+            reason = str(item.get("error") or item.get("previous_error") or "")
+            if not reason and item.get("quality_warnings"):
+                warnings = item.get("quality_warnings")
+                if isinstance(warnings, list):
+                    reason = "; ".join(str(w) for w in warnings[:2])
+            details.append(f"{word}: {reason or status}")
+            if len(details) >= limit:
+                break
+        return details
+
     def _format_add_all_summary(self, label: str) -> str:
-        counts = self._batch_add_all_counts
-        message = (
-            f"{label}: {counts['added']} added, {counts['updated']} updated, "
-            f"{counts['duplicates']} duplicates skipped, {counts.get('uncertain', 0)} uncertain, "
-            f"{counts['failed']} failed."
+        step = self._batch_add_all_counts
+        counts = self._batch_global_counts()
+        total = len(self._batch_items)
+        added = counts.get("added", 0) + counts.get("added_to_anki", 0)
+        updated = counts.get("updated_in_anki", 0)
+        duplicates = (
+            counts.get("duplicate", 0)
+            + counts.get("duplicate_found", 0)
+            + counts.get("duplicate_uncertain", 0)
+            + counts.get("duplicate_skipped", 0)
         )
-        if self._batch_add_all_failed_details:
-            details = "; ".join(self._batch_add_all_failed_details[:4])
-            if len(self._batch_add_all_failed_details) > 4:
-                details += f"; +{len(self._batch_add_all_failed_details) - 4} more"
-            message += f" Failed details: {details}."
+        invalid = counts.get("invalid", 0) + counts.get("blocked_quality_warning", 0)
+        failed = counts.get("error", 0) + counts.get("provider_failed", 0) + counts.get("add_failed", 0)
+        rate_limited = counts.get("rate_limited", 0)
+        remaining = counts.get("pending", 0) + counts.get("ready", 0) + rate_limited
+        message = (
+            f"{label}. Batch summary: {total} total · {added} added · {updated} updated · "
+            f"{duplicates} duplicates skipped/reviewed · {invalid} invalid/blocked · "
+            f"{failed} failed · {rate_limited} rate limited · {remaining} remaining. "
+            f"Add step: {step['added']} added, {step['updated']} updated, "
+            f"{step['duplicates']} duplicates skipped, {step.get('uncertain', 0)} uncertain, {step['failed']} failed."
+        )
+        failed_details = self._batch_add_all_failed_details or self._batch_issue_details({"error", "provider_failed", "add_failed"})
+        invalid_details = self._batch_issue_details({"invalid", "blocked_quality_warning"})
+        if failed_details:
+            message += " Failed details: " + "; ".join(failed_details[:4])
+            if len(failed_details) > 4:
+                message += f"; +{len(failed_details) - 4} more"
+            message += "."
+        if invalid_details:
+            message += " Invalid/blocked details: " + "; ".join(invalid_details[:4])
+            if len(invalid_details) > 4:
+                message += f"; +{len(invalid_details) - 4} more"
+            message += "."
         if self._batch_autosave_path:
             message += f" Autosave: {self._batch_autosave_path}"
         return message
@@ -1872,7 +2054,7 @@ class ModernVocabularyGui:
             return 0
         try:
             self._set_selected_deck()
-            existing_map = self._anki_client.existing_note_map_broad()
+            existing_map = self._anki_client.existing_note_map_broad(include_all_decks=True)
         except Exception as exc:
             LOGGER.exception("Duplicate precheck before Auto Batch failed")
             message = (
@@ -1891,6 +2073,8 @@ class ModernVocabularyGui:
             if not word:
                 continue
             existing = existing_map.get(self._normalise_anki_value(word))
+            item["duplicate_prechecked"] = True
+            item["duplicate_precheck_scope"] = "all_decks"
             if not existing:
                 continue
             model = str(existing.get("model") or "unknown model")
@@ -1900,7 +2084,7 @@ class ModernVocabularyGui:
             item["duplicate_note_id"] = existing.get("note_id")
             item["duplicate_model"] = model
             item["error"] = (
-                f"Skipped before generation: '{word}' already exists in Anki "
+                f"Skipped before generation: '{word}' already exists in the Anki collection "
                 f"({model}, matches: {duplicate_count}). No AI provider API was used."
             )
             marked += 1
@@ -1908,7 +2092,7 @@ class ModernVocabularyGui:
             self._autosave_batch_session("auto-generation duplicate precheck")
             self._update_batch_progress()
             self._show_current_batch_item(generate=False)
-            message = f"Duplicate precheck: {marked} pending item(s) already exist in Anki and were skipped before API calls."
+            message = f"Duplicate precheck: {marked} pending item(s) already exist in the Anki collection and were skipped before API calls."
             self._batch_status_var.set(message)
             self._status_var.set(message)
             self._record_activity(message)
@@ -1940,16 +2124,27 @@ class ModernVocabularyGui:
             self._status_var.set(self._batch_status_var.get())
             return
 
-        warnings = self._quality_warnings_for_batch_indexes(indexes)
-        if warnings:
-            confirmed = messagebox.askyesno(
-                "Quality warnings",
-                "Some ready cards have quality warnings. Continue adding them to Anki?\n\n"
-                + "\n".join(warnings[:12])
-                + ("\n..." if len(warnings) > 12 else ""),
+        # HARD quality warnings block only the affected cards, not the whole
+        # Add all operation. Valid ready cards must still be added.
+        blocked = self._block_hard_quality_warnings_for_batch_indexes(indexes)
+        if blocked:
+            indexes = [
+                index for index in indexes
+                if str(self._batch_items[index].get("status")) == "ready"
+                and self._card_from_batch_payload(self._batch_items[index].get("card")) is not None
+            ]
+            message = (
+                f"Add all ready: {blocked} card(s) blocked by HARD quality warnings. "
+                "Valid ready cards will still be added. Use Go to first blocked to fix blocked cards."
             )
-            if not confirmed:
-                self._batch_status_var.set("Add all ready cancelled because of quality warnings.")
+            self._batch_status_var.set(message)
+            self._status_var.set(message)
+            self._record_activity(message)
+            if not indexes:
+                messagebox.showwarning(
+                    "No valid ready cards",
+                    message + "\n\nNo valid ready cards remain to add. Use Go to first blocked, Edit card, or Regenerate.",
+                )
                 return
 
         try:
@@ -1957,7 +2152,7 @@ class ModernVocabularyGui:
             self._batch_status_var.set("Checking duplicates before adding to Anki...")
             self._status_var.set(self._batch_status_var.get())
             self._root.update_idletasks()
-            self._batch_add_all_existing_notes = self._anki_client.existing_note_map_broad()
+            self._batch_add_all_existing_notes = self._anki_client.existing_note_map_broad(include_all_decks=True)
         except Exception as exc:
             LOGGER.exception("Could not prepare Add all ready")
             messagebox.showerror("Anki error", str(exc))
@@ -1979,7 +2174,7 @@ class ModernVocabularyGui:
                     if existing:
                         model = str(existing.get("model") or "")
                         self._batch_items[index]["status"] = "duplicate_found" if model == MODEL_NAME else "duplicate_uncertain"
-                        self._batch_items[index]["error"] = f"Duplicate exists in Anki model: {model or 'unknown model'}. Review before adding."
+                        self._batch_items[index]["error"] = f"Duplicate exists in the Anki collection model: {model or 'unknown model'}. Review before adding."
                 self._autosave_batch_session("duplicate review prepared")
                 self._update_batch_progress()
                 self._show_current_batch_item(generate=False)
@@ -2024,6 +2219,7 @@ class ModernVocabularyGui:
             self._batch_add_all_running = False
             self._update_batch_progress()
             self._show_current_batch_item(generate=False)
+            self._batch_word_var.set("Batch completed")
             self._autosave_batch_session("add all ready finished")
             message = self._format_add_all_summary("Add all ready finished")
             self._batch_status_var.set(message)
@@ -2043,6 +2239,22 @@ class ModernVocabularyGui:
             item["error"] = "Stored card payload could not be rebuilt."
             self._batch_add_all_counts["failed"] += 1
             self._autosave_batch_session("add all invalid payload")
+            self._root.after(100, self._add_next_ready_batch_card)
+            return
+
+        card_warnings = self._quality_warnings_for_card(
+            card,
+            expected_input=str(item.get("word") or card.word_or_phrase),
+            topic_context=str(item.get("topic") or ""),
+        )
+        hard_warnings = [warning for warning in card_warnings if warning.startswith("HARD:")]
+        if hard_warnings:
+            item["status"] = "blocked_quality_warning"
+            item["quality_warnings"] = card_warnings
+            item["error"] = "Blocked before Anki write because of hard quality warning(s): " + "; ".join(hard_warnings[:3])
+            self._batch_add_all_counts["failed"] += 1
+            self._batch_add_all_failed_details.append(f"{card.word_or_phrase}: hard quality warning")
+            self._autosave_batch_session("add all blocked hard quality warning")
             self._root.after(100, self._add_next_ready_batch_card)
             return
 
@@ -3160,6 +3372,7 @@ class ModernVocabularyGui:
         self._stop_audio_button = ctk.CTkButton(actions, text="Stop audio", command=self._stop_existing_audio_batch, state="disabled")
         self._stop_audio_button.pack(side="left", padx=(0, 8), pady=14)
         ctk.CTkButton(actions, text="Preview voice", command=self._preview_tts_voice_sample).pack(side="left", padx=(0, 8), pady=14)
+        ctk.CTkButton(actions, text="Test TTS provider", command=self._test_tts_provider).pack(side="left", padx=(0, 8), pady=14)
         ctk.CTkLabel(actions, textvariable=self._speech_progress_var).pack(side="right", padx=16, pady=14)
 
         self._speech_scroll = ctk.CTkScrollableFrame(frame, corner_radius=18)
@@ -3309,7 +3522,13 @@ class ModernVocabularyGui:
         synonyms = ", ".join(card.synonyms) if card.synonyms else "—"
         collocations = "\n".join(f"  • {item}" for item in card.collocations) if card.collocations else "—"
         audio_line = str(audio_status or card.audio or "not generated")
-        warnings = "\n".join(f"  • {item}" for item in card.quality_warnings) if card.quality_warnings else "—"
+        display_warnings = [
+            str(item)
+            for item in card.quality_warnings
+            if "spanish-looking characters detected in polish" not in str(item).casefold()
+            and "possible mixed-language text in polish grammar note" not in str(item).casefold()
+        ]
+        warnings = "\n".join(f"  • {item}" for item in display_warnings) if display_warnings else "—"
         topic = card.topic_fit or "—"
         if card.topic_warning:
             topic += f" · {card.topic_warning}"
@@ -3450,6 +3669,49 @@ class ModernVocabularyGui:
             return get_voice_by_label(provider_name, selected)
         except ValueError:
             return selected
+
+    def _test_tts_provider(self, *, preflight: bool = False) -> bool:
+        """Run a tiny shared TTS diagnostic before preview/batch work."""
+        if not self._speech_service or not self._tts_provider_var.get():
+            message = "TTS diagnostics failed: no TTS provider is configured."
+            self._speech_progress_var.set(message)
+            if not preflight:
+                messagebox.showerror("TTS unavailable", message)
+            return False
+
+        provider_name = self._tts_provider_var.get()
+        model_name = self._tts_model_var.get()
+        voice_label = self._tts_voice_var.get()
+        voice_value = self._selected_tts_voice()
+        self._speech_progress_var.set("Testing TTS provider...")
+        self._root.update_idletasks()
+        diagnostic = self._speech_service.diagnose_provider(
+            provider_name,
+            self._language_var.get(),
+            model_name,
+            voice_value,
+        )
+
+        message = ("TTS diagnostics OK: " if diagnostic.ok else "TTS diagnostics failed: ") + diagnostic.to_message()
+        if not diagnostic.ok:
+            status = self._http_status_label(self._http_status_from_exception(Exception(diagnostic.error_message)))
+            friendly = self._friendly_tts_error_message(Exception(diagnostic.error_message))
+            if status:
+                message += f" · HTTP: {status}"
+            if friendly and friendly not in message:
+                message += f" · {friendly}"
+            if diagnostic.provider_name == "ElevenLabs":
+                message += " · Action: check ELEVENLABS_API_KEY, verify the selected voice/model, or switch provider."
+            self._speech_progress_var.set(message)
+            if not preflight:
+                self._record_activity(message)
+                messagebox.showerror("TTS diagnostics", message)
+            return False
+
+        self._speech_progress_var.set(message)
+        if not preflight:
+            self._record_activity(message)
+        return True
 
     def _generate_single_audio(self) -> None:
         if self._generated_card is None:
@@ -3842,6 +4104,11 @@ class ModernVocabularyGui:
         model_name = self._tts_model_var.get()
         voice_label = self._tts_voice_var.get()
         voice_value = self._selected_tts_voice()
+        if not self._test_tts_provider(preflight=True):
+            message = "Audio batch not started because TTS provider diagnostics failed. Fix the provider/key/voice or switch provider."
+            self._speech_progress_var.set(message)
+            self._record_activity(message)
+            return
         self._speech_audio_stop_requested.clear()
         self._speech_audio_pause_requested.clear()
         self._speech_audio_running = True
@@ -3922,8 +4189,10 @@ class ModernVocabularyGui:
         errors = 0
 
         def publish_progress(message: str) -> None:
+            # Keep rapid audio progress inside Speech / Audio. The global activity
+            # footer is reserved for final summaries so Batch and Audio logs do not
+            # blur into one unreadable line.
             self._root.after(0, self._render_speech_notes, message)
-            self._root.after(0, self._record_activity, message)
 
         stopped = False
         stop_message = ""
@@ -4086,8 +4355,9 @@ class ModernVocabularyGui:
                     )
                 else:
                     final_message = (
-                        f"Audio stopped: {provider_name} {stop_status} at item {failed_index}. "
-                        f"Progress saved. {stop_message}"
+                        f"Audio stopped. Provider: {provider_name}. Error: {stop_status or 'provider error'}. "
+                        f"Stopped at: {failed_index}/{len(notes)}. Updated: {completed}. Failed: {errors}. "
+                        f"Skipped: {skipped_done}. Progress saved. {stop_message}"
                     )
                 self._root.after(0, self._render_speech_notes, final_message)
                 self._root.after(0, self._record_activity, final_message)

@@ -1217,3 +1217,34 @@ The app also runs local validation before adding cards to Anki. It checks for ob
 - weak provider topic fit.
 
 Warnings are shown in preview/autosave and require confirmation before adding to Anki. This validation is intentionally lightweight; it is not a full grammar checker.
+
+
+### v8.1.4.2 — Quality validator sanity
+
+- Polish diacritics no longer trigger false Spanish-looking warnings.
+- English grammar examples such as `a`, `the`, `on`, `for` in Polish grammar notes no longer trigger noisy mixed-language warnings.
+- Hard quality warnings, such as Cyrillic in Polish fields, now block Anki writes until edited.
+- Exact-input validation ignores outer quote marks around phrases such as `"Nevertheless…"`.
+
+## v8.1.4.3 notes
+
+This hotfix focuses on sanity checks discovered during real Anki use:
+
+- Vocabulary examples must use the target word/phrase itself or a valid inflected/conjugated form. Spanish verbs such as `derrumbar(se)`, `enfurecer(se)` and `encolerizarse` are locally checked so examples do not silently use a synonym or a visually similar wrong verb.
+- Batch final summary now reports the whole queue: added, updated, duplicates, invalid/blocked, failed, rate-limited and remaining items.
+- Speech / Audio now has `Test TTS provider`. Audio batch runs a small preflight first and does not start when provider diagnostics fail, for example ElevenLabs `401 Unauthorized` or missing API key.
+
+## v8.1.5 TTS and prompt-quality cleanup
+
+Before adding OCR, the app now has a safer TTS preflight and a stronger vocabulary quality layer.
+
+### TTS diagnostics
+
+Use **Speech / Audio → Test TTS provider** before long audio batches. The diagnostic checks the selected provider, key/auth status, model, voice, and a short sample generation. If diagnostics fail, audio batch will not start. This is especially important for ElevenLabs, which is optional/premium and can fail because of API key, voice/model access, billing, or quota.
+
+### Prompt and validation
+
+The vocabulary prompt is now `v7-natural-target-usage`. Generated examples must use the target item itself or a valid inflected/conjugated form, not a synonym or visually similar typo. The app also surfaces self-check fields for target usage, collocation naturalness, and translation naturalness.
+
+The local validator is language-neutral: it no longer has a special Spanish-only branch. It checks lexical anchors for all languages and warns when the example does not appear to teach the requested item. It also catches known awkward cases from real tests, such as `come across rain`, `mesmerizing flow of the smoothie`, and `wear down doubts`.
+

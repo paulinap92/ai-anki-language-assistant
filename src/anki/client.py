@@ -264,17 +264,24 @@ class AnkiClient:
         broad = self.existing_note_map_broad(model_query=MODEL_NAME)
         return {word: int(summary["note_id"]) for word, summary in broad.items()}
 
-    def existing_note_map_broad(self, model_query: str = "") -> dict[str, dict[str, Any]]:
-        """Return existing deck notes indexed by normalized word/phrase.
+    def existing_note_map_broad(
+        self,
+        model_query: str = "",
+        *,
+        include_all_decks: bool = False,
+    ) -> dict[str, dict[str, Any]]:
+        """Return existing notes indexed by normalized word/phrase.
 
-        Unlike ``existing_vocabulary_note_map()``, this scans all note types in
-        the selected deck by default. It is used for Batch duplicate precheck so
-        legacy Basic cards are not silently duplicated. When multiple notes share
-        the same normalized word, the first one is kept and marked with
-        ``duplicate_count``.
+        By default this scans all note types in the selected deck. For duplicate
+        prechecks before provider API calls, pass ``include_all_decks=True`` so
+        cards already present in another deck are detected before Gemini/OpenAI/
+        Claude is called. This mirrors Anki's duplicate behaviour more closely
+        and prevents API quota waste when the same word exists elsewhere.
         """
-        deck = self._escape_search_value(self._deck_name)
-        query_parts = [f'deck:"{deck}"']
+        query_parts: list[str] = []
+        if not include_all_decks:
+            deck = self._escape_search_value(self._deck_name)
+            query_parts.append(f'deck:"{deck}"')
         if model_query.strip():
             query_parts.append(f'note:"{self._escape_search_value(model_query.strip())}"')
         note_ids = self._invoke(

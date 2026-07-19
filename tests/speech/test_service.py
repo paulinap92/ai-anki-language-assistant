@@ -32,3 +32,25 @@ def test_service_reuses_cached_audio(tmp_path: Path) -> None:
     assert not first.cached
     assert second.cached
     assert provider.calls == 1
+
+
+def test_service_diagnose_provider_success(tmp_path: Path) -> None:
+    provider = FakeProvider()
+    service = SpeechService({"Fake": provider}, tmp_path)
+
+    diagnostic = service.diagnose_provider("Fake", "English", "", "")
+
+    assert diagnostic.ok is True
+    assert diagnostic.auth_status == "OK"
+    assert diagnostic.sample_path is not None
+    assert diagnostic.sample_path.exists()
+    assert "Provider: Fake" in diagnostic.to_message()
+
+
+def test_service_diagnose_unknown_provider(tmp_path: Path) -> None:
+    service = SpeechService({}, tmp_path)
+
+    diagnostic = service.diagnose_provider("Missing", "English", "", "")
+
+    assert diagnostic.ok is False
+    assert "Unknown TTS provider" in diagnostic.error_message

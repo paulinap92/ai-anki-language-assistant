@@ -35,7 +35,7 @@ def test_prompt_v5_includes_user_topic_and_quality_self_check() -> None:
         "character / personality traits",
     )
 
-    assert VOCABULARY_PROMPT_VERSION == "v5-topic-quality-validation"
+    assert VOCABULARY_PROMPT_VERSION == "v7-natural-target-usage"
     assert "User topic/context" in prompt
     assert "character / personality traits" in prompt
     assert "quality_warnings" in prompt
@@ -103,3 +103,218 @@ def test_validator_allows_user_defined_topic_but_surfaces_provider_mismatch() ->
     )
 
     assert any("topic fit" in warning or "topic warning" in warning for warning in warnings)
+
+
+def test_validator_allows_normal_polish_diacritics_without_spanish_warning() -> None:
+    card = _card(
+        translation_pl="inflacja dyplomów; deprecjacja wartości dyplomów",
+        example_pl="Ze względu na inflację dyplomów wielu pracodawców wymaga magisterium.",
+        grammar_note="Rzeczownik złożony; używany z czasownikami 'pay' lub 'charge'.",
+    )
+
+    warnings = validate_vocabulary_card(
+        card,
+        expected_input="nostalgia",
+        expected_target_language="English",
+        expected_explanation_language="Polish",
+    )
+
+    assert not any("Spanish-looking" in warning for warning in warnings)
+    assert not any("Spanish-specific" in warning for warning in warnings)
+    assert not any("mixed-language text in Polish grammar note" in warning for warning in warnings)
+
+
+def test_validator_filters_noisy_provider_soft_warnings() -> None:
+    card = _card(
+        quality_warnings=[
+            "SOFT: Spanish-looking characters detected in Polish example translation.",
+            "SOFT: possible mixed-language text in Polish grammar note: a, the, on, for.",
+        ]
+    )
+
+    warnings = validate_vocabulary_card(
+        card,
+        expected_input="nostalgia",
+        expected_target_language="English",
+        expected_explanation_language="Polish",
+    )
+
+    assert warnings == []
+
+
+def test_validator_ignores_outer_quotes_in_exact_input_match() -> None:
+    card = _card(word_or_phrase="Nevertheless…")
+
+    warnings = validate_vocabulary_card(
+        card,
+        expected_input='"Nevertheless…"',
+        expected_target_language="English",
+        expected_explanation_language="Polish",
+    )
+
+    assert not any("input phrase changed" in warning for warning in warnings)
+
+
+def test_prompt_v7_requires_example_to_use_target_item() -> None:
+    prompt = build_vocabulary_prompt("derrumbar(se)", "Spanish", "Polish")
+
+    assert VOCABULARY_PROMPT_VERSION == "v7-natural-target-usage"
+    assert "MUST use the target word/phrase" in prompt
+    assert "Do not replace the target with a synonym" in prompt
+    assert "used_form_in_example" in prompt
+    assert "collocation_naturalness" in prompt
+    assert "translation_naturalness" in prompt
+
+
+def test_validator_blocks_spanish_verb_example_that_uses_synonym() -> None:
+    card = _card(
+        word_or_phrase="derrumbar(se)",
+        target_language="Spanish",
+        part_of_speech="verbo transitivo/pronominal",
+        definition="Hacer caer o desplomarse una estructura.",
+        translation_pl="zawalić się",
+        example="El terremoto derribó varios edificios antiguos.",
+        example_pl="Trzęsienie ziemi zawaliło kilka starych budynków.",
+        grammar_note="Czasownik może być użyty jako pronominalny.",
+    )
+
+    warnings = validate_vocabulary_card(
+        card,
+        expected_input="derrumbar(se)",
+        expected_target_language="Spanish",
+        expected_explanation_language="Polish",
+    )
+
+    assert any("example does not use the target word/phrase" in warning for warning in warnings)
+
+
+def test_validator_allows_spanish_verb_valid_conjugated_form() -> None:
+    card = _card(
+        word_or_phrase="encolerizarse",
+        target_language="Spanish",
+        part_of_speech="verbo pronominal",
+        definition="Enfadarse intensamente.",
+        translation_pl="wpaść w gniew",
+        example="El entrenador se encolerizó cuando vio el comportamiento antideportivo.",
+        example_pl="Trener wpadł w gniew, gdy zobaczył niesportowe zachowanie.",
+        grammar_note="Czasownik pronominalny: encolerizarse.",
+    )
+
+    warnings = validate_vocabulary_card(
+        card,
+        expected_input="encolerizarse",
+        expected_target_language="Spanish",
+        expected_explanation_language="Polish",
+    )
+
+    assert not any("example does not use the target word/phrase" in warning for warning in warnings)
+
+
+def test_validator_blocks_spanish_verb_visually_similar_wrong_form() -> None:
+    card = _card(
+        word_or_phrase="encolerizarse",
+        target_language="Spanish",
+        part_of_speech="verbo pronominal",
+        definition="Enfadarse intensamente.",
+        translation_pl="wpaść w gniew",
+        example="El entrenador se encolorizó cuando vio el comportamiento antideportivo.",
+        example_pl="Trener wpadł w gniew, gdy zobaczył niesportowe zachowanie.",
+        grammar_note="Czasownik pronominalny: encolerizarse.",
+    )
+
+    warnings = validate_vocabulary_card(
+        card,
+        expected_input="encolerizarse",
+        expected_target_language="Spanish",
+        expected_explanation_language="Polish",
+    )
+
+    assert any("example does not use the target word/phrase" in warning for warning in warnings)
+
+
+def test_validator_warns_when_target_is_used_but_collocation_is_awkward() -> None:
+    card = _card(
+        word_or_phrase="come across",
+        target_language="English",
+        part_of_speech="phrasal verb",
+        definition="To find or meet something by chance.",
+        translation_pl="natknąć się na",
+        example="We came across some rain during our hike.",
+        example_pl="Natknęliśmy się na deszcz podczas wędrówki.",
+        grammar_note="Phrasal verb.",
+    )
+
+    warnings = validate_vocabulary_card(
+        card,
+        expected_input="come across",
+        expected_target_language="English",
+        expected_explanation_language="Polish",
+    )
+
+    assert any("collocation" in warning and "come across" in warning for warning in warnings)
+
+
+def test_validator_hard_warns_absurd_collocation_even_if_target_is_present() -> None:
+    card = _card(
+        word_or_phrase="mesmerizing flow",
+        target_language="English",
+        part_of_speech="noun phrase",
+        definition="A captivating movement or progression.",
+        translation_pl="hipnotyzujący przepływ",
+        example="The mesmerizing flow of the smoothie caught everyone's attention.",
+        example_pl="Hipnotyzujący przepływ smoothie przyciągnął uwagę wszystkich.",
+        grammar_note="Noun phrase.",
+    )
+
+    warnings = validate_vocabulary_card(
+        card,
+        expected_input="mesmerizing flow",
+        expected_target_language="English",
+        expected_explanation_language="Polish",
+    )
+
+    assert any(warning.startswith("HARD:") and "smoothie" in warning for warning in warnings)
+
+
+def test_provider_self_check_bad_naturalness_becomes_hard_warning() -> None:
+    card = _card(
+        word_or_phrase="wear down",
+        target_language="English",
+        part_of_speech="phrasal verb",
+        example="She tried to wear down his doubts.",
+        example_pl="Próbowała zmęczyć jego wątpliwości.",
+        collocation_naturalness="bad",
+        translation_naturalness="bad",
+    )
+
+    warnings = validate_vocabulary_card(
+        card,
+        expected_input="wear down",
+        expected_target_language="English",
+        expected_explanation_language="Polish",
+    )
+
+    assert any("collocation naturalness as bad" in warning for warning in warnings)
+    assert any("translation naturalness as bad" in warning for warning in warnings)
+
+
+def test_language_neutral_validator_blocks_wrong_similar_form() -> None:
+    card = _card(
+        word_or_phrase="encolerizarse",
+        target_language="Spanish",
+        part_of_speech="verb",
+        definition="Enfadarse intensamente.",
+        translation_pl="wpaść w gniew",
+        example="El entrenador se encolorizó cuando vio el comportamiento antideportivo.",
+        example_pl="Trener wpadł w gniew, gdy zobaczył niesportowe zachowanie.",
+        grammar_note="Czasownik pronominalny.",
+    )
+
+    warnings = validate_vocabulary_card(
+        card,
+        expected_input="encolerizarse",
+        expected_target_language="Spanish",
+        expected_explanation_language="Polish",
+    )
+
+    assert any("target word/phrase" in warning for warning in warnings)

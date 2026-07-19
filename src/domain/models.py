@@ -37,6 +37,22 @@ class VocabularyCard(BaseModel):
         default_factory=list,
         description="Provider self-check warnings surfaced before adding to Anki.",
     )
+    used_form_in_example: str = Field(
+        default="",
+        description="Provider self-check: exact target form that appears in the example sentence.",
+    )
+    example_uses_target: bool | None = Field(
+        default=None,
+        description="Provider self-check: whether the example uses the target item or a valid inflected form.",
+    )
+    collocation_naturalness: str = Field(
+        default="",
+        description="Provider self-check for naturalness of the target collocation: ok, weak, or bad.",
+    )
+    translation_naturalness: str = Field(
+        default="",
+        description="Provider self-check for translation naturalness: ok, weak, or bad.",
+    )
 
 
 class ConversationStart(BaseModel):

@@ -4,7 +4,7 @@ from openai import OpenAI
 
 from src.ai.base import VocabularyAiClient
 from src.domain.models import ConversationFeedback, ConversationStart, GrammarAnalysis, VocabularyCard
-from src.quality import validate_vocabulary_card
+from src.quality import normalize_lexical_value, validate_vocabulary_card
 from src.ai.prompts import (
     build_conversation_feedback_prompt,
     build_conversation_start_prompt,
@@ -55,7 +55,7 @@ class OpenAiVocabularyClient(VocabularyAiClient):
         )
         if warnings:
             card.quality_warnings = list(dict.fromkeys([*card.quality_warnings, *warnings]))
-        if card.is_valid and card.word_or_phrase.strip().casefold() != word_or_phrase.strip().casefold():
+        if card.is_valid and normalize_lexical_value(card.word_or_phrase) != normalize_lexical_value(word_or_phrase):
             raise ValueError(
                 f"{self.provider_name} returned a different word or phrase: "
                 f"{card.word_or_phrase!r} instead of {word_or_phrase!r}."

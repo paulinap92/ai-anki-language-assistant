@@ -141,3 +141,32 @@ def test_append_audio_to_note_appends_sound_to_existing_field() -> None:
     client.append_audio_to_note(123, "outlast.mp3", "Back")
 
     assert client.updated_fields == {"Back": "translation<br>[sound:outlast.mp3]"}
+
+
+def test_existing_note_map_broad_can_scan_all_decks() -> None:
+    class FakeAnkiClient(AnkiClient):
+        def __init__(self) -> None:
+            super().__init__("http://localhost:8765", "Deck")
+            self.queries = []
+
+        def _invoke(self, action, params=None):  # type: ignore[override]
+            if action == "findNotes":
+                self.queries.append(params["query"])
+                return [1]
+            if action == "notesInfo":
+                return [
+                    {
+                        "noteId": 1,
+                        "modelName": "AI Vocabulary Light Card",
+                        "tags": [],
+                        "fields": {"Word": {"value": "outlast"}, "Audio": {"value": ""}},
+                    }
+                ]
+            return None
+
+    client = FakeAnkiClient()
+
+    result = client.existing_note_map_broad(include_all_decks=True)
+
+    assert set(result) == {"outlast"}
+    assert client.queries == [""]
