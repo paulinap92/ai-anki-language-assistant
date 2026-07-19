@@ -29,10 +29,12 @@ class VocabularyFieldBuilder:
             "Word": cls.safe(card.word_or_phrase),
             "Language": cls.safe(card.target_language),
             "PartOfSpeech": cls.safe(card.part_of_speech),
-            "TranslationPL": cls.safe(card.translation_pl),
+            "Translation": cls.safe(card.translation),
+            "TranslationPL": cls.safe(card.translation),  # legacy field kept for older Anki templates
             "Definition": cls.safe(card.definition),
             "Example": cls.safe(card.example),
-            "ExamplePL": cls.safe(card.example_pl),
+            "ExampleTranslation": cls.safe(card.example_translation),
+            "ExamplePL": cls.safe(card.example_translation),  # legacy field kept for older Anki templates
             "Synonyms": cls.chips(card.synonyms),
             "Collocations": cls.chips(card.collocations),
             "GrammarNote": cls.safe(card.grammar_note),

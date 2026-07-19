@@ -76,6 +76,7 @@ class VocabularyApp:
                 card = self._ai_client.generate_card(
                     word_or_phrase=word_or_phrase,
                     target_language=self._target_language,
+                    explanation_language="Polish",
                 )
                 print()
                 print(f"Word: {card.word_or_phrase}")

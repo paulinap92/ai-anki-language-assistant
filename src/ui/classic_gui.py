@@ -682,6 +682,7 @@ class VocabularyGui:
                 answer=answer,
                 target_language=language,
                 improvement_level=improvement_level,
+                feedback_language=self._explanation_language_var.get(),
             )
         except Exception as exc:
             self._conversation_status_var.set("Could not review the answer.")
@@ -690,7 +691,7 @@ class VocabularyGui:
 
         self._conversation_feedback = feedback
         feedback_content = (
-            f"Feedback (PL):\n{feedback.feedback_pl}\n\n"
+            f"Feedback:\n{feedback.feedback}\n\n"
             f"Your corrected version:\n{feedback.corrected_version}\n\n"
             f"Stronger model answer ({improvement_level}):\n{feedback.advanced_answer}\n\n"
             f"Next question:\n{feedback.next_question}"

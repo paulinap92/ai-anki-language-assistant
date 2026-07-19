@@ -63,7 +63,7 @@ class ClaudeVocabularyClient(VocabularyAiClient):
         self,
         word_or_phrase: str,
         target_language: str,
-        explanation_language: str = "Polish",
+        explanation_language: str,
         topic_context: str = "",
     ) -> VocabularyCard:
         """Generate a vocabulary flashcard with Claude."""
@@ -127,6 +127,7 @@ class ClaudeVocabularyClient(VocabularyAiClient):
         answer: str,
         target_language: str,
         improvement_level: str,
+        feedback_language: str,
     ) -> ConversationFeedback:
         """Review an answer and continue the conversation with Claude."""
         raw_text = self._generate_text(
@@ -136,6 +137,7 @@ class ClaudeVocabularyClient(VocabularyAiClient):
                 answer,
                 target_language,
                 improvement_level,
+                feedback_language,
             )
         )
         return self._parse_conversation_feedback(raw_text, self.provider_name)

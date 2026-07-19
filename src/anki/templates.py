@@ -11,9 +11,11 @@ MODEL_FIELDS = [
         "Word",
         "Language",
         "PartOfSpeech",
+        "Translation",
         "TranslationPL",
         "Definition",
         "Example",
+        "ExampleTranslation",
         "ExamplePL",
         "Synonyms",
         "Collocations",
@@ -37,7 +39,7 @@ BACK_TEMPLATE = """
 <div class="vocab-card back">
   <div class="language-badge">{{Language}} · {{PartOfSpeech}}</div>
   <div class="word small">{{Word}}</div>
-  {{#TranslationPL}}<div class="translation">{{TranslationPL}}</div>{{/TranslationPL}}
+  {{#Translation}}<div class="translation">{{Translation}}</div>{{/Translation}}{{^Translation}}{{#TranslationPL}}<div class="translation">{{TranslationPL}}</div>{{/TranslationPL}}{{/Translation}}
 
   <section class="section definition">
     <div class="label">Definition</div>
@@ -48,7 +50,7 @@ BACK_TEMPLATE = """
     <div class="label">Example</div>
     <div class="sentence">{{Example}}</div>
     {{#Audio}}<div class="audio">{{Audio}}</div>{{/Audio}}
-    {{#ExamplePL}}<div class="translation-example">{{ExamplePL}}</div>{{/ExamplePL}}
+    {{#ExampleTranslation}}<div class="translation-example">{{ExampleTranslation}}</div>{{/ExampleTranslation}}{{^ExampleTranslation}}{{#ExamplePL}}<div class="translation-example">{{ExamplePL}}</div>{{/ExamplePL}}{{/ExampleTranslation}}
   </section>
 
   <section class="section">

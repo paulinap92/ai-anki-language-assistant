@@ -35,7 +35,7 @@ from src.speech.models import TtsResult
 from src.speech.voice_presets import get_voice_by_label, get_voice_labels
 
 
-EXPLANATION_LANGUAGES = ["Polish", "English", "Spanish", "German", "Italian", "No translation"]
+EXPLANATION_LANGUAGES = ["Polish", "English", "Spanish", "German", "Italian", "Same as target", "No translation"]
 IMPROVEMENT_LEVELS = ["Natural B1/B2", "Strong B2/C1", "Professional / Interview"]
 TOPIC_PRESETS = [
     "",
@@ -78,6 +78,7 @@ class ModernVocabularyGui:
         self._provider_var = ctk.StringVar(value=next(iter(ai_clients)))
         self._language_var = ctk.StringVar(value=default_target_language)
         self._explanation_language_var = ctk.StringVar(value="Polish")
+        self._feedback_language_var = ctk.StringVar(value="Polish")
         self._improvement_level_var = ctk.StringVar(value="Strong B2/C1")
         self._deck_var = ctk.StringVar(value=anki_client.deck_name)
         self._status_var = ctk.StringVar(value="Ready. Open Anki and choose a deck.")
@@ -263,7 +264,7 @@ class ModernVocabularyGui:
         )
         self._provider_box.grid(row=0, column=1, padx=(0, 16), pady=14, sticky="ew")
 
-        ctk.CTkLabel(settings, text="Language").grid(row=0, column=2, padx=(0, 8), pady=14, sticky="w")
+        ctk.CTkLabel(settings, text="Target language").grid(row=0, column=2, padx=(0, 8), pady=14, sticky="w")
         self._language_box = ctk.CTkComboBox(
             settings,
             variable=self._language_var,
@@ -452,6 +453,21 @@ class ModernVocabularyGui:
         ctk.CTkButton(topic, text="Reset", width=80, command=self._reset_conversation).grid(
             row=0, column=5, padx=(0, 18), pady=14
         )
+        ctk.CTkLabel(topic, text="Feedback language").grid(
+            row=1, column=2, padx=(4, 6), pady=(0, 14), sticky="e"
+        )
+        ctk.CTkComboBox(
+            topic,
+            variable=self._feedback_language_var,
+            values=EXPLANATION_LANGUAGES,
+            state="readonly",
+            width=190,
+        ).grid(row=1, column=3, padx=(0, 10), pady=(0, 14))
+        ctk.CTkLabel(
+            topic,
+            text="Conversation language uses the top Target language selector.",
+            text_color=("gray35", "gray70"),
+        ).grid(row=1, column=0, columnspan=2, sticky="w", padx=18, pady=(0, 14))
 
         chat_panel = ctk.CTkFrame(layout, corner_radius=18)
         chat_panel.grid(row=1, column=0, sticky="nsew", padx=(0, 12))
@@ -571,10 +587,29 @@ class ModernVocabularyGui:
         self._batch_topic_box = ctk.CTkComboBox(
             left, variable=self._batch_topic_var, values=TOPIC_PRESETS
         )
-        self._batch_topic_box.grid(row=6, column=0, sticky="ew", padx=18, pady=(0, 10))
+        self._batch_topic_box.grid(row=6, column=0, sticky="ew", padx=18, pady=(0, 8))
+
+        language_frame = ctk.CTkFrame(left, fg_color="transparent")
+        language_frame.grid(row=7, column=0, sticky="ew", padx=18, pady=(0, 8))
+        language_frame.grid_columnconfigure((0, 1), weight=1)
+        ctk.CTkLabel(language_frame, text="Target language").grid(row=0, column=0, sticky="w", padx=(0, 5))
+        ctk.CTkLabel(language_frame, text="Explanation language").grid(row=0, column=1, sticky="w", padx=(5, 0))
+        ctk.CTkComboBox(
+            language_frame,
+            variable=self._language_var,
+            values=list(LANGUAGE_TAGS.keys()),
+            state="readonly",
+            command=lambda _value: self._sync_tts_defaults(),
+        ).grid(row=1, column=0, sticky="ew", padx=(0, 5), pady=(4, 0))
+        ctk.CTkComboBox(
+            language_frame,
+            variable=self._explanation_language_var,
+            values=EXPLANATION_LANGUAGES,
+            state="readonly",
+        ).grid(row=1, column=1, sticky="ew", padx=(5, 0), pady=(4, 0))
 
         session_buttons = ctk.CTkFrame(left, fg_color="transparent")
-        session_buttons.grid(row=7, column=0, sticky="ew", padx=18, pady=(0, 8))
+        session_buttons.grid(row=8, column=0, sticky="ew", padx=18, pady=(0, 8))
         session_buttons.grid_columnconfigure((0, 1), weight=1)
         ctk.CTkButton(session_buttons, text="Save session", command=self._save_batch_session).grid(
             row=0, column=0, sticky="ew", padx=(0, 5)
@@ -583,7 +618,7 @@ class ModernVocabularyGui:
             row=0, column=1, sticky="ew", padx=(5, 0)
         )
         ctk.CTkButton(left, text="Clear batch", command=self._clear_batch).grid(
-            row=8, column=0, sticky="ew", padx=18, pady=(0, 18)
+            row=9, column=0, sticky="ew", padx=18, pady=(0, 18)
         )
 
         right = ctk.CTkFrame(layout, corner_radius=18)
@@ -812,7 +847,7 @@ class ModernVocabularyGui:
             return
         topic = self._batch_topic_var.get().strip()
         self._batch_items = [
-            {"word": word, "status": "pending", "topic": topic} for word in clean_words
+            {"word": word, "status": "pending", "topic": topic, "target_language": self._language_var.get(), "explanation_language": self._explanation_language_var.get()} for word in clean_words
         ]
         self._batch_index = 0
         self._batch_autosave_path = None
@@ -956,9 +991,9 @@ class ModernVocabularyGui:
         row = add_entry(row, "Part of speech", "part_of_speech", card.part_of_speech)
         row = add_entry(row, "Word / phrase", "word_or_phrase", card.word_or_phrase)
         row = add_text(row, "Definition", "definition", card.definition, height=3)
-        row = add_text(row, "Translation / explanation", "translation_pl", card.translation_pl, height=3)
+        row = add_text(row, "Translation / explanation", "translation", card.translation, height=3)
         row = add_text(row, "Example", "example", card.example, height=3)
-        row = add_text(row, "Example translation", "example_pl", card.example_pl, height=3)
+        row = add_text(row, "Example translation", "example_translation", card.example_translation, height=3)
         row = add_text(row, "Collocations\n(one per line)", "collocations", "\n".join(card.collocations), height=5)
         row = add_text(row, "Synonyms\n(one per line)", "synonyms", "\n".join(card.synonyms), height=4)
         row = add_text(row, "Grammar note", "grammar_note", card.grammar_note, height=4)
@@ -976,9 +1011,9 @@ class ModernVocabularyGui:
                     "part_of_speech": value("part_of_speech"),
                     "word_or_phrase": value("word_or_phrase") or card.word_or_phrase,
                     "definition": value("definition"),
-                    "translation_pl": value("translation_pl"),
+                    "translation": value("translation"),
                     "example": value("example"),
-                    "example_pl": value("example_pl"),
+                    "example_translation": value("example_translation"),
                     "collocations": [line.strip() for line in value("collocations").splitlines() if line.strip()],
                     "synonyms": [line.strip() for line in value("synonyms").splitlines() if line.strip()],
                     "grammar_note": value("grammar_note"),
@@ -1247,8 +1282,12 @@ class ModernVocabularyGui:
             return
         item = self._batch_items[self._batch_index]
         topic_context = self._current_batch_topic()
+        target_language = self._language_var.get().strip()
+        explanation_language = self._explanation_language_var.get().strip()
         item["word"] = word
         item["topic"] = topic_context
+        item["target_language"] = target_language
+        item["explanation_language"] = explanation_language
         provider_name = self._provider_var.get()
         model_name = self._current_ai_model_name()
         LOGGER.info(
@@ -1266,8 +1305,8 @@ class ModernVocabularyGui:
         try:
             card = self._current_ai_client().generate_card(
                 word,
-                self._language_var.get(),
-                self._explanation_language_var.get(),
+                target_language,
+                explanation_language,
                 topic_context,
             )
         except Exception as exc:
@@ -1525,6 +1564,7 @@ class ModernVocabularyGui:
             "provider": self._provider_var.get(),
             "target_language": self._language_var.get(),
             "explanation_language": self._explanation_language_var.get(),
+            "feedback_language": self._feedback_language_var.get(),
             "batch_topic": self._batch_topic_var.get(),
             "deck": self._deck_var.get(),
             "autosaved_at": datetime.now().isoformat(timespec="seconds"),
@@ -1571,10 +1611,12 @@ class ModernVocabularyGui:
             "word_or_phrase": card.word_or_phrase,
             "target_language": card.target_language,
             "part_of_speech": card.part_of_speech,
-            "translation_pl": card.translation_pl,
+            "translation": card.translation,
+            "translation_pl": card.translation,  # legacy autosave compatibility
             "definition": card.definition,
             "example": card.example,
-            "example_pl": card.example_pl,
+            "example_translation": card.example_translation,
+            "example_pl": card.example_translation,  # legacy autosave compatibility
             "synonyms": list(card.synonyms),
             "collocations": list(card.collocations),
             "grammar_note": card.grammar_note,
@@ -2364,6 +2406,8 @@ class ModernVocabularyGui:
             self._explanation_language_var.set(
                 data.get("explanation_language", self._explanation_language_var.get())
             )
+            if data.get("feedback_language"):
+                self._feedback_language_var.set(data.get("feedback_language", self._feedback_language_var.get()))
             self._batch_topic_var.set(data.get("batch_topic", self._batch_topic_var.get()))
             self._deck_var.set(data.get("deck", self._deck_var.get()))
         except Exception as exc:
@@ -2865,9 +2909,9 @@ class ModernVocabularyGui:
             target_language=field("Language") or self._language_var.get(),
             part_of_speech=field("PartOfSpeech", "Part of Speech"),
             definition=field("Definition", "Meaning", "Back"),
-            translation_pl=field("TranslationPL", "Translation", "PL"),
+            translation=field("Translation", "TranslationPL", "PL"),
             example=field("Example", "Sentence", "ExampleSentence") or str(note.get("example", "")),
-            example_pl=field("ExamplePL", "ExampleTranslation"),
+            example_translation=field("ExampleTranslation", "ExamplePL"),
             synonyms=[part.strip() for part in field("Synonyms").split(",") if part.strip()],
             collocations=[part.strip() for part in re.split(r"\n|,|•", field("Collocations")) if part.strip()],
             grammar_note=field("GrammarNote", "Grammar", "Usage"),
@@ -3165,9 +3209,9 @@ class ModernVocabularyGui:
         row = add_entry(row, "Part of speech", "part_of_speech", card.part_of_speech)
         row = add_entry(row, "Word / phrase", "word_or_phrase", card.word_or_phrase)
         row = add_text(row, "Definition", "definition", card.definition, height=3)
-        row = add_text(row, "Translation / explanation", "translation_pl", card.translation_pl, height=3)
+        row = add_text(row, "Translation / explanation", "translation", card.translation, height=3)
         row = add_text(row, "Example", "example", card.example, height=3)
-        row = add_text(row, "Example translation", "example_pl", card.example_pl, height=3)
+        row = add_text(row, "Example translation", "example_translation", card.example_translation, height=3)
         row = add_text(row, "Collocations\n(one per line)", "collocations", "\n".join(card.collocations), height=4)
         row = add_text(row, "Synonyms\n(one per line)", "synonyms", "\n".join(card.synonyms), height=3)
         row = add_text(row, "Grammar note", "grammar_note", card.grammar_note, height=3)
@@ -3185,9 +3229,9 @@ class ModernVocabularyGui:
                     "part_of_speech": value("part_of_speech"),
                     "word_or_phrase": value("word_or_phrase") or card.word_or_phrase,
                     "definition": value("definition"),
-                    "translation_pl": value("translation_pl"),
+                    "translation": value("translation"),
                     "example": value("example"),
-                    "example_pl": value("example_pl"),
+                    "example_translation": value("example_translation"),
                     "collocations": [line.strip() for line in value("collocations").splitlines() if line.strip()],
                     "synonyms": [line.strip() for line in value("synonyms").splitlines() if line.strip()],
                     "grammar_note": value("grammar_note"),
@@ -3202,10 +3246,12 @@ class ModernVocabularyGui:
                 "Word": updated_card.word_or_phrase,
                 "Language": updated_card.target_language,
                 "PartOfSpeech": updated_card.part_of_speech,
-                "TranslationPL": updated_card.translation_pl,
+                "Translation": updated_card.translation,
+                "TranslationPL": updated_card.translation,
                 "Definition": updated_card.definition,
                 "Example": updated_card.example,
-                "ExamplePL": updated_card.example_pl,
+                "ExampleTranslation": updated_card.example_translation,
+                "ExamplePL": updated_card.example_translation,
                 "Synonyms": ", ".join(updated_card.synonyms),
                 "Collocations": "\n".join(updated_card.collocations),
                 "GrammarNote": updated_card.grammar_note,
@@ -3220,7 +3266,7 @@ class ModernVocabularyGui:
             if "Back" in fields_map and not any(name in fields_map for name in ("Definition", "Example")):
                 raw_fields.setdefault(
                     "Back",
-                    f"Definition: {updated_card.definition}\n\nExample: {updated_card.example}\n{updated_card.example_pl}",
+                    f"Definition: {updated_card.definition}\n\nExample: {updated_card.example}\n{updated_card.example_translation}",
                 )
             if not raw_fields:
                 messagebox.showerror("Unsupported note", "This note has no editable supported fields.")
@@ -3264,9 +3310,9 @@ class ModernVocabularyGui:
                 "part_of_speech": regenerated.part_of_speech,
                 "word_or_phrase": regenerated.word_or_phrase,
                 "definition": regenerated.definition,
-                "translation_pl": regenerated.translation_pl,
+                "translation": regenerated.translation,
                 "example": regenerated.example,
-                "example_pl": regenerated.example_pl,
+                "example_translation": regenerated.example_translation,
                 "collocations": "\n".join(regenerated.collocations),
                 "synonyms": "\n".join(regenerated.synonyms),
                 "grammar_note": regenerated.grammar_note,
@@ -3539,8 +3585,8 @@ class ModernVocabularyGui:
             f"LANGUAGE / TYPE\n{card.target_language} · {card.part_of_speech or '—'}\n\n"
             f"DEFINITION\n{card.definition or '—'}\n\n"
             f"EXPLANATION LANGUAGE\n{card.explanation_language or '—'}\n\n"
-            f"TRANSLATION / EXPLANATION\n{card.translation_pl or '—'}\n\n"
-            f"EXAMPLE\n{card.example or '—'}\n{card.example_pl or '—'}\n\n"
+            f"TRANSLATION / EXPLANATION\n{card.translation or '—'}\n\n"
+            f"EXAMPLE\n{card.example or '—'}\n{card.example_translation or '—'}\n\n"
             f"SYNONYMS / ALTERNATIVES\n{synonyms}\n\n"
             f"COLLOCATIONS / USAGE\n{collocations}\n\n"
             f"GRAMMAR NOTE\n{card.grammar_note or '—'}\n\n"
@@ -4523,6 +4569,7 @@ class ModernVocabularyGui:
                 answer=answer,
                 target_language=self._language_var.get(),
                 improvement_level=self._improvement_level_var.get(),
+                feedback_language=self._feedback_language_var.get(),
             )
         except Exception as exc:
             self._status_var.set("Conversation reply failed.")
@@ -4542,7 +4589,7 @@ class ModernVocabularyGui:
 
     def _append_conversation_feedback(self, feedback: ConversationFeedback) -> None:
         """Render AI feedback and the next question in the chat panel."""
-        self._append_chat("FEEDBACK", feedback.feedback_pl)
+        self._append_chat(f"FEEDBACK ({feedback.feedback_language or self._feedback_language_var.get()})", feedback.feedback)
         self._append_chat("CORRECTED VERSION", feedback.corrected_version)
         self._append_chat("STRONGER ANSWER", feedback.advanced_answer)
         self._append_chat("AI TUTOR", feedback.next_question)

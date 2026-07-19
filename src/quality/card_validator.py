@@ -107,8 +107,8 @@ LANGUAGE_RULES = {
 }
 
 TRANSLATION_FIELDS = (
-    ("translation/explanation", "translation_pl"),
-    ("example translation", "example_pl"),
+    ("translation/explanation", "translation"),
+    ("example translation", "example_translation"),
     ("grammar note", "grammar_note"),
 )
 
@@ -185,10 +185,15 @@ def _check_expected_values(
                 f"expected {expected_target_language}, got {card.target_language}."
             )
     if expected_explanation_language and _norm(expected_explanation_language) != "no translation":
-        if _norm(card.explanation_language) != _norm(expected_explanation_language):
+        effective_expected = (
+            expected_target_language
+            if _norm(expected_explanation_language) == "same as target"
+            else expected_explanation_language
+        )
+        if _norm(card.explanation_language) != _norm(effective_expected):
             warnings.append(
                 "HARD: explanation language mismatch: "
-                f"expected {expected_explanation_language}, got {card.explanation_language}."
+                f"expected {effective_expected}, got {card.explanation_language}."
             )
 
 
@@ -321,7 +326,10 @@ def _check_explanation_language_fields(
     warnings: list[str],
     expected_explanation_language: str,
 ) -> None:
-    language = (expected_explanation_language or card.explanation_language or "").strip().casefold()
+    selected_language = (expected_explanation_language or card.explanation_language or "").strip()
+    if selected_language.casefold() == "same as target":
+        selected_language = card.target_language
+    language = selected_language.casefold()
     values = {label: str(getattr(card, attr, "") or "") for label, attr in TRANSLATION_FIELDS}
 
     if language == "no translation":
@@ -340,7 +348,7 @@ def _check_explanation_language_fields(
     for label, value in values.items():
         plain = _plain(value)
         if not plain.strip():
-            warnings.append(f"HARD: {label} is empty for explanation language {expected_explanation_language or card.explanation_language}.")
+            warnings.append(f"HARD: {label} is empty for explanation language {selected_language or card.explanation_language}.")
             continue
         if CYRILLIC_RE.search(plain):
             warnings.append(f"HARD: Cyrillic characters detected in {language.title()} {label}.")
@@ -384,8 +392,8 @@ def _check_language_mixing(
 def _check_known_bad_patterns(card: VocabularyCard, warnings: list[str]) -> None:
     fields = {
         "word/phrase": card.word_or_phrase,
-        "translation/explanation": card.translation_pl,
-        "example translation": card.example_pl,
+        "translation/explanation": card.translation,
+        "example translation": card.example_translation,
         "grammar note": card.grammar_note,
         "definition": card.definition,
         "example": card.example,
@@ -400,8 +408,8 @@ def _check_known_bad_patterns(card: VocabularyCard, warnings: list[str]) -> None
 def _check_naturalness(card: VocabularyCard, warnings: list[str]) -> None:
     combined = "\n".join([
         str(card.example or ""),
-        str(card.example_pl or ""),
-        str(card.translation_pl or ""),
+        str(card.example_translation or ""),
+        str(card.translation or ""),
         str(card.grammar_note or ""),
     ])
     for pattern, message in UNNATURAL_USAGE_PATTERNS:

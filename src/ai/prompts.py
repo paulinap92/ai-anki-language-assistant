@@ -3,8 +3,8 @@
 from __future__ import annotations
 
 
-VOCABULARY_PROMPT_VERSION = "v7-natural-target-usage"
-EXPLANATION_LANGUAGES = ["Polish", "English", "Spanish", "German", "Italian", "No translation"]
+VOCABULARY_PROMPT_VERSION = "v8-language-neutral-schema"
+EXPLANATION_LANGUAGES = ["Polish", "English", "Spanish", "German", "Italian", "Same as target", "No translation"]
 
 
 TOPIC_PRESET_HINTS = {
@@ -37,13 +37,13 @@ def _language_quality_rules(explanation_language: str, target_language: str) -> 
         return (
             "Explanation-language rules:\n"
             "- No translation mode is selected.\n"
-            "- Return empty strings for translation_pl, example_pl, and grammar_note.\n"
+            "- Return empty strings for translation, example_translation, and grammar_note.\n"
             "- Do not sneak translations or bilingual explanations into other fields.\n"
         )
 
     base = (
         "Explanation-language rules:\n"
-        f"- Write translation_pl, example_pl, and grammar_note in {explanation_language}.\n"
+        f"- Write translation, example_translation, and grammar_note in {explanation_language}.\n"
         f"- Do not mix {explanation_language} with Polish, Spanish, English, German, Italian, Russian, or Ukrainian unless the expression itself requires a quoted foreign word.\n"
         "- Do not use Cyrillic characters unless the selected explanation language explicitly uses Cyrillic.\n"
         "- Use natural, idiomatic wording, not literal machine translation.\n"
@@ -106,12 +106,16 @@ Topic/context rules:
 def build_vocabulary_prompt(
     word_or_phrase: str,
     target_language: str,
-    explanation_language: str = "Polish",
+    explanation_language: str,
     topic_context: str = "",
 ) -> str:
     """Build a validated, word-first vocabulary flashcard prompt."""
+    explanation_language = explanation_language.strip()
+    if not explanation_language:
+        raise ValueError("Explanation language must be selected explicitly.")
+    effective_explanation_language = target_language if explanation_language == "Same as target" else explanation_language
     no_translation = explanation_language == "No translation"
-    explanation_rules = _language_quality_rules(explanation_language, target_language)
+    explanation_rules = _language_quality_rules(effective_explanation_language, target_language)
     topic_rules = _topic_rules(topic_context)
 
     return f"""
@@ -122,7 +126,7 @@ Create ONE high-quality vocabulary flashcard for this exact user input:
 "{word_or_phrase}"
 
 Target language: {target_language}
-Explanation language: {explanation_language}
+Explanation language: {effective_explanation_language}
 
 Internal process:
 1. Validate whether the input is a real, correctly formed word, phrase, idiom, or fixed expression in {target_language}.
@@ -138,7 +142,7 @@ Internal process:
 Validation rules:
 - If the input is misspelled, malformed, invented, or not a valid expression, set is_valid to false.
 - For invalid input, do not invent a definition or example.
-- Explain the problem briefly in validation_error using {explanation_language if not no_translation else target_language}.
+- Explain the problem briefly in validation_error using {effective_explanation_language if not no_translation else target_language}.
 - Suggest a correction only when reasonably confident; otherwise return an empty string.
 - For invalid input, return empty strings/lists for all flashcard content fields.
 
@@ -155,7 +159,7 @@ Phrase-level meaning rules:
 
 Definition and explanation rules:
 - The definition must be short, clear, and written in {target_language}.
-- The definition must not be a translation into {explanation_language}.
+- The definition must not be a translation into {effective_explanation_language}.
 {explanation_rules}
 
 Example rules:
@@ -200,14 +204,14 @@ Return this exact JSON structure:
   "is_valid": true,
   "validation_error": "",
   "suggested_correction": "",
-  "explanation_language": "{explanation_language}",
+  "explanation_language": "{effective_explanation_language}",
   "word_or_phrase": "{word_or_phrase}",
   "target_language": "{target_language}",
   "part_of_speech": "string",
   "definition": "string",
-  "translation_pl": "string",
+  "translation": "string",
   "example": "string",
-  "example_pl": "string",
+  "example_translation": "string",
   "synonyms": ["string"],
   "collocations": ["string"],
   "grammar_note": "string",
@@ -239,25 +243,33 @@ def build_conversation_feedback_prompt(
     answer: str,
     target_language: str,
     improvement_level: str,
+    feedback_language: str,
 ) -> str:
     """Build a prompt for reviewing one answer and continuing a conversation."""
+    feedback_language = feedback_language.strip()
+    if not feedback_language:
+        raise ValueError("Feedback language must be selected explicitly.")
+    effective_feedback_language = target_language if feedback_language == "Same as target" else feedback_language
     return f"""
-You are a supportive {target_language} conversation teacher helping a Polish speaker.
+You are a supportive {target_language} conversation teacher.
 Conversation topic: "{topic}"
 Question: "{question}"
 Learner answer: "{answer}"
 Requested level: "{improvement_level}"
+Feedback language: {effective_feedback_language}
 
 Requirements:
-- Give short practical feedback in Polish.
+- Give short practical feedback in {effective_feedback_language}.
 - Preserve the learner's idea in "corrected_version".
-- Write a richer natural "advanced_answer" appropriate to {improvement_level}.
-- Ask one natural follow-up question.
-- Suggest exactly 3 useful words or phrases.
+- Write a richer natural "advanced_answer" appropriate to {improvement_level} in {target_language}.
+- Ask one natural follow-up question in {target_language}.
+- Suggest exactly 3 useful words or phrases in {target_language}.
+- Do not assume the learner wants Polish unless feedback_language is explicitly Polish.
 - Return ONLY valid JSON without markdown.
 
 {{
-  "feedback_pl": "string",
+  "feedback_language": "{effective_feedback_language}",
+  "feedback": "string",
   "corrected_version": "string",
   "advanced_answer": "string",
   "next_question": "string",

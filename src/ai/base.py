@@ -27,7 +27,7 @@ class VocabularyAiClient(ABC):
         self,
         word_or_phrase: str,
         target_language: str,
-        explanation_language: str = "Polish",
+        explanation_language: str,
         topic_context: str = "",
     ) -> VocabularyCard:
         """Generate one validated vocabulary flashcard."""
@@ -48,6 +48,7 @@ class VocabularyAiClient(ABC):
         answer: str,
         target_language: str,
         improvement_level: str,
+        feedback_language: str,
     ) -> ConversationFeedback:
         """Provide feedback and the next question for one learner response."""
 

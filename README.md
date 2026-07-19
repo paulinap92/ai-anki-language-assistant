@@ -1248,3 +1248,17 @@ The vocabulary prompt is now `v7-natural-target-usage`. Generated examples must 
 
 The local validator is language-neutral: it no longer has a special Spanish-only branch. It checks lexical anchors for all languages and warns when the example does not appear to teach the requested item. It also catches known awkward cases from real tests, such as `come across rain`, `mesmerizing flow of the smoothie`, and `wear down doubts`.
 
+
+## v8.1.5.2 language-neutral schema/defaults
+
+Vocabulary generation now separates the language being learned from the language used for translations/explanations.
+
+- **Target language** is the language of the word/phrase and example sentence.
+- **Explanation language** is the language used for translation, example translation, and short usage/grammar notes.
+- Batch now exposes both settings visibly instead of relying on a hidden Polish default.
+- Conversation Practice now exposes **Feedback language** separately from the conversation target language.
+- New generated cards use language-neutral schema fields: `translation` and `example_translation`.
+- Legacy autosaves/provider responses with `translation_pl` and `example_pl` are still accepted.
+- The Anki note type now includes neutral fields `Translation` and `ExampleTranslation` while keeping `TranslationPL` and `ExamplePL` for compatibility with older cards/templates.
+
+Polish can still be selected as the preferred explanation language, but it is no longer treated as an invisible architectural assumption.

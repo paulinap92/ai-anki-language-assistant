@@ -38,7 +38,7 @@ class OpenAiVocabularyClient(VocabularyAiClient):
         self,
         word_or_phrase: str,
         target_language: str,
-        explanation_language: str = "Polish",
+        explanation_language: str,
         topic_context: str = "",
     ) -> VocabularyCard:
         """Generate a vocabulary flashcard with OpenAI."""
@@ -81,11 +81,12 @@ class OpenAiVocabularyClient(VocabularyAiClient):
         answer: str,
         target_language: str,
         improvement_level: str,
+        feedback_language: str,
     ) -> ConversationFeedback:
         """Review an answer and continue the conversation with OpenAI."""
         raw_text = self._generate_text(
             build_conversation_feedback_prompt(
-                topic, question, answer, target_language, improvement_level
+                topic, question, answer, target_language, improvement_level, feedback_language
             )
         )
         return self._parse_conversation_feedback(raw_text, self.provider_name)
