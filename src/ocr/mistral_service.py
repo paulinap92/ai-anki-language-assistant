@@ -119,6 +119,14 @@ def extract_text_with_mistral(paths: Iterable[str | Path], *, api_key: str | Non
                 include_image_base64=False,
             )
         except Exception as exc:
+            message = str(exc)
+            if "invalid_model" in message or "Invalid model" in message:
+                raise OcrExtractionError(
+                    f"Mistral OCR model is invalid or unavailable: {resolved_model}. "
+                    "Check MISTRAL_OCR_MODEL in .env. For OCR, try: "
+                    "MISTRAL_OCR_MODEL=mistral-ocr-latest. "
+                    f"Raw API error: {message}"
+                ) from exc
             raise OcrExtractionError(f"Mistral OCR failed for {path.name}: {exc}") from exc
         text = _response_pages_markdown(response)
         if text.strip():

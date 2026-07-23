@@ -1,0 +1,32 @@
+[[source]]
+url = "https://pypi.org/simple"
+verify_ssl = true
+name = "pypi"
+
+[packages]
+google-genai = "*"
+python-dotenv = "*"
+requests = "*"
+pydantic = "*"
+openai = "*"
+customtkinter = "*"
+anthropic = "*"
+piper-tts = "*"
+faster-whisper = "*"
+sounddevice = "*"
+soundfile = "*"
+
+PyMuPDF = "*"
+pypdf = "*"
+pillow = "*"
+pytesseract = "*"
+mistralai = "*"
+beautifulsoup4 = "*"
+lxml = "*"
+tenacity = "*"
+[dev-packages]
+pytest = "*"
+pytest-cov = "*"
+
+[requires]
+python_version = "3.13"

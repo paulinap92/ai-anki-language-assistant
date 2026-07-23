@@ -2,63 +2,69 @@
 
 The Import Material tab prepares Batch candidates only. It never adds cards directly to Anki.
 
-## Two OCR workflows
+## Default free workflow
 
-### 1. Local extraction + manual picker
-
-Use this when you want low cost and control.
-
-Flow:
+This is the main workflow for normal use. It avoids AI/API calls after text is extracted.
 
 ```text
-Load TXT/HTML/PDF/image
+Load TXT/HTML/PDF/image, or paste text
 → Extract text locally
-→ correct OCR text manually
-→ highlight target word/phrase
-→ Save selected target
-→ highlight example sentence
-→ Add target + example
-→ Send candidates to Batch
-→ review cards
+→ Clean/edit the extracted text if needed
+→ Look for words / phrases OR Look for sentences
+→ Cherry-pick candidates on the right
+→ Mark each item as word/phrase, grammar, or sentence
+→ Send selected candidates to Batch / Queue
+→ review generated cards
 → add to Anki
 ```
 
-Manual picker buttons:
+Local candidate search is heuristic. It does not need Gemini, Claude, OpenAI, or Mistral. It simply finds useful chunks from the extracted text so the user can decide what becomes a card.
 
-- `Save selected target` stores the highlighted word/phrase as the target.
-- `Add target + example` uses the saved target and highlighted sentence to create a provided-example row.
-- `Add selected vocab` adds the highlighted text as a vocabulary candidate.
-- `Add selected grammar` adds the highlighted text as a grammar candidate. If a target is saved, the highlighted text becomes the example sentence.
+## Local buttons
 
-Readable candidate row format:
+- `Look for words / phrases` finds short list-like chunks, vocabulary lines, table cells, and short phrases.
+- `Look for sentences` finds full sentences/questions that can be used as examples, sentence cards, or grammar examples.
+- If text is highlighted, these buttons use the selected text. If nothing is highlighted, they use all extracted text.
+
+## Cherry-pick cards
+
+Each candidate card can be marked as:
+
+- `As word/phrase` → Batch mode: Vocabulary
+- `As grammar` → Batch mode: Grammar
+- `As sentence` → Batch mode: Provided examples
+
+Then use `Send selected to Batch / Queue`.
+
+## Manual candidate builder
+
+Use this when the local search found a useful sentence but you want to pair it with a specific target.
 
 ```text
-provided example | target | sentence
-provided example | sentence
-vocabulary | target
-grammar | structure | optional sentence
+highlight word/phrase → Use selection as target
+highlight example → Use selection as example
+choose vocabulary / grammar / provided_example
+Add candidate
 ```
 
-The old TSV format is still accepted internally.
+## Optional AI assist
 
-This mode is best for screenshots, textbook vocabulary tables, grammar banks, and cases where automatic extraction selects the wrong words.
+The `AI assist: find candidates` button is optional and uses the Card AI provider selected at the top of the app. Skip it for the free workflow.
 
-### 2. Mistral OCR auto candidates
+## Mistral OCR mode
 
-Use this when the layout is difficult or you want a faster cloud OCR pass.
-
-Flow:
+Mistral is used only for cloud text extraction from PDF/image files.
 
 ```text
 Load PDF/image
-→ Run Mistral extraction
-→ Mistral extracts markdown text
-→ current Card AI provider extracts candidate rows
-→ review/edit candidates
-→ Send candidates to Batch
+→ Run Mistral OCR
+→ Mistral extracts text
+→ use free local Look for words/sentences buttons
+→ cherry-pick
+→ Send selected to Batch / Queue
 ```
 
-Mistral extraction is OCR only in this app. Candidate extraction still uses the selected Card AI provider such as OpenAI/Gemini/Claude.
+Mistral OCR does not automatically generate candidates in the default workflow.
 
 ## Installation
 
@@ -91,9 +97,11 @@ MISTRAL_OCR_MODEL=mistral-ocr-latest
 
 ## Costs
 
-- Local Tesseract OCR: no API cost, runs locally, but quality depends on the image and installed OCR language data.
-- Mistral OCR: paid cloud API. It sends files to Mistral and consumes Mistral credits.
-- Candidate extraction after OCR: uses your selected Card AI provider and consumes its normal text-generation credits.
+- Local TXT/HTML/PDF text extraction: free.
+- Local Tesseract OCR for images/scanned PDFs: free, but requires the Tesseract executable.
+- Local candidate search/cherry-pick: free.
+- Optional AI assist: uses the selected Card AI provider and consumes that provider's normal text-generation credits.
+- Mistral OCR: cloud API call; uses Mistral credits.
 - Audio is separate and still uses the Audio provider in the Speech / Audio tab.
 
 ## Safety rule
@@ -103,10 +111,15 @@ Do not use Import Material as `image → Anki`.
 Always use:
 
 ```text
-image/PDF
-→ OCR/manual or auto candidates
-→ candidate preview/edit
+image/PDF/text
+→ extract readable text
+→ local search / manual / optional AI candidates
+→ candidate preview/cherry-pick
 → Send to Batch
 → Batch review
 → Anki
 ```
+
+## v9.1.8 note: Grammar Batch from sentences
+
+In Import Material, grammar marking is intentionally sentence-first. When a candidate is marked as grammar, the app sends only the selected sentence/fragment to Batch with `batch_mode = Grammar`. Import Material does not guess the grammar focus and does not build `target | same sentence` rows. Batch is responsible for identifying the useful grammar structure during generation.

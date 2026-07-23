@@ -1,0 +1,53 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>AI Grammar Light Card Preview</title>
+<style>
+body { margin:0; padding:28px; background:#f5f7fb; font-family:"Segoe UI",Arial,sans-serif; color:#24324a; }
+.grid { max-width:1280px; margin:auto; display:grid; grid-template-columns:1fr 1fr; gap:28px; align-items:start; }
+.card { background:#fff; border:1px solid #e7edf5; border-radius:24px; box-shadow:0 10px 30px rgba(31,55,88,.08); padding:32px; }
+.front { min-height:360px; display:flex; flex-direction:column; justify-content:center; align-items:center; }
+.badge { padding:7px 13px; border-radius:999px; font-size:11px; font-weight:700; letter-spacing:.09em; text-transform:uppercase; color:#2463c5; background:#eaf2ff; }
+.word { margin:30px 0 24px; font-size:38px; line-height:1.2; font-weight:700; color:#17253c; text-align:center; }
+.word.small { margin:20px 0 4px; font-size:30px; text-align:left; }
+.prompt { padding-top:18px; color:#8492a8; font-size:13px; }
+.meaning { margin-bottom:28px; color:#2463c5; font-size:20px; line-height:1.45; font-weight:600; }
+.section { margin-top:15px; padding:16px 18px; border:1px solid #ebf0f7; border-radius:15px; background:#fbfcff; }
+.section.example { background:#eff6ff; border-color:#dceafe; }
+.section.warning { background:#fff8f1; border-color:#f6dfc6; }
+.label { margin-bottom:8px; color:#6d7e96; font-size:11px; font-weight:700; letter-spacing:.1em; text-transform:uppercase; }
+.pill { display:inline-block; padding:7px 11px; border-radius:999px; background:#eaf2ff; color:#245db5; font-size:14px; font-weight:600; }
+.item { margin-top:8px; padding:10px 12px; border-radius:11px; background:#fff; border:1px solid #edf1f6; line-height:1.45; }
+.item:first-child { margin-top:0; }
+@media (max-width:800px){.grid{grid-template-columns:1fr}}
+</style>
+</head>
+<body>
+<div class="grid">
+  <div class="card front">
+    <div class="badge">English · grammar structure</div>
+    <div class="word">He might have gone out.</div>
+    <div class="prompt">Show explanation</div>
+  </div>
+  <div class="card">
+    <div class="badge">English · grammar structure</div>
+    <div class="word small">He might have gone out.</div>
+    <div class="meaning">It is possible that he went out, but the speaker is not sure.</div>
+    <div class="section"><div class="label">Structure</div><div class="pill">might have + past participle</div></div>
+    <div class="section"><div class="label">How it works</div>
+      <div class="item">might — shows uncertainty or possibility</div>
+      <div class="item">have gone — refers to a completed action in the past</div>
+    </div>
+    <div class="section"><div class="label">When to use it</div>Use this structure when making a guess about something that may have happened earlier.</div>
+    <div class="section example"><div class="label">Natural context</div><strong>He is not answering his phone. He might have gone out.</strong></div>
+    <div class="section"><div class="label">Contrast</div>
+      <div class="item">He might go out. — A possibility now or in the future.</div>
+      <div class="item">He might have gone out. — A possibility about the past.</div>
+    </div>
+    <div class="section warning"><div class="label">Common mistakes</div><div class="item">He might has gone out. → He might have gone out.</div></div>
+  </div>
+</div>
+</body>
+</html>
