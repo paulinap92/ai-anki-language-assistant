@@ -35,7 +35,7 @@ def test_prompt_v5_includes_user_topic_and_quality_self_check() -> None:
         "character / personality traits",
     )
 
-    assert VOCABULARY_PROMPT_VERSION == "v8-language-neutral-schema"
+    assert VOCABULARY_PROMPT_VERSION == "v10-lesson-context-validation"
     assert "User topic/context" in prompt
     assert "character / personality traits" in prompt
     assert "quality_warnings" in prompt
@@ -158,7 +158,7 @@ def test_validator_ignores_outer_quotes_in_exact_input_match() -> None:
 def test_prompt_v7_requires_example_to_use_target_item() -> None:
     prompt = build_vocabulary_prompt("derrumbar(se)", "Spanish", "Polish")
 
-    assert VOCABULARY_PROMPT_VERSION == "v8-language-neutral-schema"
+    assert VOCABULARY_PROMPT_VERSION == "v10-lesson-context-validation"
     assert "MUST use the target word/phrase" in prompt
     assert "Do not replace the target with a synonym" in prompt
     assert "used_form_in_example" in prompt
@@ -276,7 +276,7 @@ def test_validator_hard_warns_absurd_collocation_even_if_target_is_present() -> 
     assert any(warning.startswith("HARD:") and "smoothie" in warning for warning in warnings)
 
 
-def test_provider_self_check_bad_naturalness_becomes_hard_warning() -> None:
+def test_provider_self_check_bad_naturalness_becomes_soft_warning() -> None:
     card = _card(
         word_or_phrase="wear down",
         target_language="English",
@@ -294,8 +294,8 @@ def test_provider_self_check_bad_naturalness_becomes_hard_warning() -> None:
         expected_explanation_language="Polish",
     )
 
-    assert any("collocation naturalness as bad" in warning for warning in warnings)
-    assert any("translation naturalness as bad" in warning for warning in warnings)
+    assert any(warning.startswith("SOFT:") and "collocation naturalness as bad" in warning for warning in warnings)
+    assert any(warning.startswith("SOFT:") and "translation naturalness as bad" in warning for warning in warnings)
 
 
 def test_language_neutral_validator_blocks_wrong_similar_form() -> None:
@@ -371,3 +371,100 @@ def test_same_as_target_explanation_language_is_resolved() -> None:
         expected_explanation_language="Same as target",
     )
     assert not any("explanation language mismatch" in warning for warning in warnings)
+
+
+def test_validator_allows_irregular_phrasal_verb_form() -> None:
+    card = _card(
+        word_or_phrase="blow up",
+        target_language="English",
+        part_of_speech="phrasal verb",
+        definition="To explode or cause something to explode.",
+        translation_pl="wybuchnąć; wysadzić",
+        example="The bomb blew up the building.",
+        example_pl="Bomba wysadziła w powietrze budynek.",
+        grammar_note="Past tense: blew up; past participle: blown up.",
+    )
+
+    warnings = validate_vocabulary_card(
+        card,
+        expected_input="blow up",
+        expected_target_language="English",
+        expected_explanation_language="Polish",
+    )
+
+    assert not any("example does not use the target word/phrase" in warning for warning in warnings)
+
+
+
+def test_validator_allows_regular_inflected_placeholder_phrase() -> None:
+    card = _card(
+        word_or_phrase="yell at someone",
+        target_language="English",
+        part_of_speech="verb phrase",
+        definition="To shout at someone angrily.",
+        translation_pl="krzyczeć na kogoś",
+        example="The coach yelled at the players for making careless mistakes.",
+        example_pl="Trener krzyknął na zawodników za popełnianie błędów.",
+        grammar_note="Base form: yell at. Past tense: yelled at.",
+    )
+
+    warnings = validate_vocabulary_card(
+        card,
+        expected_input="yell at someone",
+        expected_target_language="English",
+        expected_explanation_language="Polish",
+    )
+
+    assert not any("example does not use the target word/phrase" in warning for warning in warnings)
+
+def test_prompt_accepts_context_specific_lesson_phrases() -> None:
+    prompt = build_vocabulary_prompt("shell rebel positions", "English", "Polish", "news / military")
+
+    assert "Accept useful lesson phrases" in prompt
+    assert "shell rebel positions" in prompt
+    assert "Do NOT mark an item invalid merely because it is not a fixed expression" in prompt
+
+
+def test_validator_uses_left_side_for_provided_example_rows() -> None:
+    card = _card(
+        word_or_phrase="microorganisms",
+        target_language="English",
+        part_of_speech="noun",
+        definition="Very small living things that can only be seen with a microscope.",
+        translation_pl="mikroorganizmy",
+        example="Bacteria are microorganisms which often cause disease.",
+        example_pl="Bakterie to mikroorganizmy, które często powodują choroby.",
+        grammar_note="Usually plural in this context; singular: microorganism.",
+    )
+
+    warnings = validate_vocabulary_card(
+        card,
+        expected_input="microorganisms | Bacteria are microorganisms which often cause disease.",
+        expected_target_language="English",
+        expected_explanation_language="Polish",
+    )
+
+    assert not any("input phrase changed" in warning for warning in warnings)
+    assert not any("example does not use the target word/phrase" in warning for warning in warnings)
+
+
+def test_validator_uses_left_side_for_tab_separated_provided_example_rows() -> None:
+    card = _card(
+        word_or_phrase="outgrown",
+        target_language="English",
+        part_of_speech="verb",
+        definition="To have grown too big or mature for something.",
+        translation_pl="wyrosnąć z czegoś",
+        example="My daughter has outgrown most of her clothes - she needs a bigger size.",
+        example_pl="Moja córka wyrosła z większości ubrań - potrzebuje większego rozmiaru.",
+        grammar_note="Past participle of outgrow: outgrown.",
+    )
+
+    warnings = validate_vocabulary_card(
+        card,
+        expected_input="outgrown\tMy daughter has outgrown most of her clothes - she needs a bigger size.",
+        expected_target_language="English",
+        expected_explanation_language="Polish",
+    )
+
+    assert not any("input phrase changed" in warning for warning in warnings)

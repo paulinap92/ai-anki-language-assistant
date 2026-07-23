@@ -354,6 +354,8 @@ GRAMMAR_MODEL_FIELDS = [
     "Breakdown",
     "Usage",
     "ContextExample",
+    "Audio",
+    "ExampleAudio",
     "Contrasts",
     "CommonMistakes",
 ]
@@ -390,6 +392,8 @@ GRAMMAR_BACK_TEMPLATE = """
   <section class="section example">
     <div class="label">Natural context</div>
     <div class="sentence">{{ContextExample}}</div>
+    {{#Audio}}<div class="audio">{{Audio}}</div>{{/Audio}}
+    {{^Audio}}{{#ExampleAudio}}<div class="audio">{{ExampleAudio}}</div>{{/ExampleAudio}}{{/Audio}}
   </section>
 
   <section class="section">

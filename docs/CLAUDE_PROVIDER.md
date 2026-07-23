@@ -41,3 +41,9 @@ Pydantic validation remain centralized in `VocabularyAiClient`.
 The default model is `claude-haiku-4-5` because this application benefits from
 a fast, lower-cost model for repeated structured generations. The model can be
 changed through `CLAUDE_MODEL` without modifying the source code.
+
+## Cost and audio note
+
+Claude in this project is a text provider only. It does not provide the app's audio/TTS workflow. Use the separate Speech / Audio providers for audio generation.
+
+For high-volume Batch / Queue generation, Claude Haiku is still relatively expensive compared with cheap Gemini/OpenAI options. See `docs/PROVIDER_COST_COMPARISON.md` before using Claude as a default batch provider.

@@ -112,6 +112,46 @@ TRANSLATION_FIELDS = (
     ("grammar note", "grammar_note"),
 )
 
+
+IRREGULAR_ANCHOR_FORMS = {
+    "be": {"am", "is", "are", "was", "were", "been", "being"},
+    "begin": {"began", "begun", "beginning"},
+    "break": {"broke", "broken", "breaking"},
+    "bring": {"brought", "bringing"},
+    "buy": {"bought", "buying"},
+    "catch": {"caught", "catching"},
+    "come": {"came", "coming"},
+    "do": {"did", "done", "doing", "does"},
+    "draw": {"drew", "drawn", "drawing"},
+    "fall": {"fell", "fallen", "falling"},
+    "feel": {"felt", "feeling"},
+    "find": {"found", "finding"},
+    "get": {"got", "gotten", "getting", "gets"},
+    "give": {"gave", "given", "giving"},
+    "go": {"went", "gone", "going", "goes"},
+    "grow": {"grew", "grown", "growing"},
+    "have": {"had", "having", "has"},
+    "hold": {"held", "holding"},
+    "keep": {"kept", "keeping"},
+    "know": {"knew", "known", "knowing"},
+    "make": {"made", "making"},
+    "put": {"putting"},
+    "run": {"ran", "running"},
+    "say": {"said", "saying"},
+    "see": {"saw", "seen", "seeing"},
+    "sell": {"sold", "selling"},
+    "send": {"sent", "sending"},
+    "set": {"setting"},
+    "speak": {"spoke", "spoken", "speaking"},
+    "take": {"took", "taken", "taking"},
+    "think": {"thought", "thinking"},
+    "wear": {"wore", "worn", "wearing"},
+    "win": {"won", "winning"},
+    "write": {"wrote", "written", "writing"},
+    "blow": {"blew", "blown", "blowing"},
+    "shell": {"shelled", "shelling", "shells"},
+}
+
 LEXICAL_STOPWORDS = {
     "a", "an", "the", "to", "of", "and", "or", "but", "with", "for", "from", "in",
     "be", "is", "are", "am", "was", "were", "been", "being", "one", "ones", "someone",
@@ -130,16 +170,17 @@ def validate_vocabulary_card(
 ) -> list[str]:
     """Return local quality warnings for a generated vocabulary card."""
     warnings: list[str] = []
+    effective_expected_input = _effective_expected_input(expected_input)
 
     _check_required_fields(card, warnings)
     _check_expected_values(
         card,
         warnings,
-        expected_input=expected_input,
+        expected_input=effective_expected_input,
         expected_target_language=expected_target_language,
         expected_explanation_language=expected_explanation_language,
     )
-    _check_example_uses_target_item(card, warnings, expected_input=expected_input)
+    _check_example_uses_target_item(card, warnings, expected_input=effective_expected_input)
     _check_explanation_language_fields(card, warnings, expected_explanation_language)
     _check_known_bad_patterns(card, warnings)
     _check_naturalness(card, warnings)
@@ -147,6 +188,25 @@ def validate_vocabulary_card(
     _check_topic_fit(card, warnings, topic_context)
 
     return _dedupe(warnings)
+
+
+
+def _effective_expected_input(expected_input: str) -> str:
+    """Return the lexical target to validate against.
+
+    Provided-examples rows use ``target | sentence`` or ``target<TAB>sentence``.
+    Local validation must compare the generated ``word_or_phrase`` with the
+    target on the left, not with the whole raw row. This keeps duplicate
+    precheck/Batch storage free to preserve the original line while quality
+    validation stays focused on the actual card target.
+    """
+    text = str(expected_input or "").strip()
+    for separator in ("|", "\t"):
+        if separator in text:
+            left, _right = text.split(separator, 1)
+            if left.strip():
+                return left.strip()
+    return text
 
 
 def _check_required_fields(card: VocabularyCard, warnings: list[str]) -> None:
@@ -212,7 +272,7 @@ def _check_example_uses_target_item(card: VocabularyCard, warnings: list[str], *
         return
 
     if card.example_uses_target is False:
-        warnings.append("HARD: provider self-check says the example does not use the target item.")
+        warnings.append("SOFT: provider self-check says the example may not use the target item; local validation will verify it.")
 
     used_form = str(card.used_form_in_example or "").strip()
     if used_form and _normalize_for_substring(used_form) not in _normalize_for_substring(example):
@@ -260,6 +320,8 @@ def _target_anchors(target: str) -> list[str]:
         if token in LEXICAL_STOPWORDS or len(token) < 3:
             continue
         variants = {token, _light_stem(token)}
+        variants.update(_regular_anchor_forms(token))
+        variants.update(IRREGULAR_ANCHOR_FORMS.get(token, set()))
         if token.endswith("se") and len(token) > 5:
             base = token[:-2]
             variants.add(base)
@@ -268,6 +330,39 @@ def _target_anchors(target: str) -> list[str]:
             if variant and len(variant) >= 3 and variant not in LEXICAL_STOPWORDS:
                 anchors.append(variant)
     return _dedupe(anchors)
+
+
+def _regular_anchor_forms(token: str) -> set[str]:
+    """Return conservative English-style inflected forms for lexical anchors.
+
+    This catches common lesson phrases such as ``yell at someone`` ->
+    ``yelled at the players`` without treating placeholders like ``someone``
+    as literal words. It deliberately keeps the form set small; hard typo
+    detection still relies on the original anchor and known bad patterns.
+    """
+    token = _normalize_letters(token)
+    if len(token) < 3 or token in LEXICAL_STOPWORDS:
+        return set()
+
+    forms = {f"{token}s", f"{token}ed", f"{token}ing"}
+    if token.endswith("e") and len(token) > 3:
+        forms.add(f"{token}d")
+        forms.add(f"{token[:-1]}ing")
+        forms.add(f"{token}s")
+    if token.endswith("y") and len(token) > 3 and token[-2] not in "aeiou":
+        forms.add(f"{token[:-1]}ies")
+        forms.add(f"{token[:-1]}ied")
+        forms.add(f"{token}ing")
+    if (
+        len(token) >= 3
+        and token[-1] not in "aeiouwxy"
+        and token[-2] in "aeiou"
+        and token[-3] not in "aeiou"
+    ):
+        forms.add(f"{token}{token[-1]}ed")
+        forms.add(f"{token}{token[-1]}ing")
+
+    return {form for form in forms if len(form) >= 3}
 
 
 def _anchor_hits_example(anchor: str, example_tokens: list[str], example_norm: str) -> bool:
@@ -420,13 +515,13 @@ def _check_naturalness(card: VocabularyCard, warnings: list[str]) -> None:
     if collocation == "weak":
         warnings.append("SOFT: provider self-check marked collocation naturalness as weak.")
     elif collocation == "bad":
-        warnings.append("HARD: provider self-check marked collocation naturalness as bad.")
+        warnings.append("SOFT: provider self-check marked collocation naturalness as bad; review before adding.")
 
     translation = str(card.translation_naturalness or "").strip().casefold()
     if translation == "weak":
         warnings.append("SOFT: provider self-check marked translation naturalness as weak.")
     elif translation == "bad":
-        warnings.append("HARD: provider self-check marked translation naturalness as bad.")
+        warnings.append("SOFT: provider self-check marked translation naturalness as bad; review before adding.")
 
 
 def _check_llm_self_warnings(card: VocabularyCard, warnings: list[str]) -> None:

@@ -41,6 +41,22 @@ class VocabularyAiClient(ABC):
         """Analyze the grammar and natural usage of one sentence."""
 
     @abstractmethod
+    def generate_grammar_card(
+        self, grammar_item: str, target_language: str, topic_context: str = ""
+    ) -> GrammarAnalysis:
+        """Generate one grammar card for a Batch grammar item."""
+
+    @abstractmethod
+    def generate_sentence_card(
+        self,
+        raw_item: str,
+        target_language: str,
+        explanation_language: str,
+        topic_context: str = "",
+    ) -> VocabularyCard:
+        """Generate one card from a user-provided example sentence."""
+
+    @abstractmethod
     def review_conversation_answer(
         self,
         topic: str,

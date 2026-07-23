@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 
-VOCABULARY_PROMPT_VERSION = "v8-language-neutral-schema"
+VOCABULARY_PROMPT_VERSION = "v10-lesson-context-validation"
+GRAMMAR_BATCH_PROMPT_VERSION = "v2-topic-variety-grammar"
+SENTENCE_BASED_CARD_PROMPT_VERSION = "v1-provided-example-card"
 EXPLANATION_LANGUAGES = ["Polish", "English", "Spanish", "German", "Italian", "Same as target", "No translation"]
 
 
@@ -27,6 +29,10 @@ TOPIC_PRESET_HINTS = {
     "food": "When the topic is food, keep examples in restaurants, cooking, taste, meals, or food culture contexts.",
     "technology": "When the topic is technology, keep examples in software, data, AI, devices, tools, or digital workflows.",
     "education": "When the topic is education, keep examples in learning, courses, studying, exams, or academic contexts.",
+    "writing": "When the topic is writing, vary examples across emails, formal letters, opinion texts, reports, complaints, applications, arguments, and written communication. Do not overuse essay/ensayo.",
+    "essay": "When the topic is writing/essays, essay may be one subcontext, but do not force the word essay into every example.",
+    "ensayo": "When the topic is writing/ensayo, vary contexts and do not repeat ensayo in every example.",
+    "dele": "When the topic is DELE/writing, vary examples across emails, letters, opinion texts, reports, complaints, applications, and arguments.",
 }
 
 
@@ -94,11 +100,13 @@ def _topic_rules(topic_context: str) -> str:
 Topic / section rules:
 Topic/context rules:
 - User topic/context: "{topic_context}".
-- Treat the user topic as a hard constraint / hard context constraint for the example sentence and usage notes.
+- Treat the user topic as a hard constraint / context guide and quality guide, not as a noun that must appear literally in every example.
 - The user can type any topic. Do not reject unknown topics just because they are not in a preset list.
 - The example must clearly fit the user topic, unless the input phrase genuinely cannot be used naturally in that topic.
 - If the input does not naturally fit the topic, still keep the exact input, generate the most natural card, and set topic_fit to "weak" or "mismatch" with a short topic_warning.
 - Do not drift into generic business, travel, technology, food, health, or abstract contexts unless the user topic points there.
+- Avoid repeating the same topic keyword or scenario across many Batch cards. Use varied subcontexts inside the topic.
+- If the topic is writing/DELE/essays, vary examples across emails, formal letters, opinions, arguments, reports, complaints, applications, and written communication. Do not overuse words such as "essay" or "ensayo".
 {extra}
 """
 
@@ -129,8 +137,8 @@ Target language: {target_language}
 Explanation language: {effective_explanation_language}
 
 Internal process:
-1. Validate whether the input is a real, correctly formed word, phrase, idiom, or fixed expression in {target_language}.
-2. Treat the complete input as one lexical unit before analysing individual words.
+1. Validate whether the input is usable learning material in {target_language}: a word, phrase, collocation, sentence fragment, idiom, grammar pattern, or context-specific lesson expression.
+2. Treat the complete input as one learning item before analysing individual words.
 3. Preserve the exact input for valid cards.
 4. Identify the phrase-level meaning, natural collocations, grammar patterns, and normal usage.
 5. Apply the user topic/context if provided.
@@ -139,8 +147,12 @@ Internal process:
 8. Verify that the collocation and translation sound natural, not merely grammatically possible.
 9. Run a final quality self-check for spelling, language mixing, topic fit, naturalness, collocations, and JSON validity.
 
-Validation rules:
-- If the input is misspelled, malformed, invented, or not a valid expression, set is_valid to false.
+Validation rules — lesson/context mode by default:
+- Accept useful lesson phrases, collocations, sentence fragments, verb + object patterns, and context-specific expressions, even if they are not idioms or dictionary headwords.
+- Do NOT mark an item invalid merely because it is not a fixed expression or established idiom.
+- Examples of valid context phrases: "shell rebel positions", "raise concerns", "submit an application", "address the issue", "take legal action".
+- If an item is context-specific, keep is_valid true and explain it as a contextual phrase/pattern. Optionally add a SOFT warning, not invalid.
+- Set is_valid false only for true garbage: OCR noise, wrong-language text, malformed/nonexistent wording, obvious typo with no reliable meaning, or an item that cannot be explained naturally.
 - For invalid input, do not invent a definition or example.
 - Explain the problem briefly in validation_error using {effective_explanation_language if not no_translation else target_language}.
 - Suggest a correction only when reasonably confident; otherwise return an empty string.
@@ -151,11 +163,11 @@ Exact-input rules:
 - Never replace it with a synonym, related expression, corrected phrase, or a different word.
 - Corrections belong only in suggested_correction when is_valid is false.
 
-Phrase-level meaning rules:
-- Treat the entire user input as one lexical unit.
-- For multi-word expressions, compounds, idioms, and fixed phrases, determine the established meaning of the complete expression before analysing individual words.
-- Do not infer the meaning by translating or defining each component separately.
-- Prefer the established phrase meaning over a literal interpretation.
+Phrase/context meaning rules:
+- Treat the entire user input as one learning item.
+- For multi-word expressions, compounds, idioms, fixed phrases, collocations, and context-specific phrase fragments, determine the phrase/context meaning before analysing individual words.
+- Do not reject useful verb-object or context phrases just because they are not dictionary entries.
+- Prefer the established phrase meaning when one exists; otherwise explain the natural contextual meaning.
 
 Definition and explanation rules:
 - The definition must be short, clear, and written in {target_language}.
@@ -222,6 +234,164 @@ Return this exact JSON structure:
   "example_uses_target": true,
   "collocation_naturalness": "ok",
   "translation_naturalness": "ok"
+}}
+"""
+
+
+def _split_target_and_sentence(raw_item: str) -> tuple[str, str]:
+    """Split an optional `target | sentence` Batch input."""
+    value = raw_item.strip()
+    for separator in ("|", "\t"):
+        if separator in value:
+            left, right = value.split(separator, 1)
+            return left.strip(), right.strip()
+    return "", value
+
+
+def build_sentence_based_card_prompt(
+    raw_item: str,
+    target_language: str,
+    explanation_language: str,
+    topic_context: str = "",
+) -> str:
+    """Build a prompt for Batch cards based on a user-provided example sentence.
+
+    Accepted input formats:
+    - target item | provided sentence
+    - provided sentence only (provider chooses the most useful target item)
+    """
+    explanation_language = explanation_language.strip()
+    if not explanation_language:
+        raise ValueError("Explanation language must be selected explicitly.")
+    effective_explanation_language = target_language if explanation_language == "Same as target" else explanation_language
+    no_translation = explanation_language == "No translation"
+    explanation_rules = _language_quality_rules(effective_explanation_language, target_language)
+    topic_rules = _topic_rules(topic_context)
+    target_item, provided_sentence = _split_target_and_sentence(raw_item)
+    target_instruction = (
+        f'Target item selected by the user: "{target_item}". Use this exact item as word_or_phrase.'
+        if target_item else
+        "No explicit target item was provided. Select the single most useful word, phrase, connector, idiom, or grammar chunk from the provided sentence and put it in word_or_phrase."
+    )
+    return f"""
+You are a professional {target_language} language teacher and flashcard quality reviewer.
+
+Create ONE sentence-based flashcard from this user-provided example.
+
+Raw input:
+"{raw_item}"
+
+Provided sentence:
+"{provided_sentence}"
+
+{target_instruction}
+
+Target language: {target_language}
+Explanation language: {effective_explanation_language}
+
+Core rule:
+- Use the provided sentence as the main example.
+- Do NOT replace it with a new invented example.
+- Do NOT change its meaning.
+- Do NOT rewrite the sentence except for tiny obvious typo fixes, and only if needed for correctness.
+- If you make a tiny correction, mention it in quality_warnings.
+
+Card rules:
+- word_or_phrase must be the explicit user target if one was provided.
+- If no target was provided, choose a useful expression from the sentence, not a random word.
+- The example field must contain the provided sentence, or the minimally corrected version of it.
+- Definition must explain the selected target item in {target_language}.
+- Translation/example_translation/grammar_note follow the selected explanation language.
+- Useful phrases/collocations should come from the sentence or closely related natural usage.
+- The card should help the learner remember the target in this real sentence context.
+{explanation_rules}
+{topic_rules}
+Quality self-check:
+- Set example_uses_target to true only if the final example contains the selected target item or a valid inflected form.
+- Put the exact target form used in the example into used_form_in_example.
+- Set collocation_naturalness to ok/weak/bad.
+- Set translation_naturalness to ok/weak/bad.
+- Add quality_warnings for any target mismatch, sentence rewrite, awkward translation, weak topic fit, or uncertainty.
+- If the provided sentence is not in {target_language}, set is_valid false and explain why.
+
+Return ONLY valid JSON. Do not use markdown or comments outside JSON.
+
+{{
+  "is_valid": true,
+  "validation_error": "",
+  "suggested_correction": "",
+  "explanation_language": "{effective_explanation_language}",
+  "word_or_phrase": "{target_item if target_item else 'string'}",
+  "target_language": "{target_language}",
+  "part_of_speech": "string",
+  "definition": "string",
+  "translation": "string",
+  "example": "{provided_sentence}",
+  "example_translation": "string",
+  "synonyms": ["string"],
+  "collocations": ["string"],
+  "grammar_note": "string",
+  "topic_fit": "ok",
+  "topic_warning": "",
+  "quality_warnings": [],
+  "used_form_in_example": "string",
+  "example_uses_target": true,
+  "collocation_naturalness": "ok",
+  "translation_naturalness": "ok"
+}}
+"""
+
+
+def build_batch_grammar_prompt(
+    grammar_item: str,
+    target_language: str,
+    topic_context: str = "",
+) -> str:
+    """Build a prompt for Batch grammar cards from structures/connectors/patterns.
+
+    This is different from sentence analysis: the input may be a grammar
+    construction such as ``aunque + subjuntivo`` or a discourse connector such
+    as ``por consiguiente``. The output reuses ``GrammarAnalysis`` because the
+    Anki grammar template is sentence/structure-first.
+    """
+    topic_rules = _topic_rules(topic_context)
+    return f"""
+You are a professional {target_language} grammar teacher and flashcard quality reviewer.
+
+Create ONE grammar flashcard for this exact user input:
+
+"{grammar_item}"
+
+Target language: {target_language}
+
+The input may be a grammar structure, connector, discourse phrase, verb pattern,
+exam-writing expression, or a complete example sentence.
+
+Requirements:
+- Preserve the input exactly in the "sentence" field.
+- Identify the useful grammar structure or writing function.
+- Explain the meaning/use in simple {target_language}.
+- Keep it practical for learners, not a long academic lesson.
+- Give a natural context example in {target_language} that uses the structure correctly.
+- Include 2-4 short breakdown points.
+- Include 1-3 contrasts with similar structures or common alternatives.
+- Include 1-3 common mistakes with corrected forms.
+- For DELE/writing topics, vary contexts: letters, emails, arguments, reports, opinions, complaints, applications, and written communication. Do not overuse one noun such as "ensayo".
+{topic_rules}
+Return ONLY valid JSON. Do not use markdown or comments outside JSON.
+
+Return this exact JSON structure:
+
+{{
+  "sentence": "{grammar_item}",
+  "target_language": "{target_language}",
+  "meaning": "string",
+  "structure": "string",
+  "breakdown": ["string", "string"],
+  "usage": "string",
+  "context_example": "string",
+  "contrasts": ["string", "string"],
+  "common_mistakes": ["string", "string"]
 }}
 """
 

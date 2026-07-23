@@ -9,6 +9,8 @@ from src.ai.prompts import (
     build_conversation_feedback_prompt,
     build_conversation_start_prompt,
     build_grammar_analysis_prompt,
+    build_batch_grammar_prompt,
+    build_sentence_based_card_prompt,
     build_vocabulary_prompt,
 )
 
@@ -73,6 +75,38 @@ class GeminiVocabularyClient(VocabularyAiClient):
             build_grammar_analysis_prompt(sentence, target_language)
         )
         return self._parse_grammar_analysis(raw_text, self.provider_name)
+
+    def generate_grammar_card(
+        self, grammar_item: str, target_language: str, topic_context: str = ""
+    ) -> GrammarAnalysis:
+        """Generate one Batch grammar card."""
+        raw_text = self._generate_text(
+            build_batch_grammar_prompt(grammar_item, target_language, topic_context)
+        )
+        return self._parse_grammar_analysis(raw_text, self.provider_name)
+
+    def generate_sentence_card(
+        self,
+        raw_item: str,
+        target_language: str,
+        explanation_language: str,
+        topic_context: str = "",
+    ) -> VocabularyCard:
+        """Generate one card from a user-provided example sentence."""
+        raw_text = self._generate_text(
+            build_sentence_based_card_prompt(raw_item, target_language, explanation_language, topic_context)
+        )
+        card = self._parse_card_response(raw_text, self.provider_name)
+        warnings = validate_vocabulary_card(
+            card,
+            expected_input=card.word_or_phrase,
+            expected_target_language=target_language,
+            expected_explanation_language=explanation_language,
+            topic_context=topic_context,
+        )
+        if warnings:
+            card.quality_warnings = list(dict.fromkeys([*card.quality_warnings, *warnings]))
+        return card
 
     def review_conversation_answer(
         self,

@@ -37,6 +37,8 @@ from src.speech.voice_presets import get_voice_by_label, get_voice_labels
 
 EXPLANATION_LANGUAGES = ["Polish", "English", "Spanish", "German", "Italian", "Same as target", "No translation"]
 IMPROVEMENT_LEVELS = ["Natural B1/B2", "Strong B2/C1", "Professional / Interview"]
+BATCH_MODES = ["Vocabulary", "Grammar", "Mixed", "Provided examples"]
+
 TOPIC_PRESETS = [
     "",
     "character / personality traits",
@@ -81,6 +83,10 @@ class ModernVocabularyGui:
         self._feedback_language_var = ctk.StringVar(value="Polish")
         self._improvement_level_var = ctk.StringVar(value="Strong B2/C1")
         self._deck_var = ctk.StringVar(value=anki_client.deck_name)
+        # Speech / Audio must not depend on the hidden card-generation top bar.
+        # Keep an explicit deck and language selector inside the audio tab.
+        self._speech_deck_var = ctk.StringVar(value=anki_client.deck_name)
+        self._speech_language_var = ctk.StringVar(value=default_target_language)
         self._status_var = ctk.StringVar(value="Ready. Open Anki and choose a deck.")
 
         self._word_var = ctk.StringVar()
@@ -95,10 +101,11 @@ class ModernVocabularyGui:
         self._speech_notes: list[dict[str, object]] = []
         self._speech_note_vars: list[ctk.BooleanVar] = []
         self._speech_search_var = ctk.StringVar(value="")
-        self._speech_source_field_var = ctk.StringVar(value="Auto: Example/Back/Word")
+        self._speech_source_field_var = ctk.StringVar(value="Auto: Example/ContextExample/Back/Word")
         self._speech_target_field_var = ctk.StringVar(value="Audio")
         self._speech_write_mode_var = ctk.StringVar(value="Use dedicated audio field")
         self._speech_progress_var = ctk.StringVar(value="Load cards with missing audio from the selected Anki deck.")
+        self._speech_summary_var = ctk.StringVar(value="No audio scan loaded yet.")
         self._speech_audio_status_by_note_id: dict[int, str] = {}
         self._speech_audio_error_by_note_id: dict[int, str] = {}
         self._speech_audio_path_by_note_id: dict[int, str] = {}
@@ -120,6 +127,8 @@ class ModernVocabularyGui:
         self._batch_generated_card: VocabularyCard | None = None
         self._batch_generated_provider_name: str | None = None
         self._batch_word_var = ctk.StringVar()
+        self._batch_mode_var = ctk.StringVar(value="Vocabulary")
+        self._batch_generated_grammar: GrammarAnalysis | None = None
         self._batch_topic_var = ctk.StringVar(value="")
         self._batch_progress_var = ctk.StringVar(value="No list loaded.")
         self._batch_status_var = ctk.StringVar(value="Load a TXT/CSV file or paste a list.")
@@ -205,37 +214,32 @@ class ModernVocabularyGui:
 
         self._build_top_settings(main)
 
-        tabs = ctk.CTkTabview(main)
+        tabs = ctk.CTkTabview(main, command=self._on_tab_changed)
+        self._tabs = tabs
         tabs.grid(row=2, column=0, sticky="nsew", padx=24, pady=12)
-        tabs.add("Single flashcard")
-        tabs.add("Grammar")
-        tabs.add("Conversation Practice")
-        tabs.add("Batch / Queue")
-        tabs.add("Practice & Print")
-        tabs.add("Speech / Audio")
-        tabs.add("Fix Cards")
-        tabs.tab("Single flashcard").grid_columnconfigure(0, weight=1)
-        tabs.tab("Single flashcard").grid_rowconfigure(0, weight=1)
-        tabs.tab("Grammar").grid_columnconfigure(0, weight=1)
-        tabs.tab("Grammar").grid_rowconfigure(0, weight=1)
-        tabs.tab("Conversation Practice").grid_columnconfigure(0, weight=1)
-        tabs.tab("Conversation Practice").grid_rowconfigure(0, weight=1)
-        tabs.tab("Batch / Queue").grid_columnconfigure(0, weight=1)
-        tabs.tab("Batch / Queue").grid_rowconfigure(0, weight=1)
-        tabs.tab("Practice & Print").grid_columnconfigure(0, weight=1)
-        tabs.tab("Practice & Print").grid_rowconfigure(0, weight=1)
-        tabs.tab("Speech / Audio").grid_columnconfigure(0, weight=1)
-        tabs.tab("Speech / Audio").grid_rowconfigure(0, weight=1)
-        tabs.tab("Fix Cards").grid_columnconfigure(0, weight=1)
-        tabs.tab("Fix Cards").grid_rowconfigure(0, weight=1)
+        # Workflow order: create cards first, then audio/fixes, then practice tools.
+        tab_order = [
+            "Single flashcard",
+            "Batch / Queue",
+            "Grammar",
+            "Speech / Audio",
+            "Fix Cards",
+            "Practice & Print",
+            "Conversation Practice",
+        ]
+        for tab_name in tab_order:
+            tabs.add(tab_name)
+            tabs.tab(tab_name).grid_columnconfigure(0, weight=1)
+            tabs.tab(tab_name).grid_rowconfigure(0, weight=1)
 
         self._build_single_flashcard_tab(tabs.tab("Single flashcard"))
-        self._build_grammar_tab(tabs.tab("Grammar"))
-        self._build_conversation_tab(tabs.tab("Conversation Practice"))
         self._build_batch_tab(tabs.tab("Batch / Queue"))
-        self._build_practice_tab(tabs.tab("Practice & Print"))
+        self._build_grammar_tab(tabs.tab("Grammar"))
         self._build_speech_tab(tabs.tab("Speech / Audio"))
         self._build_existing_cards_tab(tabs.tab("Fix Cards"))
+        self._build_practice_tab(tabs.tab("Practice & Print"))
+        self._build_conversation_tab(tabs.tab("Conversation Practice"))
+        self._on_tab_changed()
 
         footer = ctk.CTkFrame(main, fg_color="transparent")
         footer.grid(row=3, column=0, sticky="ew", padx=24, pady=(0, 16))
@@ -252,10 +256,11 @@ class ModernVocabularyGui:
 
     def _build_top_settings(self, parent: ctk.CTkFrame) -> None:
         settings = ctk.CTkFrame(parent, corner_radius=18)
+        self._top_settings = settings
         settings.grid(row=1, column=0, sticky="ew", padx=24, pady=(8, 4))
         settings.grid_columnconfigure((1, 3, 5), weight=1)
 
-        ctk.CTkLabel(settings, text="AI provider").grid(row=0, column=0, padx=(16, 8), pady=14, sticky="w")
+        ctk.CTkLabel(settings, text="Card AI provider").grid(row=0, column=0, padx=(16, 8), pady=14, sticky="w")
         self._provider_box = ctk.CTkComboBox(
             settings,
             variable=self._provider_var,
@@ -280,6 +285,27 @@ class ModernVocabularyGui:
         ctk.CTkButton(settings, text="Refresh", width=90, command=self._load_decks).grid(
             row=0, column=6, padx=(0, 16), pady=14
         )
+
+
+    def _on_tab_changed(self) -> None:
+        """Keep global card-generation settings out of audio-only workflow.
+
+        The top bar controls Card AI provider / target language / target deck for
+        card creation. Speech / Audio has its own provider controls and deck
+        selector, so showing the card-generation bar there is confusing.
+        """
+        tabs = getattr(self, "_tabs", None)
+        top_settings = getattr(self, "_top_settings", None)
+        if tabs is None or top_settings is None:
+            return
+        try:
+            current_tab = tabs.get()
+        except Exception:
+            return
+        if current_tab == "Speech / Audio":
+            top_settings.grid_remove()
+        else:
+            top_settings.grid(row=1, column=0, sticky="ew", padx=24, pady=(8, 4))
 
     def _build_single_flashcard_tab(self, parent: ctk.CTkFrame) -> None:
         layout = ctk.CTkFrame(parent, fg_color="transparent")
@@ -558,7 +584,7 @@ class ModernVocabularyGui:
 
         ctk.CTkLabel(
             left,
-            text="Load vocabulary list",
+            text="Load Batch items",
             font=ctk.CTkFont(size=20, weight="bold"),
         ).grid(row=0, column=0, sticky="w", padx=18, pady=(18, 8))
 
@@ -572,7 +598,7 @@ class ModernVocabularyGui:
             row=0, column=1, sticky="ew", padx=(5, 0)
         )
 
-        ctk.CTkLabel(left, text="Or paste one word / phrase per line").grid(
+        ctk.CTkLabel(left, text="Paste one item per line. Provided examples: target | sentence").grid(
             row=2, column=0, sticky="w", padx=18, pady=(4, 4)
         )
         self._batch_paste_text = ctk.CTkTextbox(left, height=180, wrap="word")
@@ -581,35 +607,42 @@ class ModernVocabularyGui:
             row=4, column=0, sticky="ew", padx=18, pady=(0, 10)
         )
 
-        ctk.CTkLabel(left, text="Batch topic / context (optional)").grid(
+        ctk.CTkLabel(left, text="Batch mode").grid(
             row=5, column=0, sticky="w", padx=18, pady=(4, 4)
+        )
+        ctk.CTkComboBox(
+            left,
+            variable=self._batch_mode_var,
+            values=BATCH_MODES,
+            state="readonly",
+            command=self._on_batch_mode_changed,
+        ).grid(row=6, column=0, sticky="ew", padx=18, pady=(0, 8))
+
+        ctk.CTkLabel(left, text="Batch topic / context (optional)").grid(
+            row=7, column=0, sticky="w", padx=18, pady=(4, 4)
         )
         self._batch_topic_box = ctk.CTkComboBox(
             left, variable=self._batch_topic_var, values=TOPIC_PRESETS
         )
-        self._batch_topic_box.grid(row=6, column=0, sticky="ew", padx=18, pady=(0, 8))
+        self._batch_topic_box.grid(row=8, column=0, sticky="ew", padx=18, pady=(0, 8))
 
-        language_frame = ctk.CTkFrame(left, fg_color="transparent")
-        language_frame.grid(row=7, column=0, sticky="ew", padx=18, pady=(0, 8))
-        language_frame.grid_columnconfigure((0, 1), weight=1)
-        ctk.CTkLabel(language_frame, text="Target language").grid(row=0, column=0, sticky="w", padx=(0, 5))
-        ctk.CTkLabel(language_frame, text="Explanation language").grid(row=0, column=1, sticky="w", padx=(5, 0))
+        ctk.CTkLabel(left, text="Explanation language").grid(
+            row=9, column=0, sticky="w", padx=18, pady=(4, 4)
+        )
         ctk.CTkComboBox(
-            language_frame,
-            variable=self._language_var,
-            values=list(LANGUAGE_TAGS.keys()),
-            state="readonly",
-            command=lambda _value: self._sync_tts_defaults(),
-        ).grid(row=1, column=0, sticky="ew", padx=(0, 5), pady=(4, 0))
-        ctk.CTkComboBox(
-            language_frame,
+            left,
             variable=self._explanation_language_var,
             values=EXPLANATION_LANGUAGES,
             state="readonly",
-        ).grid(row=1, column=1, sticky="ew", padx=(5, 0), pady=(4, 0))
+        ).grid(row=10, column=0, sticky="ew", padx=18, pady=(0, 4))
+        ctk.CTkLabel(
+            left,
+            text="Target language comes from the top bar.",
+            text_color=("gray35", "gray75"),
+        ).grid(row=11, column=0, sticky="w", padx=18, pady=(0, 8))
 
         session_buttons = ctk.CTkFrame(left, fg_color="transparent")
-        session_buttons.grid(row=8, column=0, sticky="ew", padx=18, pady=(0, 8))
+        session_buttons.grid(row=12, column=0, sticky="ew", padx=18, pady=(0, 8))
         session_buttons.grid_columnconfigure((0, 1), weight=1)
         ctk.CTkButton(session_buttons, text="Save session", command=self._save_batch_session).grid(
             row=0, column=0, sticky="ew", padx=(0, 5)
@@ -618,7 +651,7 @@ class ModernVocabularyGui:
             row=0, column=1, sticky="ew", padx=(5, 0)
         )
         ctk.CTkButton(left, text="Clear batch", command=self._clear_batch).grid(
-            row=9, column=0, sticky="ew", padx=18, pady=(0, 18)
+            row=13, column=0, sticky="ew", padx=18, pady=(0, 18)
         )
 
         right = ctk.CTkFrame(layout, corner_radius=18)
@@ -638,7 +671,7 @@ class ModernVocabularyGui:
             row=0, column=1, sticky="e"
         )
 
-        ctk.CTkLabel(right, text="Current word / phrase").grid(
+        ctk.CTkLabel(right, text="Current item").grid(
             row=1, column=0, sticky="w", padx=18, pady=(4, 4)
         )
         current_row = ctk.CTkFrame(right, fg_color="transparent")
@@ -650,7 +683,7 @@ class ModernVocabularyGui:
         self._batch_word_entry.grid(row=0, column=0, sticky="ew", padx=(0, 8))
         ctk.CTkButton(
             current_row,
-            text="Generate / Regenerate",
+            text="Generate card",
             width=170,
             command=lambda: self._generate_current_batch_card("generate_selected"),
         ).grid(row=0, column=1)
@@ -668,16 +701,19 @@ class ModernVocabularyGui:
         self._batch_preview.bind("<Double-Button-1>", lambda _event: self._open_batch_card_editor())
         self._batch_preview.configure(state="disabled")
 
+        ctk.CTkLabel(right, text="Current card actions", text_color=("gray35", "gray75")).grid(
+            row=5, column=0, sticky="w", padx=18, pady=(0, 4)
+        )
         buttons = ctk.CTkFrame(right, fg_color="transparent")
-        buttons.grid(row=5, column=0, sticky="ew", padx=18, pady=(0, 18))
-        buttons.grid_columnconfigure((0, 1, 2, 3, 4, 5), weight=1)
+        buttons.grid(row=6, column=0, sticky="ew", padx=18, pady=(0, 12))
+        buttons.grid_columnconfigure((0, 1, 2, 3, 4, 5, 6), weight=1)
         ctk.CTkButton(buttons, text="Previous", command=self._batch_previous).grid(
             row=0, column=0, sticky="ew", padx=(0, 4)
         )
-        ctk.CTkButton(buttons, text="Skip", command=self._skip_current_batch_item).grid(
+        ctk.CTkButton(buttons, text="Skip this card", command=self._skip_current_batch_item).grid(
             row=0, column=1, sticky="ew", padx=4
         )
-        ctk.CTkButton(buttons, text="Add to Anki", command=self._add_current_batch_card).grid(
+        ctk.CTkButton(buttons, text="Add this card", command=self._add_current_batch_card).grid(
             row=0, column=2, sticky="ew", padx=4
         )
         ctk.CTkButton(
@@ -690,21 +726,29 @@ class ModernVocabularyGui:
             text="Edit card",
             command=self._open_batch_card_editor,
         ).grid(row=0, column=4, sticky="ew", padx=4)
+        ctk.CTkButton(
+            buttons,
+            text="Approve warning",
+            command=self._approve_current_quality_warning,
+        ).grid(row=0, column=5, sticky="ew", padx=4)
         ctk.CTkButton(buttons, text="Next", command=self._batch_next).grid(
-            row=0, column=5, sticky="ew", padx=(4, 0)
+            row=0, column=6, sticky="ew", padx=(4, 0)
         )
 
+        ctk.CTkLabel(right, text="Batch actions", text_color=("gray35", "gray75")).grid(
+            row=7, column=0, sticky="w", padx=18, pady=(0, 4)
+        )
         bulk_buttons = ctk.CTkFrame(right, fg_color="transparent")
-        bulk_buttons.grid(row=6, column=0, sticky="ew", padx=18, pady=(0, 18))
+        bulk_buttons.grid(row=8, column=0, sticky="ew", padx=18, pady=(0, 12))
         bulk_buttons.grid_columnconfigure((0, 1, 2, 3, 4), weight=1)
         ctk.CTkButton(
             bulk_buttons,
-            text="Auto-generate pending",
+            text="Generate pending",
             command=self._auto_generate_pending_batch_cards,
         ).grid(row=0, column=0, sticky="ew", padx=(0, 5))
         ctk.CTkButton(
             bulk_buttons,
-            text="Retry failed/rate-limited",
+            text="Retry problems",
             command=self._retry_failed_or_rate_limited_batch_cards,
         ).grid(row=0, column=1, sticky="ew", padx=5)
         ctk.CTkButton(
@@ -723,17 +767,22 @@ class ModernVocabularyGui:
             command=self._stop_batch_process,
         ).grid(row=0, column=4, sticky="ew", padx=(4, 0))
 
+        self._batch_issue_label = ctk.CTkLabel(
+            right, text="Problems", text_color=("gray35", "gray75")
+        )
+        self._batch_issue_label.grid(row=9, column=0, sticky="w", padx=18, pady=(0, 4))
         issue_buttons = ctk.CTkFrame(right, fg_color="transparent")
-        issue_buttons.grid(row=7, column=0, sticky="ew", padx=18, pady=(0, 18))
+        self._batch_issue_buttons_frame = issue_buttons
+        issue_buttons.grid(row=10, column=0, sticky="ew", padx=18, pady=(0, 18))
         issue_buttons.grid_columnconfigure((0, 1, 2), weight=1)
         ctk.CTkButton(
             issue_buttons,
-            text="Go to first blocked",
+            text="Go to first problem",
             command=self._go_to_first_blocked_batch_item,
         ).grid(row=0, column=0, sticky="ew", padx=(0, 5))
         ctk.CTkButton(
             issue_buttons,
-            text="Next blocked / failed",
+            text="Next problem",
             command=self._go_to_next_batch_issue,
         ).grid(row=0, column=1, sticky="ew", padx=5)
         ctk.CTkButton(
@@ -741,6 +790,7 @@ class ModernVocabularyGui:
             text="Show issue summary",
             command=self._show_batch_issue_summary,
         ).grid(row=0, column=2, sticky="ew", padx=(5, 0))
+        self._refresh_batch_issue_visibility()
 
     def _build_practice_tab(self, parent: ctk.CTkFrame) -> None:
         """Build interactive practice and printable test controls."""
@@ -828,6 +878,48 @@ class ModernVocabularyGui:
             row=0, column=2, sticky="ew", padx=(5, 0)
         )
 
+    def _on_batch_mode_changed(self, selected: str | None = None) -> None:
+        """Apply a user-selected Batch mode to not-yet-generated items.
+
+        The Batch mode combobox is a session-level setting. In v8.1.5.3 it
+        could be overwritten by the currently selected item's stored
+        ``batch_mode`` after loading a list, so clicking Grammar and then
+        Generate appeared to switch back to Vocabulary. This handler makes
+        the user's explicit choice authoritative for pending/not-generated
+        rows. Generated/reviewed rows keep their stored mode.
+        """
+        mode = (selected or self._batch_mode_var.get() or "Vocabulary").strip()
+        if mode not in BATCH_MODES:
+            mode = "Vocabulary"
+        self._batch_mode_var.set(mode)
+
+        changed = 0
+        for item in self._batch_items:
+            status = str(item.get("status", "pending"))
+            has_generated_payload = bool(item.get("card") or item.get("grammar_card"))
+            if has_generated_payload or status in {
+                "ready",
+                "added_to_anki",
+                "updated_in_anki",
+                "duplicate_found",
+                "duplicate_uncertain",
+                "duplicate_skipped",
+                "blocked_quality_warning",
+                "invalid",
+                "skipped",
+            }:
+                continue
+            item["batch_mode"] = mode
+            item.pop("resolved_mode", None)
+            changed += 1
+
+        if self._batch_items:
+            self._show_current_batch_item(generate=False)
+            self._autosave_batch_session("batch mode changed")
+            if changed:
+                self._record_activity(f"Batch mode set to {mode} for {changed} pending item(s)")
+
+
     @staticmethod
     def _normalise_batch_words(words: list[str]) -> list[str]:
         result: list[str] = []
@@ -846,13 +938,23 @@ class ModernVocabularyGui:
             messagebox.showwarning("Empty list", "No words or phrases were found.")
             return
         topic = self._batch_topic_var.get().strip()
+        batch_mode = self._batch_mode_var.get().strip() or "Vocabulary"
         self._batch_items = [
-            {"word": word, "status": "pending", "topic": topic, "target_language": self._language_var.get(), "explanation_language": self._explanation_language_var.get()} for word in clean_words
+            {
+                "word": word,
+                "status": "pending",
+                "topic": topic,
+                "batch_mode": batch_mode,
+                "target_language": self._language_var.get(),
+                "explanation_language": self._explanation_language_var.get(),
+            }
+            for word in clean_words
         ]
         self._batch_index = 0
         self._batch_autosave_path = None
         self._batch_generated_card = None
         self._batch_generated_provider_name = None
+        self._batch_generated_grammar = None
         self._show_current_batch_item(generate=False)
         self._record_activity(f"Loaded {len(clean_words)} batch item(s) without generation")
         self._autosave_batch_session("list loaded")
@@ -908,19 +1010,38 @@ class ModernVocabularyGui:
         item = self._batch_items[self._batch_index]
         if item.get("topic") and not self._batch_topic_var.get().strip():
             self._batch_topic_var.set(str(item.get("topic", "")))
+        item_mode = str(item.get("batch_mode") or "").strip()
+        item_has_generated_payload = bool(item.get("card") or item.get("grammar_card"))
+        item_status = str(item.get("status", "pending"))
+        if item_mode in BATCH_MODES and (item_has_generated_payload or item_status != "pending"):
+            self._batch_mode_var.set(item_mode)
+        elif item_status == "pending":
+            # Pending rows follow the current session mode. Do not let a mode
+            # stored at import time silently reset the combobox from Grammar
+            # back to Vocabulary before generation.
+            item["batch_mode"] = self._batch_mode_var.get().strip() or "Vocabulary"
+            item.pop("resolved_mode", None)
         self._batch_word_var.set(str(item["word"]))
         self._batch_generated_card = None
+        self._batch_generated_grammar = None
         self._batch_generated_provider_name = None
         stored_card = self._card_from_batch_payload(item.get("card"))
+        stored_grammar = self._grammar_from_batch_payload(item.get("grammar_card"))
         if stored_card is not None:
             self._batch_generated_card = stored_card
+            self._batch_generated_provider_name = str(item.get("provider_name") or self._provider_var.get())
+        elif stored_grammar is not None:
+            self._batch_generated_grammar = stored_grammar
             self._batch_generated_provider_name = str(item.get("provider_name") or self._provider_var.get())
         self._update_batch_progress()
         if stored_card is not None:
             self._set_batch_preview(self._format_batch_card_preview(item, stored_card))
+        elif stored_grammar is not None:
+            self._set_batch_preview(self._format_batch_grammar_preview(item, stored_grammar))
         else:
+            mode = self._batch_mode_for_item(item)
             self._set_batch_status_card(
-                title="BATCH ITEM",
+                title=f"BATCH ITEM · {mode.upper()}",
                 word=str(item.get("word", "")),
                 status=str(item.get("status", "pending")),
                 detail=self._friendly_batch_item_detail(item),
@@ -930,28 +1051,64 @@ class ModernVocabularyGui:
         # Generate selected, Auto-generate pending, or Retry failed/rate-limited.
 
     def _format_batch_card_preview(self, item: dict[str, object], card: VocabularyCard) -> str:
-        preview = self._format_card_preview(card, audio_status=item.get("audio_status"))
+        # Revalidate before rendering. The preview and the Approve/Add logic must
+        # use the same active warning list. Older versions showed
+        # ``card.quality_warnings`` from the provider/payload at the top of the
+        # preview, but Approve warning recomputed a different list from
+        # ``item["quality_warnings"]``. That produced impossible UI states like
+        # a visible HARD warning plus a "No hard warnings" popup.
+        warnings = self._sync_quality_warnings_for_item(item, card)
+        preview_card = card.model_copy(update={"quality_warnings": warnings})
+        preview = self._format_card_preview(preview_card, audio_status=item.get("audio_status"))
+
         status = str(item.get("status", "")).strip()
         if status:
             preview += f"\n\nBATCH STATUS\n{status}"
         error = str(item.get("error", "")).strip()
-        if error and status.startswith("duplicate"):
+        if error and (status.startswith("duplicate") or status == "blocked_quality_warning"):
             preview += f"\n{error}"
+        provided_sentence = str(item.get("provided_sentence") or "").strip()
+        if provided_sentence:
+            preview += f"\n\nPROVIDED SENTENCE\n{provided_sentence}"
         topic = str(item.get("topic") or self._batch_topic_var.get()).strip()
         if topic:
             preview += f"\n\nTOPIC / CONTEXT\n{topic}"
         topic_status = str(item.get("topic_status", "")).strip()
         if topic_status:
             preview += f"\nTopic status: {topic_status}"
-        warnings = item.get("quality_warnings")
-        if isinstance(warnings, list) and warnings:
+        if warnings:
             preview += "\n\nQUALITY WARNINGS\n" + "\n".join(f"  • {warning}" for warning in warnings)
+        if item.get("quality_override"):
+            preview += "\n\nQUALITY OVERRIDE\nApproved manually by user; hard warning will not block Add all ready."
+        return preview
+
+    def _format_batch_grammar_preview(self, item: dict[str, object], card: GrammarAnalysis) -> str:
+        preview = self._format_grammar_preview(card)
+        status = str(item.get("status", "")).strip()
+        if status:
+            preview += f"\n\nBATCH STATUS\n{status}"
+        mode = str(item.get("resolved_mode") or item.get("batch_mode") or self._batch_mode_var.get()).strip()
+        if mode:
+            preview += f"\n\nBATCH MODE\n{mode}"
+        topic = str(item.get("topic") or self._batch_topic_var.get()).strip()
+        if topic:
+            preview += f"\n\nTOPIC / CONTEXT\n{topic}"
+        error = str(item.get("error", "")).strip()
+        if error:
+            preview += f"\n\nDETAILS\n{error}"
         return preview
 
     def _open_batch_card_editor(self) -> None:
         """Open a small editor for the currently generated Batch card."""
         if not self._batch_items:
             return
+        grammar_card = self._batch_generated_grammar or self._grammar_from_batch_payload(
+            self._batch_items[self._batch_index].get("grammar_card")
+        )
+        if grammar_card is not None:
+            self._open_batch_grammar_editor(grammar_card)
+            return
+
         card = self._batch_generated_card or self._card_from_batch_payload(
             self._batch_items[self._batch_index].get("card")
         )
@@ -1028,7 +1185,7 @@ class ModernVocabularyGui:
             self._batch_word_var.set(updated_card.word_or_phrase)
             warnings = self._quality_warnings_for_card(
                 updated_card,
-                expected_input=str(item.get("word") or updated_card.word_or_phrase),
+                expected_input=self._quality_expected_input_for_item(item, updated_card),
                 topic_context=str(item.get("topic") or self._current_batch_topic()),
             )
             if warnings:
@@ -1040,6 +1197,85 @@ class ModernVocabularyGui:
             self._batch_status_var.set(f"Edited and autosaved: {updated_card.word_or_phrase}")
             self._status_var.set(self._batch_status_var.get())
             self._record_activity(f"Edited: {updated_card.word_or_phrase}")
+            editor.destroy()
+
+        button_row = tk.Frame(editor)
+        button_row.grid(row=row, column=0, columnspan=2, sticky="ew", padx=10, pady=12)
+        tk.Button(button_row, text="Save changes", command=save).pack(side="left")
+        tk.Button(button_row, text="Cancel", command=editor.destroy).pack(side="left", padx=(8, 0))
+
+    def _open_batch_grammar_editor(self, card: GrammarAnalysis) -> None:
+        """Open a small editor for the currently generated Batch grammar card."""
+        editor = tk.Toplevel(self._root)
+        editor.title(f"Edit grammar card: {card.sentence}")
+        editor.geometry("760x700")
+        editor.transient(self._root)
+        editor.grid_columnconfigure(1, weight=1)
+
+        entries: dict[str, tk.Widget] = {}
+
+        def add_entry(row: int, label: str, key: str, value: str) -> int:
+            tk.Label(editor, text=label, anchor="w").grid(row=row, column=0, sticky="nw", padx=10, pady=6)
+            widget = tk.Entry(editor)
+            widget.insert(0, value or "")
+            widget.grid(row=row, column=1, sticky="ew", padx=10, pady=6)
+            entries[key] = widget
+            return row + 1
+
+        def add_text(row: int, label: str, key: str, value: str, height: int = 3) -> int:
+            tk.Label(editor, text=label, anchor="w").grid(row=row, column=0, sticky="nw", padx=10, pady=6)
+            widget = tk.Text(editor, height=height, wrap="word")
+            widget.insert("1.0", value or "")
+            widget.grid(row=row, column=1, sticky="nsew", padx=10, pady=6)
+            entries[key] = widget
+            return row + 1
+
+        row = 0
+        row = add_entry(row, "Language", "target_language", card.target_language)
+        row = add_entry(row, "Structure / item", "sentence", card.sentence)
+        row = add_text(row, "Meaning", "meaning", card.meaning, height=3)
+        row = add_text(row, "Structure", "structure", card.structure, height=3)
+        row = add_text(row, "Breakdown\n(one per line)", "breakdown", "\n".join(card.breakdown), height=5)
+        row = add_text(row, "Usage", "usage", card.usage, height=4)
+        row = add_text(row, "Context example", "context_example", card.context_example, height=3)
+        row = add_text(row, "Contrasts\n(one per line)", "contrasts", "\n".join(card.contrasts), height=4)
+        row = add_text(row, "Common mistakes\n(one per line)", "common_mistakes", "\n".join(card.common_mistakes), height=4)
+
+        def value(key: str) -> str:
+            widget = entries[key]
+            if isinstance(widget, tk.Text):
+                return widget.get("1.0", "end").strip()
+            return str(widget.get()).strip()  # type: ignore[attr-defined]
+
+        def save() -> None:
+            updated_card = card.model_copy(
+                update={
+                    "target_language": value("target_language") or card.target_language,
+                    "sentence": value("sentence") or card.sentence,
+                    "meaning": value("meaning"),
+                    "structure": value("structure"),
+                    "breakdown": [line.strip() for line in value("breakdown").splitlines() if line.strip()],
+                    "usage": value("usage"),
+                    "context_example": value("context_example"),
+                    "contrasts": [line.strip() for line in value("contrasts").splitlines() if line.strip()],
+                    "common_mistakes": [line.strip() for line in value("common_mistakes").splitlines() if line.strip()],
+                }
+            )
+            item = self._batch_items[self._batch_index]
+            item["grammar_card"] = self._grammar_to_batch_payload(updated_card)
+            item.pop("card", None)
+            item["word"] = updated_card.sentence
+            item["status"] = "ready"
+            item["resolved_mode"] = "Grammar"
+            self._batch_generated_grammar = updated_card
+            self._batch_generated_card = None
+            self._batch_generated_provider_name = str(item.get("provider_name") or self._provider_var.get())
+            self._batch_word_var.set(updated_card.sentence)
+            self._set_batch_preview(self._format_batch_grammar_preview(item, updated_card))
+            self._autosave_batch_session(f"edited grammar: {updated_card.sentence}")
+            self._batch_status_var.set(f"Edited grammar card and autosaved: {updated_card.sentence}")
+            self._status_var.set(self._batch_status_var.get())
+            self._record_activity(f"Edited grammar: {updated_card.sentence}")
             editor.destroy()
 
         button_row = tk.Frame(editor)
@@ -1083,6 +1319,20 @@ class ModernVocabularyGui:
             f"Failed {counts.get('error', 0) + counts.get('provider_failed', 0) + counts.get('add_failed', 0) + counts.get('blocked_quality_warning', 0)} · "
             f"Rate limited {counts.get('rate_limited', 0)} · Remaining {remaining}"
         )
+        self._refresh_batch_issue_visibility()
+
+    def _refresh_batch_issue_visibility(self) -> None:
+        """Show problem navigation only when the current Batch actually has problems."""
+        frame = getattr(self, "_batch_issue_buttons_frame", None)
+        label = getattr(self, "_batch_issue_label", None)
+        if frame is None or label is None:
+            return
+        if self._batch_issue_indexes():
+            label.grid()
+            frame.grid()
+        else:
+            label.grid_remove()
+            frame.grid_remove()
 
     def _set_batch_preview(self, content: str) -> None:
         self._batch_preview.configure(state="normal")
@@ -1136,6 +1386,30 @@ class ModernVocabularyGui:
         )
 
     @staticmethod
+    def _is_provider_billing_detail(detail: str) -> bool:
+        """Return True for provider billing/credit errors hidden behind 400s.
+
+        Some APIs, especially Anthropic, report exhausted credits as HTTP 400
+        invalid_request_error instead of a 402. That is fatal for an Auto Batch
+        run: retrying the next items will just burn time and spam logs.
+        """
+        lowered = detail.lower()
+        return any(
+            token in lowered
+            for token in (
+                "credit balance is too low",
+                "credits are too low",
+                "insufficient credits",
+                "insufficient credit",
+                "billing",
+                "purchase credits",
+                "plans & billing",
+                "payment required",
+                "insufficient_quota",
+            )
+        )
+
+    @staticmethod
     def _is_timeout_detail(detail: str) -> bool:
         lowered = detail.lower()
         return "timeout" in lowered or "timed out" in lowered or "read timed out" in lowered
@@ -1143,7 +1417,12 @@ class ModernVocabularyGui:
     @staticmethod
     def _is_fatal_long_generation_detail(detail: str) -> bool:
         status = ModernVocabularyGui._http_status_from_detail(detail)
-        return status in {401, 402, 403, 429} or (status is not None and 500 <= status <= 599) or ModernVocabularyGui._is_timeout_detail(detail)
+        return (
+            ModernVocabularyGui._is_provider_billing_detail(detail)
+            or status in {401, 402, 403, 429}
+            or (status is not None and 500 <= status <= 599)
+            or ModernVocabularyGui._is_timeout_detail(detail)
+        )
 
     @staticmethod
     def _friendly_generation_error_detail(
@@ -1183,6 +1462,12 @@ class ModernVocabularyGui:
                 "The current item was saved as rate_limited. "
                 "Switch provider and retry failed/rate-limited items, or resume later."
                 f"{retry_hint}"
+            )
+        if ModernVocabularyGui._is_provider_billing_detail(detail):
+            return (
+                f"{provider} credits/billing problem for {model}. "
+                "Auto Batch was stopped and progress was saved. "
+                "Add credits in the provider dashboard or switch Card AI provider, then retry failed/rate-limited items."
             )
         status = ModernVocabularyGui._http_status_from_detail(detail)
         if status == 400:
@@ -1243,7 +1528,7 @@ class ModernVocabularyGui:
         self._batch_auto_generate_running = False
         self._batch_auto_generate_paused = False
         self._batch_auto_generate_stop_requested = True
-        self._autosave_batch_session(f"rate limit: {word}")
+        self._autosave_batch_session(f"provider error: {word}")
         autosave = str(self._batch_autosave_path) if self._batch_autosave_path else "not available"
         friendly_detail = self._friendly_generation_error_detail(detail, provider_name, model_name)
         message = (
@@ -1288,8 +1573,50 @@ class ModernVocabularyGui:
         item["topic"] = topic_context
         item["target_language"] = target_language
         item["explanation_language"] = explanation_language
+        item["batch_mode"] = self._batch_mode_var.get().strip() or "Vocabulary"
+        resolved_mode = self._batch_mode_for_item(item, word)
+        item["resolved_mode"] = resolved_mode
         provider_name = self._provider_var.get()
         model_name = self._current_ai_model_name()
+
+        # Last line of defence: Generate selected and resumed/old sessions must
+        # check duplicates before any provider API call. This is especially
+        # important for pasted table rows like "word<TAB>translation" or
+        # "word    translation", where the generated card later normalizes to an
+        # existing Anki note.
+        if (
+            str(item.get("status", "pending")) == "pending"
+            and not item.get("card")
+            and not item.get("grammar_card")
+            and not item.get("duplicate_prechecked")
+        ):
+            self._batch_status_var.set(f"Checking duplicates before AI for {self._batch_index + 1}/{len(self._batch_items)}: {word}")
+            self._status_var.set(self._batch_status_var.get())
+            self._root.update_idletasks()
+            try:
+                duplicate_found = self._precheck_one_batch_duplicate(self._batch_index, reason="before generation")
+            except Exception as exc:
+                LOGGER.exception("Duplicate precheck before selected generation failed")
+                message = (
+                    "Generation cancelled before provider API call: duplicate precheck failed. "
+                    + self._friendly_anki_error_message(exc)
+                )
+                self._batch_status_var.set(message)
+                self._status_var.set(message)
+                self._autosave_batch_session("generation cancelled: duplicate precheck failed")
+                return
+            if duplicate_found:
+                self._batch_generated_card = None
+                self._batch_generated_grammar = None
+                self._update_batch_progress()
+                self._show_current_batch_item(generate=False)
+                self._batch_status_var.set(
+                    f"Skipped before AI: '{word}' already exists in Anki. No provider API was used."
+                )
+                self._status_var.set(self._batch_status_var.get())
+                self._autosave_batch_session(f"duplicate skipped before generation: {word}")
+                return
+
         LOGGER.info(
             "Batch generation start: trigger=%s index=%s word=%s provider=%s",
             generation_trigger,
@@ -1298,10 +1625,149 @@ class ModernVocabularyGui:
             provider_name,
         )
         self._batch_status_var.set(
-            f"Generating {self._batch_index + 1}/{len(self._batch_items)}: {word}..."
+            f"Generating {resolved_mode.lower()} card {self._batch_index + 1}/{len(self._batch_items)}: {word}..."
         )
         self._status_var.set(self._batch_status_var.get())
         self._root.update_idletasks()
+        if resolved_mode == "Provided examples":
+            provided_target, provided_sentence = self._parse_provided_example_item(word)
+            if not provided_sentence:
+                item["status"] = "invalid"
+                item["error"] = "Provided examples mode needs a sentence. Use: target | sentence, or paste a sentence."
+                self._batch_status_var.set("Invalid provided example: missing sentence.")
+                self._set_batch_status_card("INVALID PROVIDED EXAMPLE", word, "invalid", str(item["error"]))
+                self._update_batch_progress()
+                self._autosave_batch_session(f"invalid provided example: {word}")
+                return
+            item["provided_target"] = provided_target
+            item["provided_sentence"] = provided_sentence
+            try:
+                card = self._current_ai_client().generate_sentence_card(
+                    word,
+                    target_language,
+                    explanation_language,
+                    topic_context,
+                )
+            except Exception as exc:
+                detail = str(exc)
+                item["status"] = "error"
+                item["error"] = detail
+                self._batch_generated_card = None
+                if self._is_provider_rate_limit_detail(detail):
+                    item["status"] = "rate_limited"
+                    self._batch_status_var.set(f"Rate limit while generating provided-example card: {word}. Session autosaved.")
+                    self._update_batch_progress()
+                    self._stop_batch_on_provider_error(word, detail, provider_name, model_name)
+                elif self._is_fatal_long_generation_detail(detail):
+                    item["status"] = "provider_failed"
+                    self._batch_status_var.set(f"Provider stopped while generating provided-example card: {word}. Session autosaved.")
+                    self._update_batch_progress()
+                    self._stop_batch_on_provider_error(word, detail, provider_name, model_name)
+                else:
+                    self._batch_status_var.set(f"Provided-example generation error: {word}. Raw details saved in logs/autosave.")
+                    self._set_batch_status_card(
+                        "PROVIDED EXAMPLE GENERATION ERROR",
+                        word,
+                        "error",
+                        self._friendly_generation_error_detail(detail, provider_name, model_name),
+                    )
+                    self._update_batch_progress()
+                    self._autosave_batch_session(f"provided-example generation error: {word}")
+                if self._is_provider_rate_limit_detail(detail) or self._is_fatal_long_generation_detail(detail):
+                    LOGGER.warning("Batch provided-example provider error for item=%s detail=%s", word, detail)
+                else:
+                    LOGGER.exception("Batch provided-example generation failed for item=%s", word)
+                return
+            if not card.is_valid:
+                item["status"] = "invalid"
+                detail = card.validation_error or "Invalid provided example."
+                if card.suggested_correction:
+                    detail += f" Suggested correction: {card.suggested_correction}"
+                item["error"] = detail
+                self._batch_generated_card = None
+                self._batch_status_var.set(f"Invalid provided example: {word}")
+                self._set_batch_status_card("VALIDATION ERROR", word, "invalid", detail)
+                self._update_batch_progress()
+                self._autosave_batch_session(f"invalid provided example: {word}")
+                return
+            item["status"] = "ready"
+            item["card"] = self._card_to_batch_payload(card)
+            item.pop("grammar_card", None)
+            item["provider_name"] = provider_name
+            item.pop("error", None)
+            quality_warnings = self._quality_warnings_for_card(
+                card,
+                expected_input=provided_target or card.word_or_phrase,
+                topic_context=topic_context,
+            )
+            item["topic_status"] = card.topic_fit or ("topic_ok" if topic_context and not quality_warnings else "")
+            if quality_warnings:
+                item["quality_warnings"] = quality_warnings
+            else:
+                item.pop("quality_warnings", None)
+            self._batch_generated_card = card
+            self._batch_generated_grammar = None
+            self._batch_generated_provider_name = provider_name
+            self._set_batch_preview(self._format_batch_card_preview(item, card))
+            self._batch_status_var.set(f"Provided-example card ready to review: {card.word_or_phrase}")
+            self._status_var.set(self._batch_status_var.get())
+            self._update_batch_progress()
+            self._autosave_batch_session(f"generated provided example: {card.word_or_phrase}")
+            return
+
+        if resolved_mode == "Grammar":
+            try:
+                grammar_card = self._current_ai_client().generate_grammar_card(
+                    word,
+                    target_language,
+                    topic_context,
+                )
+            except Exception as exc:
+                detail = str(exc)
+                item["status"] = "error"
+                item["error"] = detail
+                self._batch_generated_card = None
+                self._batch_generated_grammar = None
+                if self._is_provider_rate_limit_detail(detail):
+                    item["status"] = "rate_limited"
+                    self._batch_status_var.set(f"Rate limit while generating grammar: {word}. Session autosaved.")
+                    self._update_batch_progress()
+                    self._stop_batch_on_provider_error(word, detail, provider_name, model_name)
+                elif self._is_fatal_long_generation_detail(detail):
+                    item["status"] = "provider_failed"
+                    self._batch_status_var.set(f"Provider stopped while generating grammar: {word}. Session autosaved.")
+                    self._update_batch_progress()
+                    self._stop_batch_on_provider_error(word, detail, provider_name, model_name)
+                else:
+                    self._batch_status_var.set(f"Grammar generation error: {word}. Raw details saved in logs/autosave.")
+                    self._set_batch_status_card(
+                        "GRAMMAR GENERATION ERROR",
+                        word,
+                        "error",
+                        self._friendly_generation_error_detail(detail, provider_name, model_name),
+                    )
+                    self._update_batch_progress()
+                    self._autosave_batch_session(f"grammar generation error: {word}")
+                if self._is_provider_rate_limit_detail(detail) or self._is_fatal_long_generation_detail(detail):
+                    LOGGER.warning("Batch grammar provider error for item=%s detail=%s", word, detail)
+                else:
+                    LOGGER.exception("Batch grammar generation failed for item=%s", word)
+                return
+            item["status"] = "ready"
+            item["grammar_card"] = self._grammar_to_batch_payload(grammar_card)
+            item.pop("card", None)
+            item["provider_name"] = provider_name
+            item.pop("error", None)
+            self._batch_generated_card = None
+            self._batch_generated_grammar = grammar_card
+            self._batch_generated_provider_name = provider_name
+            self._set_batch_preview(self._format_batch_grammar_preview(item, grammar_card))
+            self._batch_status_var.set(f"Grammar card ready to review: {word}")
+            self._status_var.set(self._batch_status_var.get())
+            self._update_batch_progress()
+            self._autosave_batch_session(f"generated grammar: {word}")
+            return
+
         try:
             card = self._current_ai_client().generate_card(
                 word,
@@ -1337,7 +1803,10 @@ class ModernVocabularyGui:
                 )
                 self._update_batch_progress()
                 self._autosave_batch_session(f"generation error: {word}")
-            LOGGER.exception("Batch generation failed for word=%s", word)
+            if self._is_provider_rate_limit_detail(detail) or self._is_fatal_long_generation_detail(detail):
+                LOGGER.warning("Batch provider error for word=%s detail=%s", word, detail)
+            else:
+                LOGGER.exception("Batch generation failed for word=%s", word)
             return
         if not card.is_valid:
             item["status"] = "invalid"
@@ -1377,13 +1846,50 @@ class ModernVocabularyGui:
         self._autosave_batch_session(f"generated: {word}")
 
     def _add_current_batch_card(self) -> None:
+        if self._batch_generated_grammar is not None:
+            provider_name = self._batch_generated_provider_name or self._provider_var.get()
+            try:
+                deck = self._set_selected_deck()
+                self._anki_client.add_grammar_card(self._batch_generated_grammar, provider_name, extra_tags=self._batch_tags_for_item(self._batch_items[self._batch_index]))
+            except DuplicateNoteError:
+                replace = messagebox.askyesno(
+                    "Grammar card already exists",
+                    f"A grammar card for '{self._batch_generated_grammar.sentence}' already exists.\n\n"
+                    "Replace it with this reviewed version?",
+                )
+                if not replace:
+                    self._batch_status_var.set("Existing grammar card was not changed.")
+                    return
+                try:
+                    self._anki_client.update_grammar_card(self._batch_generated_grammar, provider_name, extra_tags=self._batch_tags_for_item(self._batch_items[self._batch_index]))
+                except Exception as update_exc:
+                    self._batch_status_var.set(f"Could not update grammar card: {update_exc}")
+                    messagebox.showerror("Anki update error", str(update_exc))
+                    return
+                deck = self._anki_client.deck_name
+            except Exception as exc:
+                self._batch_status_var.set(f"Could not add grammar card: {exc}")
+                messagebox.showerror("Anki error", str(exc))
+                return
+            sentence = self._batch_generated_grammar.sentence
+            self._batch_items[self._batch_index]["status"] = "added_to_anki"
+            self._autosave_batch_session(f"added grammar: {sentence}")
+            self._batch_status_var.set(f"✓ Added grammar card to {deck}: {sentence}")
+            self._status_var.set(self._batch_status_var.get())
+            self._record_activity(f"✓ Grammar added: {sentence}")
+            self._update_batch_progress()
+            self._root.after(350, self._advance_batch_after_action)
+            return
+
         if self._batch_generated_card is None:
             messagebox.showerror("No card", "Generate and review the current card first.")
             return
+        current_item = self._batch_items[self._batch_index]
         if not self._confirm_quality_warnings(
             self._batch_generated_card,
-            expected_input=str(self._batch_items[self._batch_index].get("word") or self._batch_generated_card.word_or_phrase),
-            topic_context=str(self._batch_items[self._batch_index].get("topic") or self._current_batch_topic()),
+            expected_input=self._quality_expected_input_for_item(current_item, self._batch_generated_card),
+            topic_context=str(current_item.get("topic") or self._current_batch_topic()),
+            batch_item=current_item,
         ):
             self._batch_status_var.set("Add to Anki cancelled because of quality warnings.")
             return
@@ -1393,7 +1899,7 @@ class ModernVocabularyGui:
             self._anki_client.add_card(
                 self._batch_generated_card,
                 provider_name,
-                extra_tags=self._topic_tags_for_batch_item(self._batch_items[self._batch_index]),
+                extra_tags=self._batch_tags_for_item(self._batch_items[self._batch_index]),
             )
         except DuplicateNoteError:
             replace = messagebox.askyesno(
@@ -1408,7 +1914,7 @@ class ModernVocabularyGui:
                 self._anki_client.update_card(
                     self._batch_generated_card,
                     provider_name,
-                    extra_tags=self._topic_tags_for_batch_item(self._batch_items[self._batch_index]),
+                    extra_tags=self._batch_tags_for_item(self._batch_items[self._batch_index]),
                 )
             except Exception as update_exc:
                 self._batch_status_var.set(f"Could not update card: {update_exc}")
@@ -1544,6 +2050,7 @@ class ModernVocabularyGui:
         self._batch_index = 0
         self._batch_generated_card = None
         self._batch_generated_provider_name = None
+        self._batch_generated_grammar = None
         self._batch_autosave_path = None
         self._batch_auto_generate_running = False
         self._batch_auto_generate_paused = False
@@ -1566,6 +2073,7 @@ class ModernVocabularyGui:
             "explanation_language": self._explanation_language_var.get(),
             "feedback_language": self._feedback_language_var.get(),
             "batch_topic": self._batch_topic_var.get(),
+            "batch_mode": self._batch_mode_var.get(),
             "deck": self._deck_var.get(),
             "autosaved_at": datetime.now().isoformat(timespec="seconds"),
         }
@@ -1634,12 +2142,239 @@ class ModernVocabularyGui:
             "translation_naturalness": card.translation_naturalness,
         }
 
+    def _grammar_from_batch_payload(self, payload: object) -> GrammarAnalysis | None:
+        """Rebuild a grammar card stored inside a Batch item."""
+        if not isinstance(payload, dict):
+            return None
+        try:
+            return GrammarAnalysis(**payload)
+        except Exception:
+            return None
+
+    @staticmethod
+    def _grammar_to_batch_payload(card: GrammarAnalysis) -> dict[str, object]:
+        """Serialize a generated grammar card into the Batch session."""
+        return card.model_dump()
+
+    @staticmethod
+    def _parse_provided_example_item(value: str) -> tuple[str, str]:
+        """Return (target_item, provided_sentence) for Provided examples mode."""
+        text = value.strip()
+        for separator in ("|", "\t"):
+            if separator in text:
+                left, right = text.split(separator, 1)
+                return left.strip(), right.strip()
+        return "", text
+
+    def _quality_expected_input_for_item(self, item: dict[str, object], card: VocabularyCard) -> str:
+        """Return the expected lexical item for quality validation.
+
+        In Provided examples mode, the raw Batch row may be
+        ``target | sentence``. The quality validator must check only the
+        target item, otherwise valid cards get a false HARD warning like
+        ``expected 'microorganisms | ...', got 'microorganisms'``.
+        """
+        mode = str(item.get("resolved_mode") or item.get("batch_mode") or "").strip()
+        raw_word = str(item.get("word") or "").strip()
+        if mode == "Provided examples":
+            provided_target = str(item.get("provided_target") or "").strip()
+            if provided_target:
+                return provided_target
+            parsed_target, _provided_sentence = self._parse_provided_example_item(raw_word)
+            if parsed_target:
+                item["provided_target"] = parsed_target
+                return parsed_target
+            return card.word_or_phrase
+        return raw_word or card.word_or_phrase
+
+    def _sync_quality_warnings_for_item(self, item: dict[str, object], card: VocabularyCard) -> list[str]:
+        """Recompute and store the active quality warnings for a Batch card.
+
+        This is the single source of truth used by preview, Approve warning,
+        Add this card, and Add all ready. It also rewrites the stored card
+        payload, because old autosaves/provider responses may contain stale
+        ``card.quality_warnings`` that would otherwise still render at the top
+        of the preview even after current validation disagrees.
+        """
+        warnings = self._quality_warnings_for_card(
+            card,
+            expected_input=self._quality_expected_input_for_item(item, card),
+            topic_context=str(item.get("topic") or self._current_batch_topic()),
+        )
+        warnings = list(warnings)
+        hard = [warning for warning in warnings if warning.startswith("HARD:")]
+
+        # Keep the card object and its serialized payload in sync with the
+        # active warnings so UI rendering cannot display a different warning set
+        # than the one used by approval/add logic. Pydantic models are mutable in
+        # this project, but the payload update is the important persistent part.
+        try:
+            card.quality_warnings = warnings
+        except Exception:
+            pass
+        payload = item.get("card")
+        if isinstance(payload, dict):
+            payload["quality_warnings"] = warnings
+
+        if warnings:
+            item["quality_warnings"] = warnings
+        else:
+            item.pop("quality_warnings", None)
+        if not hard and item.get("status") == "blocked_quality_warning":
+            item["status"] = "ready"
+            stale_error = str(item.get("error") or "")
+            if "hard quality warning" in stale_error.casefold() or "input phrase changed" in stale_error.casefold():
+                item.pop("error", None)
+        if not hard and item.get("quality_override"):
+            # An override is not needed anymore if the current validator no longer
+            # sees a hard warning. Keep old audit details only in autosave if they
+            # already exist, but do not display an active override badge.
+            item.pop("quality_override", None)
+            item.pop("quality_override_reason", None)
+        return warnings
+
+    def _batch_tags_for_item(self, item: dict[str, object] | None = None) -> list[str]:
+        """Return topic + card-type tags for one Batch item."""
+        tags = self._topic_tags_for_batch_item(item)
+        mode = str((item or {}).get("resolved_mode") or (item or {}).get("batch_mode") or "").strip()
+        if mode == "Grammar":
+            tags.append("card_type::grammar")
+        elif mode == "Provided examples":
+            tags.append("card_type::provided_example")
+        elif mode == "Vocabulary":
+            tags.append("card_type::vocabulary")
+        return tags
+
+    @staticmethod
+    def _looks_like_grammar_item(value: str) -> bool:
+        """Conservative heuristic for Mixed Batch mode.
+
+        It detects common grammar/writing structures without pretending to be a
+        full classifier. Ambiguous items stay vocabulary to avoid surprising the
+        user.
+        """
+        text = value.strip().casefold()
+        if not text:
+            return False
+        grammar_markers = (
+            " + ", "+", "subjuntivo", "indicativo", "infinitivo", "gerundio",
+            "condicional", "pretérito", "imperfecto", "ser/estar", "por/para",
+            "aunque", "a pesar de", "por mucho que", "de ahí que", "siempre que",
+            "en cuanto a", "no solo", "sino también", "cuanto más", "tan pronto como",
+            "there is", "there are", "used to", "would rather", "had better",
+        )
+        return any(marker in text for marker in grammar_markers)
+
+    def _batch_mode_for_item(self, item: dict[str, object] | None = None, word: str = "") -> str:
+        """Return the effective Batch mode for an item."""
+        selected = str((item or {}).get("batch_mode") or self._batch_mode_var.get() or "Vocabulary").strip()
+        if selected not in BATCH_MODES:
+            selected = "Vocabulary"
+        if selected == "Mixed":
+            value = word or str((item or {}).get("word") or "")
+            return "Grammar" if self._looks_like_grammar_item(value) else "Vocabulary"
+        return selected
+
+
     @staticmethod
     def _normalise_anki_value(value: str) -> str:
         """Normalize a value for exact duplicate checks."""
         import html
         plain = re.sub(r"<[^>]+>", "", html.unescape(value or ""))
         return " ".join(plain.split()).casefold()
+
+
+    @staticmethod
+    def _batch_duplicate_lookup_candidates(raw_value: str, mode: str = "Vocabulary") -> list[str]:
+        """Return conservative lookup keys for duplicate checks before AI calls.
+
+        Batch input often comes from OCR, pasted tables, or vocab lists such as
+        ``word<TAB>translation`` or ``word    translation``. If we check only the
+        raw line, Auto Batch may miss an existing Anki card, call the provider,
+        and only discover the duplicate during Add all. These candidates keep the
+        precheck before provider API calls while staying conservative enough to
+        avoid treating ordinary multi-word phrases as separate words.
+        """
+        value = str(raw_value or "").strip()
+        if not value:
+            return []
+        candidates: list[str] = []
+
+        def add(candidate: str) -> None:
+            cleaned = candidate.strip().strip('"“”„”').strip()
+            if cleaned and cleaned not in candidates:
+                candidates.append(cleaned)
+
+        if mode == "Provided examples":
+            target, sentence = ModernVocabularyGui._parse_provided_example_item(value)
+            add(target or sentence or value)
+        else:
+            add(value)
+
+        # Common structured list formats: target | sentence, target<TAB>translation,
+        # target ; translation, target - POS/translation. Do not split single spaces,
+        # because phrases like "come across" or "a level playing field" are valid targets.
+        for separator in ("\t", " | ", " ; ", " - ", " – ", " — "):
+            if separator in value:
+                add(value.split(separator, 1)[0])
+
+        # OCR/table paste often collapses columns into multiple spaces.
+        multi_space = re.split(r"\s{2,}", value, maxsplit=1)
+        if len(multi_space) == 2:
+            add(multi_space[0])
+
+        # A very common Anki/CSV export style is: phrase, translation. Only split
+        # when the left side is not absurdly long, to avoid mangling sentences.
+        if "," in value:
+            left = value.split(",", 1)[0].strip()
+            if 1 <= len(left.split()) <= 6:
+                add(left)
+
+        return candidates
+
+    def _precheck_one_batch_duplicate(
+        self,
+        index: int,
+        existing_map: dict[str, dict[str, object]] | None = None,
+        *,
+        reason: str = "before generation",
+    ) -> bool:
+        """Mark one pending Batch item as duplicate before a provider call.
+
+        Returns True when the item was marked and should not be generated.
+        Returns False when no duplicate was found.
+        Raises if Anki duplicate data cannot be read.
+        """
+        item = self._batch_items[index]
+        word = str(item.get("word") or "").strip()
+        if not word:
+            return False
+        mode = self._batch_mode_for_item(item, word)
+        if existing_map is None:
+            self._set_selected_deck()
+            existing_map = self._anki_client.existing_note_map_broad(include_all_decks=True)
+        candidates = self._batch_duplicate_lookup_candidates(word, mode)
+        for candidate in candidates:
+            existing = existing_map.get(self._normalise_anki_value(candidate))
+            if not existing:
+                continue
+            model = str(existing.get("model") or "unknown model")
+            duplicate_count = int(existing.get("duplicate_count", 1) or 1)
+            safe = model == MODEL_NAME and duplicate_count == 1
+            item["status"] = "duplicate_found" if safe else "duplicate_uncertain"
+            item["duplicate_note_id"] = existing.get("note_id")
+            item["duplicate_model"] = model
+            item["duplicate_lookup_value"] = candidate
+            item["duplicate_prechecked"] = True
+            item["duplicate_precheck_scope"] = "all_decks"
+            item["error"] = (
+                f"Skipped {reason}: '{candidate}' already exists in the Anki collection "
+                f"({model}, matches: {duplicate_count}). No AI provider API was used."
+            )
+            return True
+        item["duplicate_prechecked"] = True
+        item["duplicate_precheck_scope"] = "all_decks"
+        return False
 
     @staticmethod
     def _slugify_topic(value: str) -> str:
@@ -1686,11 +2421,7 @@ class ModernVocabularyGui:
             card = self._card_from_batch_payload(item.get("card"))
             if card is None:
                 continue
-            card_warnings = self._quality_warnings_for_card(
-                card,
-                expected_input=str(item.get("word") or card.word_or_phrase),
-                topic_context=str(item.get("topic") or ""),
-            )
+            card_warnings = self._sync_quality_warnings_for_item(item, card)
             if card_warnings:
                 warnings.append(f"{index + 1}. {card.word_or_phrase}: " + "; ".join(card_warnings[:3]))
         return warnings
@@ -1703,11 +2434,9 @@ class ModernVocabularyGui:
             card = self._card_from_batch_payload(item.get("card"))
             if card is None:
                 continue
-            card_warnings = self._quality_warnings_for_card(
-                card,
-                expected_input=str(item.get("word") or card.word_or_phrase),
-                topic_context=str(item.get("topic") or ""),
-            )
+            card_warnings = self._sync_quality_warnings_for_item(item, card)
+            if item.get("quality_override"):
+                continue
             hard = [warning for warning in card_warnings if warning.startswith("HARD:")]
             if not hard:
                 continue
@@ -1721,28 +2450,102 @@ class ModernVocabularyGui:
             self._show_current_batch_item(generate=False)
         return blocked
 
+    def _approve_current_quality_warning(self) -> None:
+        """Let the user manually approve a generated card with hard warnings."""
+        if not self._batch_items:
+            return
+        item = self._batch_items[self._batch_index]
+        card = self._batch_generated_card or self._card_from_batch_payload(item.get("card"))
+        if card is None:
+            messagebox.showerror("No generated card", "Generate or select a generated vocabulary card first. Invalid items without a card cannot be approved; regenerate them after editing the input.")
+            return
+
+        old_warnings = item.get("quality_warnings")
+        old_hard = [
+            warning for warning in old_warnings
+            if isinstance(old_warnings, list) and isinstance(warning, str) and warning.startswith("HARD:")
+        ]
+        warnings = self._sync_quality_warnings_for_item(item, card)
+        hard = [warning for warning in warnings if warning.startswith("HARD:")]
+        if not hard:
+            self._batch_generated_card = card
+            self._set_batch_preview(self._format_batch_card_preview(item, card))
+            self._update_batch_progress()
+            if old_hard:
+                self._batch_status_var.set(f"Stale quality warning cleared: {card.word_or_phrase}")
+                self._status_var.set(self._batch_status_var.get())
+                self._autosave_batch_session(f"cleared stale quality warning: {card.word_or_phrase}")
+                messagebox.showinfo(
+                    "Stale warning cleared",
+                    "This card no longer has hard quality warnings after current validation. It is ready now.",
+                )
+            else:
+                messagebox.showinfo("No hard warnings", "This card has no hard quality warnings to approve.")
+            return
+        ok = messagebox.askyesno(
+            "Approve hard warning?",
+            "This card has hard quality warning(s). Mark it as ready anyway?\n\n"
+            + "\n".join(f"• {warning}" for warning in hard[:5])
+            + "\n\nThis approval will be saved in autosave/logs.",
+        )
+        if not ok:
+            return
+        item["quality_override"] = True
+        item["quality_override_reason"] = "Approved manually by user"
+        item["overridden_quality_warnings"] = warnings
+        item["quality_warnings"] = warnings
+        if item.get("status") in {"blocked_quality_warning", "invalid"}:
+            item["status"] = "ready"
+        item.pop("error", None)
+        self._batch_generated_card = card
+        self._set_batch_preview(self._format_batch_card_preview(item, card))
+        self._batch_status_var.set(f"Approved hard warning for: {card.word_or_phrase}")
+        self._status_var.set(self._batch_status_var.get())
+        self._update_batch_progress()
+        self._autosave_batch_session(f"approved quality warning: {card.word_or_phrase}")
+
     def _confirm_quality_warnings(
         self,
         card: VocabularyCard,
         *,
         expected_input: str = "",
         topic_context: str = "",
+        batch_item: dict[str, object] | None = None,
     ) -> bool:
-        warnings = self._quality_warnings_for_card(
-            card,
-            expected_input=expected_input or card.word_or_phrase,
-            topic_context=topic_context,
-        )
+        if batch_item is not None:
+            warnings = self._sync_quality_warnings_for_item(batch_item, card)
+        else:
+            warnings = self._quality_warnings_for_card(
+                card,
+                expected_input=expected_input or card.word_or_phrase,
+                topic_context=topic_context,
+            )
         if not warnings:
             return True
         hard = [warning for warning in warnings if warning.startswith("HARD:")]
         if hard:
-            messagebox.showerror(
+            if batch_item is not None and batch_item.get("quality_override"):
+                batch_item["quality_warnings"] = warnings
+                batch_item["overridden_quality_warnings"] = batch_item.get("overridden_quality_warnings") or warnings
+                return True
+            ok = messagebox.askyesno(
                 "Hard quality warnings",
-                "This card is blocked and was not added to Anki. Edit the card first.\n\n"
-                + "\n".join(f"• {warning}" for warning in hard),
+                "This card has hard quality warning(s). Add it to Anki anyway?\n\n"
+                + "\n".join(f"• {warning}" for warning in hard)
+                + "\n\nThis approval will be saved in autosave/logs.",
             )
-            return False
+            if not ok:
+                return False
+            if batch_item is not None:
+                batch_item["quality_override"] = True
+                batch_item["quality_override_reason"] = "Approved from Add this card"
+                batch_item["overridden_quality_warnings"] = warnings
+                batch_item["quality_warnings"] = warnings
+                if batch_item.get("status") in {"blocked_quality_warning", "invalid"}:
+                    batch_item["status"] = "ready"
+                batch_item.pop("error", None)
+                self._autosave_batch_session(f"approved hard warning from Add this card: {card.word_or_phrase}")
+            return True
         return messagebox.askyesno(
             "Quality warnings",
             "This card has quality warnings. Add it to Anki anyway?\n\n"
@@ -1766,7 +2569,7 @@ class ModernVocabularyGui:
         if precheck_result < 0:
             self._autosave_batch_session("auto-generation cancelled: duplicate precheck failed")
             return
-        if not any(str(item.get("status", "pending")) == "pending" and not item.get("card") for item in self._batch_items):
+        if not any(str(item.get("status", "pending")) == "pending" and not item.get("card") and not item.get("grammar_card") for item in self._batch_items):
             message = "Auto-generation skipped: all pending items already exist in Anki or are not ready for generation."
             self._batch_status_var.set(message)
             self._status_var.set(message)
@@ -1796,7 +2599,7 @@ class ModernVocabularyGui:
         next_index = None
         for index, item in enumerate(self._batch_items):
             if str(item.get("status", "pending")) == "pending":
-                if not item.get("card"):
+                if not item.get("card") and not item.get("grammar_card"):
                     next_index = index
                     break
 
@@ -2089,8 +2892,11 @@ class ModernVocabularyGui:
             scan failed, because continuing would waste provider API calls.
         """
         pending_indexes = [
-            index for index, item in enumerate(self._batch_items)
-            if str(item.get("status", "pending")) == "pending" and not item.get("card")
+            index
+            for index, item in enumerate(self._batch_items)
+            if str(item.get("status", "pending")) == "pending"
+            and not item.get("card")
+            and not item.get("grammar_card")
         ]
         if not pending_indexes:
             return 0
@@ -2110,34 +2916,18 @@ class ModernVocabularyGui:
 
         marked = 0
         for index in pending_indexes:
-            item = self._batch_items[index]
-            word = str(item.get("word", "")).strip()
-            if not word:
-                continue
-            existing = existing_map.get(self._normalise_anki_value(word))
-            item["duplicate_prechecked"] = True
-            item["duplicate_precheck_scope"] = "all_decks"
-            if not existing:
-                continue
-            model = str(existing.get("model") or "unknown model")
-            duplicate_count = int(existing.get("duplicate_count", 1) or 1)
-            safe = model == MODEL_NAME and duplicate_count == 1
-            item["status"] = "duplicate_found" if safe else "duplicate_uncertain"
-            item["duplicate_note_id"] = existing.get("note_id")
-            item["duplicate_model"] = model
-            item["error"] = (
-                f"Skipped before generation: '{word}' already exists in the Anki collection "
-                f"({model}, matches: {duplicate_count}). No AI provider API was used."
-            )
-            marked += 1
+            if self._precheck_one_batch_duplicate(index, existing_map, reason="before generation"):
+                marked += 1
+        self._autosave_batch_session("auto-generation duplicate precheck")
+        self._update_batch_progress()
+        self._show_current_batch_item(generate=False)
         if marked:
-            self._autosave_batch_session("auto-generation duplicate precheck")
-            self._update_batch_progress()
-            self._show_current_batch_item(generate=False)
-            message = f"Duplicate precheck: {marked} pending item(s) already exist in the Anki collection and were skipped before API calls."
-            self._batch_status_var.set(message)
-            self._status_var.set(message)
-            self._record_activity(message)
+            message = f"Duplicate precheck before AI: {marked} pending item(s) already exist in the Anki collection and were skipped before provider API calls."
+        else:
+            message = "Duplicate precheck before AI: no existing cards found. Starting provider generation."
+        self._batch_status_var.set(message)
+        self._status_var.set(message)
+        self._record_activity(message)
         return marked
 
     def _start_add_all_ready_batch_cards(self) -> None:
@@ -2159,7 +2949,10 @@ class ModernVocabularyGui:
             index
             for index, item in enumerate(self._batch_items)
             if str(item.get("status")) == "ready"
-            and self._card_from_batch_payload(item.get("card")) is not None
+            and (
+                self._card_from_batch_payload(item.get("card")) is not None
+                or self._grammar_from_batch_payload(item.get("grammar_card")) is not None
+            )
         ]
         if not indexes:
             self._batch_status_var.set("No ready cards to add.")
@@ -2173,7 +2966,10 @@ class ModernVocabularyGui:
             indexes = [
                 index for index in indexes
                 if str(self._batch_items[index].get("status")) == "ready"
-                and self._card_from_batch_payload(self._batch_items[index].get("card")) is not None
+                and (
+                    self._card_from_batch_payload(self._batch_items[index].get("card")) is not None
+                    or self._grammar_from_batch_payload(self._batch_items[index].get("grammar_card")) is not None
+                )
             ]
             message = (
                 f"Add all ready: {blocked} card(s) blocked by HARD quality warnings. "
@@ -2274,7 +3070,39 @@ class ModernVocabularyGui:
         self._batch_add_all_position += 1
         item = self._batch_items[item_index]
         card = self._card_from_batch_payload(item.get("card"))
+        grammar_card = self._grammar_from_batch_payload(item.get("grammar_card"))
         total = len(self._batch_add_all_indexes)
+
+        if grammar_card is not None:
+            provider_name = str(item.get("provider_name") or self._provider_var.get())
+            self._batch_index = item_index
+            self._batch_status_var.set(
+                f"Adding grammar {self._batch_add_all_position}/{total}: {grammar_card.sentence}"
+            )
+            self._status_var.set(self._batch_status_var.get())
+            self._update_batch_progress()
+            self._root.update_idletasks()
+            try:
+                self._anki_client.add_grammar_card(grammar_card, provider_name, extra_tags=self._batch_tags_for_item(item))
+                item["status"] = "added_to_anki"
+                item.pop("error", None)
+                self._batch_add_all_counts["added"] += 1
+            except DuplicateNoteError as exc:
+                item["status"] = "duplicate_uncertain"
+                item["error"] = str(exc)
+                self._batch_add_all_counts["uncertain"] += 1
+            except Exception as exc:
+                LOGGER.exception("Add all ready failed for grammar %s", grammar_card.sentence)
+                friendly_error = self._friendly_anki_error_message(exc, grammar_card.sentence)
+                item["status"] = "add_failed"
+                item["error"] = friendly_error
+                self._batch_add_all_counts["failed"] += 1
+                self._batch_add_all_failed_details.append(friendly_error)
+                self._batch_status_var.set(friendly_error)
+                self._status_var.set(friendly_error)
+            self._autosave_batch_session(f"add all grammar {self._batch_add_all_position}/{total}")
+            self._root.after(120, self._add_next_ready_batch_card)
+            return
 
         if card is None:
             item["status"] = "error"
@@ -2286,11 +3114,11 @@ class ModernVocabularyGui:
 
         card_warnings = self._quality_warnings_for_card(
             card,
-            expected_input=str(item.get("word") or card.word_or_phrase),
+            expected_input=self._quality_expected_input_for_item(item, card),
             topic_context=str(item.get("topic") or ""),
         )
         hard_warnings = [warning for warning in card_warnings if warning.startswith("HARD:")]
-        if hard_warnings:
+        if hard_warnings and not item.get("quality_override"):
             item["status"] = "blocked_quality_warning"
             item["quality_warnings"] = card_warnings
             item["error"] = "Blocked before Anki write because of hard quality warning(s): " + "; ".join(hard_warnings[:3])
@@ -2299,6 +3127,9 @@ class ModernVocabularyGui:
             self._autosave_batch_session("add all blocked hard quality warning")
             self._root.after(100, self._add_next_ready_batch_card)
             return
+        if hard_warnings and item.get("quality_override"):
+            item["quality_warnings"] = card_warnings
+            item["overridden_quality_warnings"] = item.get("overridden_quality_warnings") or card_warnings
 
         provider_name = str(item.get("provider_name") or self._provider_var.get())
         self._batch_index = item_index
@@ -2320,7 +3151,7 @@ class ModernVocabularyGui:
                 if strategy == "update_duplicates" and model == MODEL_NAME and duplicate_count == 1 and existing_note_id > 0:
                     self._anki_client.update_card_by_note_id(
                         existing_note_id, card, provider_name,
-                        extra_tags=self._topic_tags_for_batch_item(item),
+                        extra_tags=self._batch_tags_for_item(item),
                     )
                     item["status"] = "updated_in_anki"
                     item.pop("error", None)
@@ -2335,7 +3166,7 @@ class ModernVocabularyGui:
                     self._batch_add_all_counts["duplicates"] += 1
             else:
                 self._anki_client.add_card_without_duplicate_scan(
-                    card, provider_name, extra_tags=self._topic_tags_for_batch_item(item)
+                    card, provider_name, extra_tags=self._batch_tags_for_item(item)
                 )
                 self._batch_add_all_existing_notes[normalized] = {
                     "note_id": -1,
@@ -2409,6 +3240,7 @@ class ModernVocabularyGui:
             if data.get("feedback_language"):
                 self._feedback_language_var.set(data.get("feedback_language", self._feedback_language_var.get()))
             self._batch_topic_var.set(data.get("batch_topic", self._batch_topic_var.get()))
+            self._batch_mode_var.set(data.get("batch_mode", self._batch_mode_var.get()))
             self._deck_var.set(data.get("deck", self._deck_var.get()))
         except Exception as exc:
             messagebox.showerror("Resume error", str(exc))
@@ -2950,7 +3782,7 @@ class ModernVocabularyGui:
             messagebox.showwarning("Select one card", message)
             return
         if not self._speech_service or not self._tts_provider_var.get():
-            messagebox.showerror("TTS unavailable", "Configure at least one TTS provider first.")
+            messagebox.showerror("Audio provider unavailable", "Configure at least one audio provider first.")
             return
         note = selected[0]
         self._preview_existing_card(self._existing_cards.index(note))
@@ -3336,42 +4168,66 @@ class ModernVocabularyGui:
         frame = ctk.CTkFrame(parent, fg_color="transparent")
         frame.grid(row=0, column=0, sticky="nsew", padx=8, pady=8)
         frame.grid_columnconfigure(0, weight=1)
-        frame.grid_rowconfigure(3, weight=1)
+        frame.grid_rowconfigure(4, weight=1)
 
         controls = ctk.CTkFrame(frame, corner_radius=18)
         controls.grid(row=0, column=0, sticky="ew", pady=(0, 10))
         controls.grid_columnconfigure((1, 3, 5), weight=1)
-        ctk.CTkLabel(controls, text="TTS provider").grid(row=0, column=0, padx=(16, 8), pady=14)
+
+        ctk.CTkLabel(controls, text="Anki deck to scan").grid(row=0, column=0, padx=(16, 8), pady=(12, 6), sticky="w")
+        self._speech_deck_box = ctk.CTkComboBox(controls, variable=self._speech_deck_var, values=[])
+        self._speech_deck_box.grid(row=0, column=1, columnspan=2, sticky="ew", padx=(0, 8), pady=(12, 6))
+        ctk.CTkButton(controls, text="Refresh decks", width=110, command=self._load_decks).grid(
+            row=0, column=3, sticky="ew", padx=(0, 16), pady=(12, 6)
+        )
+        ctk.CTkLabel(controls, text="Card language").grid(row=0, column=4, padx=(0, 8), pady=(12, 6), sticky="w")
+        self._speech_language_box = ctk.CTkComboBox(
+            controls,
+            variable=self._speech_language_var,
+            values=list(LANGUAGE_TAGS.keys()),
+            state="readonly",
+            command=lambda _value: self._sync_tts_defaults(),
+        )
+        self._speech_language_box.grid(row=0, column=5, sticky="ew", padx=(0, 16), pady=(12, 6))
+
+        ctk.CTkLabel(controls, text="Audio provider").grid(row=1, column=0, padx=(16, 8), pady=6, sticky="w")
         self._tts_provider_box = ctk.CTkComboBox(
             controls, variable=self._tts_provider_var,
             values=list(self._speech_service.providers) if self._speech_service else [],
             state="readonly", command=lambda _value: self._sync_tts_defaults(),
         )
-        self._tts_provider_box.grid(row=0, column=1, sticky="ew", padx=(0, 16), pady=14)
-        ctk.CTkLabel(controls, text="Model").grid(row=0, column=2, padx=(0, 8), pady=14)
+        self._tts_provider_box.grid(row=1, column=1, sticky="ew", padx=(0, 16), pady=6)
+        ctk.CTkLabel(controls, text="Model").grid(row=1, column=2, padx=(0, 8), pady=6, sticky="w")
         self._tts_model_box = ctk.CTkComboBox(controls, variable=self._tts_model_var, values=[])
-        self._tts_model_box.grid(row=0, column=3, sticky="ew", padx=(0, 16), pady=14)
-        ctk.CTkLabel(controls, text="Voice").grid(row=0, column=4, padx=(0, 8), pady=14)
+        self._tts_model_box.grid(row=1, column=3, sticky="ew", padx=(0, 16), pady=6)
+        ctk.CTkLabel(controls, text="Voice").grid(row=1, column=4, padx=(0, 8), pady=6, sticky="w")
         self._tts_voice_box = ctk.CTkComboBox(controls, variable=self._tts_voice_var, values=[])
-        self._tts_voice_box.grid(row=0, column=5, sticky="ew", padx=(0, 16), pady=14)
+        self._tts_voice_box.grid(row=1, column=5, sticky="ew", padx=(0, 16), pady=6)
+        ctk.CTkLabel(
+            controls,
+            text="Audio uses its own deck and language selectors here. Card AI provider remains hidden in this tab.",
+            text_color=("gray35", "gray75"),
+        ).grid(row=2, column=0, columnspan=6, sticky="w", padx=16, pady=(0, 12))
 
         search = ctk.CTkFrame(frame, corner_radius=18)
         search.grid(row=1, column=0, sticky="ew", pady=(0, 10))
         search.grid_columnconfigure((1, 3, 5), weight=1)
-        ctk.CTkLabel(search, text="Optional Anki filter").grid(row=0, column=0, padx=(16, 8), pady=(12, 6))
+
+        ctk.CTkLabel(search, text="Optional Anki filter").grid(row=0, column=0, padx=(16, 8), pady=(12, 6), sticky="w")
         ctk.CTkEntry(
             search,
             textvariable=self._speech_search_var,
-            placeholder_text='Examples: tag:topic_character, note:Basic, is:due. Empty = selected deck.',
+            placeholder_text='Examples: tag:topic_character, note:Basic, is:due. Empty = selected audio deck.',
         ).grid(row=0, column=1, columnspan=5, sticky="ew", padx=(0, 16), pady=(12, 6))
 
-        ctk.CTkLabel(search, text="Source text field").grid(row=1, column=0, padx=(16, 8), pady=6)
+        ctk.CTkLabel(search, text="Source text field").grid(row=1, column=0, padx=(16, 8), pady=6, sticky="w")
         self._speech_source_field_box = ctk.CTkComboBox(
             search,
             variable=self._speech_source_field_var,
             values=[
-                "Auto: Example/Back/Word",
+                "Auto: Example/ContextExample/Back/Word",
                 "Example",
+                "ContextExample",
                 "Sentence",
                 "ExampleSentence",
                 "Back",
@@ -3383,7 +4239,7 @@ class ModernVocabularyGui:
         )
         self._speech_source_field_box.grid(row=1, column=1, sticky="ew", padx=(0, 16), pady=6)
 
-        ctk.CTkLabel(search, text="Target audio field").grid(row=1, column=2, padx=(0, 8), pady=6)
+        ctk.CTkLabel(search, text="Target audio field").grid(row=1, column=2, padx=(0, 8), pady=6, sticky="w")
         self._speech_target_field_box = ctk.CTkComboBox(
             search,
             variable=self._speech_target_field_var,
@@ -3391,7 +4247,7 @@ class ModernVocabularyGui:
         )
         self._speech_target_field_box.grid(row=1, column=3, sticky="ew", padx=(0, 16), pady=6)
 
-        ctk.CTkLabel(search, text="Write mode").grid(row=1, column=4, padx=(0, 8), pady=6)
+        ctk.CTkLabel(search, text="Write mode").grid(row=1, column=4, padx=(0, 8), pady=6, sticky="w")
         self._speech_write_mode_box = ctk.CTkComboBox(
             search,
             variable=self._speech_write_mode_var,
@@ -3404,13 +4260,14 @@ class ModernVocabularyGui:
             search,
             text="If old cards have no Audio field, choose Append mode and target Back/Example. Generate is enabled only for ready rows.",
             text_color=("gray35", "gray75"),
-        ).grid(row=2, column=0, columnspan=6, sticky="w", padx=16, pady=(0, 12))
+        ).grid(row=3, column=0, columnspan=6, sticky="w", padx=16, pady=(0, 12))
 
         actions = ctk.CTkFrame(frame, corner_radius=18)
         actions.grid(row=2, column=0, sticky="ew", pady=(0, 10))
         ctk.CTkButton(actions, text="Find missing audio", command=self._load_speech_notes).pack(side="left", padx=16, pady=14)
         ctk.CTkButton(actions, text="Select ready", command=self._select_ready_speech_notes).pack(side="left", padx=(0, 8), pady=14)
-        ctk.CTkButton(actions, text="Clear", command=lambda: [v.set(False) for v in self._speech_note_vars]).pack(side="left", padx=(0, 8), pady=14)
+        ctk.CTkButton(actions, text="Deselect all", command=self._deselect_speech_notes).pack(side="left", padx=(0, 8), pady=14)
+        ctk.CTkButton(actions, text="Clear results", command=self._clear_speech_results).pack(side="left", padx=(0, 8), pady=14)
         self._generate_audio_button = ctk.CTkButton(actions, text="Generate audio for selected", command=self._generate_audio_for_existing)
         self._generate_audio_button.pack(side="left", padx=(0, 8), pady=14)
         self._pause_audio_button = ctk.CTkButton(actions, text="Pause audio", command=self._pause_existing_audio_batch, state="disabled")
@@ -3418,11 +4275,25 @@ class ModernVocabularyGui:
         self._stop_audio_button = ctk.CTkButton(actions, text="Stop audio", command=self._stop_existing_audio_batch, state="disabled")
         self._stop_audio_button.pack(side="left", padx=(0, 8), pady=14)
         ctk.CTkButton(actions, text="Preview voice", command=self._preview_tts_voice_sample).pack(side="left", padx=(0, 8), pady=14)
-        ctk.CTkButton(actions, text="Test TTS provider", command=self._test_tts_provider).pack(side="left", padx=(0, 8), pady=14)
-        ctk.CTkLabel(actions, textvariable=self._speech_progress_var).pack(side="right", padx=16, pady=14)
+        ctk.CTkButton(actions, text="Test audio provider", command=self._test_tts_provider).pack(side="left", padx=(0, 8), pady=14)
+
+        status_panel = ctk.CTkFrame(frame, corner_radius=18)
+        status_panel.grid(row=3, column=0, sticky="ew", pady=(0, 10))
+        status_panel.grid_columnconfigure(1, weight=1)
+        ctk.CTkLabel(status_panel, text="Audio scan").grid(row=0, column=0, sticky="w", padx=(16, 8), pady=(10, 2))
+        ctk.CTkLabel(status_panel, textvariable=self._speech_summary_var, anchor="w").grid(
+            row=0, column=1, sticky="ew", padx=(0, 16), pady=(10, 2)
+        )
+        ctk.CTkLabel(status_panel, text="Audio status").grid(row=1, column=0, sticky="w", padx=(16, 8), pady=(2, 10))
+        ctk.CTkLabel(
+            status_panel,
+            textvariable=self._speech_progress_var,
+            anchor="w",
+            text_color=("gray25", "gray80"),
+        ).grid(row=1, column=1, sticky="ew", padx=(0, 16), pady=(2, 10))
 
         self._speech_scroll = ctk.CTkScrollableFrame(frame, corner_radius=18)
-        self._speech_scroll.grid(row=3, column=0, sticky="nsew")
+        self._speech_scroll.grid(row=4, column=0, sticky="nsew")
         self._speech_scroll.grid_columnconfigure(0, weight=1)
         self._sync_tts_defaults()
 
@@ -3505,14 +4376,27 @@ class ModernVocabularyGui:
             decks = self._anki_client.list_decks()
         except Exception as exc:
             self._deck_box.configure(values=[self._anki_client.deck_name])
+            speech_deck_box = getattr(self, "_speech_deck_box", None)
+            if speech_deck_box is not None:
+                speech_deck_box.configure(values=[self._anki_client.deck_name])
+            if not self._speech_deck_var.get().strip():
+                self._speech_deck_var.set(self._anki_client.deck_name)
             self._status_var.set("Could not load decks. Open Anki and click Refresh.")
             messagebox.showwarning("Anki connection", str(exc))
             return
 
         if self._anki_client.deck_name not in decks:
             decks.append(self._anki_client.deck_name)
-        self._deck_box.configure(values=sorted(decks))
-        self._status_var.set("Decks loaded. Select the target deck before adding cards.")
+        deck_values = sorted(decks)
+        self._deck_box.configure(values=deck_values)
+        speech_deck_box = getattr(self, "_speech_deck_box", None)
+        if speech_deck_box is not None:
+            speech_deck_box.configure(values=deck_values)
+        if not self._deck_var.get().strip():
+            self._deck_var.set(self._anki_client.deck_name)
+        if not self._speech_deck_var.get().strip():
+            self._speech_deck_var.set(self._deck_var.get() or self._anki_client.deck_name)
+        self._status_var.set("Decks loaded. Select the target deck before adding cards or the audio deck in Speech / Audio.")
 
     def _set_selected_deck(self) -> str:
         deck_name = self._deck_var.get().strip()
@@ -3520,6 +4404,27 @@ class ModernVocabularyGui:
             raise ValueError("Select or type an Anki deck name.")
         self._anki_client.set_deck(deck_name)
         return deck_name
+
+    def _set_speech_selected_deck(self) -> str:
+        """Select the deck used by Speech / Audio without relying on the hidden top bar."""
+        deck_name = self._speech_deck_var.get().strip() or self._deck_var.get().strip()
+        if not deck_name:
+            raise ValueError("Select or type an Anki deck to scan in Speech / Audio.")
+        self._anki_client.set_deck(deck_name)
+        return deck_name
+
+    def _current_speech_language(self) -> str:
+        """Language fallback for Speech / Audio when a note has no language field."""
+        return self._speech_language_var.get().strip() or self._language_var.get().strip()
+
+    def _current_tts_default_language(self) -> str:
+        """Choose the language for TTS presets/previews in the active workflow."""
+        try:
+            if getattr(self, "_tabs", None) is not None and self._tabs.get() == "Speech / Audio":
+                return self._current_speech_language()
+        except Exception:
+            pass
+        return self._language_var.get().strip()
 
     def _generate_single_card(self) -> None:
         word_or_phrase = self._word_var.get().strip()
@@ -3689,7 +4594,7 @@ class ModernVocabularyGui:
         provider = self._speech_service.providers[provider_name]
         self._tts_model_box.configure(values=provider.models) if hasattr(self, "_tts_model_box") else None
 
-        voice_labels = get_voice_labels(provider_name, self._language_var.get())
+        voice_labels = get_voice_labels(provider_name, self._current_tts_default_language())
         if not voice_labels:
             voice_labels = get_voice_labels(provider_name)
         if not voice_labels:
@@ -3719,26 +4624,26 @@ class ModernVocabularyGui:
     def _test_tts_provider(self, *, preflight: bool = False) -> bool:
         """Run a tiny shared TTS diagnostic before preview/batch work."""
         if not self._speech_service or not self._tts_provider_var.get():
-            message = "TTS diagnostics failed: no TTS provider is configured."
+            message = "Audio provider diagnostics failed: no audio provider is configured."
             self._speech_progress_var.set(message)
             if not preflight:
-                messagebox.showerror("TTS unavailable", message)
+                messagebox.showerror("Audio provider unavailable", message)
             return False
 
         provider_name = self._tts_provider_var.get()
         model_name = self._tts_model_var.get()
         voice_label = self._tts_voice_var.get()
         voice_value = self._selected_tts_voice()
-        self._speech_progress_var.set("Testing TTS provider...")
+        self._speech_progress_var.set("Testing audio provider...")
         self._root.update_idletasks()
         diagnostic = self._speech_service.diagnose_provider(
             provider_name,
-            self._language_var.get(),
+            self._current_tts_default_language(),
             model_name,
             voice_value,
         )
 
-        message = ("TTS diagnostics OK: " if diagnostic.ok else "TTS diagnostics failed: ") + diagnostic.to_message()
+        message = ("Audio provider diagnostics OK: " if diagnostic.ok else "Audio provider diagnostics failed: ") + diagnostic.to_message()
         if not diagnostic.ok:
             status = self._http_status_label(self._http_status_from_exception(Exception(diagnostic.error_message)))
             friendly = self._friendly_tts_error_message(Exception(diagnostic.error_message))
@@ -3751,7 +4656,7 @@ class ModernVocabularyGui:
             self._speech_progress_var.set(message)
             if not preflight:
                 self._record_activity(message)
-                messagebox.showerror("TTS diagnostics", message)
+                messagebox.showerror("Audio provider diagnostics", message)
             return False
 
         self._speech_progress_var.set(message)
@@ -3764,7 +4669,7 @@ class ModernVocabularyGui:
             messagebox.showerror("No card", "Generate a vocabulary card first.")
             return
         if not self._speech_service or not self._tts_provider_var.get():
-            messagebox.showerror("TTS unavailable", "Configure at least one TTS provider.")
+            messagebox.showerror("Audio provider unavailable", "Configure at least one audio provider.")
             return
         self._status_var.set("Generating example audio...")
         self._root.update_idletasks()
@@ -3820,7 +4725,7 @@ class ModernVocabularyGui:
     def _preview_tts_voice_sample(self) -> None:
         """Generate and play a short voice sample after explicit user action."""
         if not self._speech_service or not self._tts_provider_var.get():
-            messagebox.showerror("TTS unavailable", "Configure at least one TTS provider.")
+            messagebox.showerror("Audio provider unavailable", "Configure at least one audio provider.")
             return
 
         sample_by_language = {
@@ -3828,7 +4733,7 @@ class ModernVocabularyGui:
             "Spanish": "Esta es una pequeña muestra de pronunciación.",
             "Polish": "To jest krótka próbka wymowy.",
         }
-        language = self._language_var.get()
+        language = self._current_tts_default_language()
         sample_text = sample_by_language.get(language, "This is a short pronunciation sample.")
         provider_name = self._tts_provider_var.get()
         model_name = self._tts_model_var.get()
@@ -3886,7 +4791,7 @@ class ModernVocabularyGui:
         selected = self._speech_source_field_var.get().strip()
         if selected and not selected.startswith("Auto"):
             return self._plain_text(str(fields.get(selected, ""))), selected
-        for field_name in ("Example", "Sentence", "ExampleSentence", "Back", "Word", "Front", "Phrase", "Term"):
+        for field_name in ("Example", "ContextExample", "Sentence", "ExampleSentence", "Back", "Word", "Front", "Phrase", "Term"):
             if field_name in fields:
                 value = self._plain_text(str(fields.get(field_name, "")))
                 if value:
@@ -3933,6 +4838,22 @@ class ModernVocabularyGui:
             return False, "has_audio", f"{target_field} already contains [sound:...].", source_text, target_field
         return True, "ready_for_audio", f"Source: {source_field} → Target: {target_field}", source_text, target_field
 
+    def _deselect_speech_notes(self) -> None:
+        """Uncheck visible audio rows without clearing scan results."""
+        for var in self._speech_note_vars:
+            var.set(False)
+        self._speech_progress_var.set("Deselected all audio rows. Scan results kept.")
+
+    def _clear_speech_results(self) -> None:
+        """Clear the current audio scan result list."""
+        self._speech_notes = []
+        self._speech_note_vars = []
+        self._speech_audio_status_by_note_id = {}
+        self._speech_audio_error_by_note_id = {}
+        self._speech_audio_path_by_note_id = {}
+        self._speech_summary_var.set("No audio scan loaded yet.")
+        self._render_speech_notes("Audio results cleared. Click Find missing audio to scan again.")
+
     def _select_ready_speech_notes(self) -> None:
         for note, var in zip(self._speech_notes, self._speech_note_vars):
             can_generate, *_ = self._speech_note_readiness(note)
@@ -3966,7 +4887,13 @@ class ModernVocabularyGui:
     def _load_speech_notes(self) -> None:
         """Load missing/malformed audio from all supported note types in the deck."""
         try:
-            self._set_selected_deck()
+            self._set_speech_selected_deck()
+            # Make sure grammar note types created by Batch Grammar expose Audio/ExampleAudio
+            # before the broad missing-audio scan runs. This is idempotent.
+            try:
+                self._anki_client.ensure_grammar_model_exists()
+            except Exception:
+                LOGGER.info("Grammar model audio-field refresh skipped during audio scan", exc_info=True)
             self._speech_notes = self._anki_client.list_existing_notes(
                 search_query=self._speech_search_var.get().strip(),
                 missing_audio_only=True,
@@ -3983,13 +4910,21 @@ class ModernVocabularyGui:
             self._speech_audio_status_by_note_id[note_id] = str(note.get("audio_status") or "missing_audio")
         extra = self._speech_search_var.get().strip()
         suffix = f" · filter: {extra}" if extra else ""
-        self._render_speech_notes(f"{self._speech_scan_summary()}{suffix}")
+        scan_summary = f"{self._speech_scan_summary()}{suffix}"
+        self._speech_summary_var.set(scan_summary)
+        self._render_speech_notes(scan_summary)
 
     def _render_speech_notes(self, progress_message: str | None = None) -> None:
         """Render the current existing-card audio list without reloading from Anki."""
         for widget in self._speech_scroll.winfo_children():
             widget.destroy()
         self._speech_note_vars = []
+        if not self._speech_notes:
+            ctk.CTkLabel(
+                self._speech_scroll,
+                text="No audio scan results. Click Find missing audio to load cards from the selected deck.",
+                text_color=("gray35", "gray75"),
+            ).grid(row=0, column=0, sticky="w", padx=12, pady=12)
         for index, note in enumerate(self._speech_notes):
             note_id = int(note["note_id"])
             self._speech_audio_status_by_note_id.setdefault(
@@ -4015,6 +4950,15 @@ class ModernVocabularyGui:
                 error = self._speech_audio_error_by_note_id.get(note_id, "")
                 label = f"[{status}] {word} · {model} · {error or detail}"
             checkbox = ctk.CTkCheckBox(self._speech_scroll, text=label, variable=var)
+            # Keep completed/skipped rows readable on dark theme. Disabled CTk text can
+            # become almost invisible, so use explicit disabled contrast.
+            try:
+                checkbox.configure(
+                    text_color_disabled=("gray35", "gray72"),
+                    text_color=("gray10", "gray92") if can_generate else ("gray30", "gray75"),
+                )
+            except Exception:
+                pass
             if not can_generate:
                 checkbox.configure(state="disabled")
             checkbox.grid(row=index, column=0, sticky="w", padx=12, pady=6)
@@ -4144,14 +5088,14 @@ class ModernVocabularyGui:
                 f"Generating {len(selected)} ready card(s). Skipping {len(blocked)} not-ready selection(s)."
             )
         if not self._speech_service or not self._tts_provider_var.get():
-            messagebox.showerror("TTS unavailable", "Configure at least one TTS provider.")
+            messagebox.showerror("Audio provider unavailable", "Configure at least one audio provider.")
             return
         provider_name = self._tts_provider_var.get()
         model_name = self._tts_model_var.get()
         voice_label = self._tts_voice_var.get()
         voice_value = self._selected_tts_voice()
         if not self._test_tts_provider(preflight=True):
-            message = "Audio batch not started because TTS provider diagnostics failed. Fix the provider/key/voice or switch provider."
+            message = "Audio batch not started because audio provider diagnostics failed. Fix the provider/key/voice or switch provider."
             self._speech_progress_var.set(message)
             self._record_activity(message)
             return
@@ -4203,23 +5147,23 @@ class ModernVocabularyGui:
     def _friendly_tts_error_message(exc: Exception) -> str:
         status = ModernVocabularyGui._http_status_from_exception(exc)
         if status == 401:
-            return "TTS provider 401 Unauthorized. Check the API key or switch provider."
+            return "Audio provider 401 Unauthorized. Check the API key or switch provider."
         if status == 402:
-            return "TTS provider 402 payment/credits problem. Use a verified voice or switch provider."
+            return "Audio provider 402 payment/credits problem. Use a verified voice or switch provider."
         if status == 403:
-            return "TTS provider 403 forbidden. The selected voice/model may not be allowed. Switch voice/provider."
+            return "Audio provider 403 forbidden. The selected voice/model may not be allowed. Switch voice/provider."
         if status == 400:
-            return "TTS provider 400 bad request. Check text/model/voice; this item was not retried automatically."
+            return "Audio provider 400 bad request. Check text/model/voice; this item was not retried automatically."
         if status == 404:
-            return "TTS provider 404 not found. Check the configured model/voice or switch provider."
+            return "Audio provider 404 not found. Check the configured model/voice or switch provider."
         if status == 422:
-            return "TTS provider 422 could not process this item. Edit the input or switch provider."
+            return "Audio provider 422 could not process this item. Edit the input or switch provider."
         if status == 429:
-            return "TTS provider rate limit. Wait before retrying or switch provider."
+            return "Audio provider rate limit. Wait before retrying or switch provider."
         if status is not None and 500 <= status <= 599:
-            return "TTS provider server error. Progress was saved; retry later or switch provider."
+            return "Audio provider server error. Progress was saved; retry later or switch provider."
         if ModernVocabularyGui._is_timeout_detail(str(exc)):
-            return "TTS provider timed out. Progress was saved; retry later or switch provider."
+            return "Audio provider timed out. Progress was saved; retry later or switch provider."
         return "TTS error. Raw provider details were saved in logs/autosave."
 
     def _existing_audio_worker(
@@ -4309,7 +5253,7 @@ class ModernVocabularyGui:
                     result = self._speech_service.generate(
                         provider_name,
                         source_text,
-                        str(note.get("language") or self._language_var.get()),
+                        str(note.get("language") or self._current_speech_language()),
                         model_name,
                         voice_value,
                     )

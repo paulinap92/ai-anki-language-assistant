@@ -136,6 +136,7 @@ class AnkiClient:
                 css=GRAMMAR_CARD_CSS,
             )
         else:
+            self._ensure_model_fields(GRAMMAR_MODEL_NAME, GRAMMAR_MODEL_FIELDS)
             self._update_model(
                 model_name=GRAMMAR_MODEL_NAME,
                 front_template=GRAMMAR_FRONT_TEMPLATE,
@@ -210,7 +211,7 @@ class AnkiClient:
         if result is None:
             raise ValueError(f"Could not add card: {card.word_or_phrase}")
 
-    def add_grammar_card(self, card: GrammarAnalysis, provider_name: str) -> None:
+    def add_grammar_card(self, card: GrammarAnalysis, provider_name: str, extra_tags: list[str] | None = None) -> None:
         """Add one sentence-first grammar card to the active Anki deck."""
         self.ensure_grammar_model_exists()
         language_tag = get_language_tag(card.target_language)
@@ -224,6 +225,7 @@ class AnkiClient:
                 "ai_grammar_light_card",
                 language_tag,
                 f"provider_{provider_name.lower()}",
+                *(extra_tags or []),
             ],
         }
 
@@ -375,7 +377,7 @@ class AnkiClient:
         )
         return note_id
 
-    def update_grammar_card(self, card: GrammarAnalysis, provider_name: str) -> int:
+    def update_grammar_card(self, card: GrammarAnalysis, provider_name: str, extra_tags: list[str] | None = None) -> int:
         """Replace fields of an existing grammar note and return its ID."""
         self.ensure_grammar_model_exists()
         note_id = self.find_existing_grammar_note_id(card.sentence)
@@ -394,7 +396,7 @@ class AnkiClient:
             action="addTags",
             params={
                 "notes": [note_id],
-                "tags": f"provider_{provider_name.lower()}",
+                "tags": " ".join([f"provider_{provider_name.lower()}", *(extra_tags or [])]),
             },
         )
         return note_id
@@ -410,9 +412,9 @@ class AnkiClient:
             raise ValueError(f"Could not store Anki media file: {file_path.name}")
         return str(result)
 
-    AUDIO_FIELD_CANDIDATES = ("Audio", "WordAudio", "ExampleAudio", "SentenceAudio")
-    WORD_FIELD_CANDIDATES = ("Word", "Front", "Expression", "Phrase", "Term")
-    EXAMPLE_FIELD_CANDIDATES = ("Example", "Sentence", "ExampleSentence", "Back")
+    AUDIO_FIELD_CANDIDATES = ("Audio", "ExampleAudio", "WordAudio", "SentenceAudio")
+    WORD_FIELD_CANDIDATES = ("Word", "Sentence", "Structure", "Front", "Expression", "Phrase", "Term")
+    EXAMPLE_FIELD_CANDIDATES = ("Example", "ContextExample", "Sentence", "ExampleSentence", "Back")
 
     def list_vocabulary_notes_for_audio(
         self, missing_only: bool = True, search_query: str = ""

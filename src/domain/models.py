@@ -181,3 +181,4 @@ class GrammarAnalysis(BaseModel):
     common_mistakes: list[str] = Field(
         description="Common incorrect forms followed by their corrected versions."
     )
+    audio: str = Field(default="", description="Anki sound reference for the main grammar/context example.")

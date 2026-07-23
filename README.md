@@ -1262,3 +1262,72 @@ Vocabulary generation now separates the language being learned from the language
 - The Anki note type now includes neutral fields `Translation` and `ExampleTranslation` while keeping `TranslationPL` and `ExamplePL` for compatibility with older cards/templates.
 
 Polish can still be selected as the preferred explanation language, but it is no longer treated as an invisible architectural assumption.
+
+
+### Batch modes
+
+Batch / Queue now supports three modes:
+
+- `Vocabulary` — normal word/phrase flashcards.
+- `Grammar` — grammar structures, connectors, discourse phrases, or writing patterns are generated as `AI Grammar Light Card` notes.
+- `Mixed` — conservative routing: obvious grammar structures such as `aunque + subjuntivo`, `no solo... sino también`, or `por mucho que` become grammar cards; ambiguous items remain vocabulary cards.
+
+The Batch target language comes from the top bar. The Batch panel keeps only `Explanation language` and `Topic / context` to avoid duplicate language controls.
+
+For DELE/writing topics, the grammar prompt asks the model to vary contexts across letters, emails, arguments, reports, opinions, complaints, applications, and written communication instead of repeating one noun such as `ensayo`.
+
+## v8.1.5.5 Batch UI, grammar audio, and provided examples
+
+This version focuses on usability before OCR/STT work.
+
+### Batch UI cleanup
+
+Batch / Queue now groups controls into clearer sections:
+
+- current-card actions: previous/next, edit, regenerate, skip this card, add this card,
+- batch actions: generate pending, retry problems, add all ready, pause, stop,
+- problems: go to first problem, next problem, show issue summary.
+
+Problem navigation is hidden when the batch has no blocked/failed/invalid items.
+
+### Topic/context anti-repetition
+
+Topic/context is now treated as a context guide, not a keyword that must appear in every sentence. Writing/DELE/essay topics explicitly ask for varied subcontexts: emails, formal letters, opinion texts, reports, complaints, applications, arguments, and written communication. The prompt asks the model not to overuse one topic noun such as `essay` or `ensayo`.
+
+### Grammar audio support
+
+`AI Grammar Light Card` now includes `Audio` and `ExampleAudio` fields. Speech / Audio scans grammar cards too, using grammar defaults:
+
+- source text: `ContextExample` / `Sentence`,
+- target audio field: `Audio` / `ExampleAudio`.
+
+`Fix Cards → Fix audio` can work with grammar cards because the broad existing-note scanner now recognizes `Sentence`, `Structure`, and `ContextExample` fields.
+
+### Provided examples mode
+
+Batch mode now includes `Provided examples`.
+
+Recommended input format:
+
+```text
+come across | I came across an interesting article yesterday.
+aunque + subjuntivo | Aunque sea difícil, voy a intentarlo.
+```
+
+In this mode the model must use the provided sentence as the main example. It should not invent a replacement example or change the sentence meaning. It adds definition, translation/explanation, grammar note, useful chunks/collocations, and quality warnings around the user-provided sentence.
+
+
+## v8.1.5.6 pre-OCR UI/audio cleanup
+
+- Tabs now follow the workflow order: Single flashcard → Batch / Queue → Grammar → Speech / Audio → Fix Cards → Practice & Print → Conversation Practice.
+- The top provider is labeled **Card AI provider** to clarify that it generates card text.
+- Speech / Audio now uses **Audio provider** for TTS-only settings.
+- Speech / Audio has a separate scan summary and status area, plus clearer buttons: **Deselect all** and **Clear results**.
+- OCR/Import is intentionally postponed to v9.
+
+
+### v8.1.5.7 — Audio tab scope cleanup
+
+- `Speech / Audio` hides global card-generation settings.
+- Audio has its own `Anki deck to scan` selector and deck refresh button.
+- Audio provider copy is clearer: audio provider is only for TTS/audio generation.

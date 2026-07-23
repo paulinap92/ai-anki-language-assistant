@@ -170,3 +170,48 @@ def test_existing_note_map_broad_can_scan_all_decks() -> None:
 
     assert set(result) == {"outlast"}
     assert client.queries == [""]
+
+
+def test_summarise_grammar_note_is_ready_for_audio() -> None:
+    client = AnkiClient("http://localhost:8765", "Deck")
+    note = {
+        "noteId": 321,
+        "modelName": "AI Grammar Light Card",
+        "tags": ["ai_grammar"],
+        "fields": {
+            "Sentence": {"value": "aunque + subjuntivo"},
+            "Language": {"value": "Spanish"},
+            "ContextExample": {"value": "Aunque sea difícil, voy a intentarlo."},
+            "Audio": {"value": ""},
+        },
+    }
+
+    summary = client._summarise_note(note)
+
+    assert summary["word"] == "aunque + subjuntivo"
+    assert summary["example"] == "Aunque sea difícil, voy a intentarlo."
+    assert summary["audio_field"] == "Audio"
+    assert summary["audio_status"] == "missing_audio"
+
+
+def test_grammar_field_builder_includes_audio_fields() -> None:
+    from src.anki.field_builder import GrammarFieldBuilder
+    from src.domain.models import GrammarAnalysis
+
+    card = GrammarAnalysis(
+        sentence="aunque + subjuntivo",
+        target_language="Spanish",
+        meaning="Concesión hipotética.",
+        structure="aunque + subjuntivo",
+        breakdown=["aunque introduce concesión"],
+        usage="Para situaciones hipotéticas.",
+        context_example="Aunque sea difícil, voy a intentarlo.",
+        contrasts=[],
+        common_mistakes=[],
+        audio="[sound:test.mp3]",
+    )
+
+    fields = GrammarFieldBuilder.build_fields(card)
+
+    assert fields["Audio"] == "[sound:test.mp3]"
+    assert fields["ExampleAudio"] == "[sound:test.mp3]"

@@ -68,6 +68,8 @@ class GrammarFieldBuilder:
             "Breakdown": cls.blocks(card.breakdown),
             "Usage": cls.safe(card.usage),
             "ContextExample": cls.safe(card.context_example),
+            "Audio": getattr(card, "audio", ""),
+            "ExampleAudio": getattr(card, "audio", ""),
             "Contrasts": cls.blocks(card.contrasts),
             "CommonMistakes": cls.blocks(card.common_mistakes),
         }
