@@ -27,10 +27,28 @@ class OllamaVocabularyClient(VocabularyAiClient):
 
     @property
     def provider_name(self) -> str:
-        return "Ollama Local"
+        return "Ollama Local (experimental)"
+
+    def _local_model_prompt_wrapper(self, prompt: str) -> str:
+        """Add strict guardrails for small/local models without changing app logic."""
+        return f"""
+LOCAL MODEL STRICT MODE:
+- You are a small local model. Follow the requested JSON schema exactly.
+- Return only valid JSON. No markdown, no comments, no extra text.
+- Use only the requested target language for target-language fields.
+- Use only the requested explanation/feedback language for explanation fields.
+- Use the standard writing system/script for each requested language.
+- Do not switch to another language or another script.
+- Do not use Cyrillic unless the requested language normally uses Cyrillic.
+- Keep wording simple, short, and deterministic.
+
+USER TASK:
+{prompt}
+""".strip()
 
     def _generate_text(self, prompt: str) -> str:
         """Generate text using Ollama's local /api/generate endpoint."""
+        prompt = self._local_model_prompt_wrapper(prompt)
         payload = {
             "model": self._model,
             "prompt": prompt,

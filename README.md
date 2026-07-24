@@ -7,7 +7,7 @@ Desktop application for generating vocabulary and grammar cards, practising conv
 
 This version adds a minimal local/free mode:
 
-- **Ollama Local** as an optional AI provider for Conversation Practice and other generation flows.
+- **Ollama Local (experimental)** as an optional AI provider for Conversation Practice and other generation flows.
 - **Piper Local** support through standalone `piper.exe` paths in `.env`.
 - **Read question** button in Conversation Practice to read the current AI question aloud with the selected TTS provider.
 - Whisper/STT from v9.1.9 is kept for later testing; it still only fills the answer textbox.

@@ -19,7 +19,7 @@ import time
 import tkinter as tk
 from datetime import datetime
 from pathlib import Path
-from tkinter import filedialog, messagebox
+from tkinter import filedialog, messagebox, ttk
 
 import customtkinter as ctk
 
@@ -101,6 +101,7 @@ class ModernVocabularyGui:
         self._generated_audio: TtsResult | None = None
 
         tts_names = list(speech_service.providers) if speech_service else []
+        self._single_tts_provider_var = ctk.StringVar(value=tts_names[0] if tts_names else "Off")
         self._tts_provider_var = ctk.StringVar(value=tts_names[0] if tts_names else "")
         self._tts_model_var = ctk.StringVar(value="")
         self._tts_voice_var = ctk.StringVar(value="")
@@ -121,14 +122,16 @@ class ModernVocabularyGui:
         self._generated_grammar_provider_name: str | None = None
 
         self._topic_var = ctk.StringVar()
+        self._conversation_language_var = ctk.StringVar(value=default_target_language)
         preferred_conversation_provider = (
             "OpenAI" if "OpenAI" in ai_clients
             else "Gemini" if "Gemini" in ai_clients
-            else "Ollama Local" if "Ollama Local" in ai_clients
+            else "Ollama Local (experimental)" if "Ollama Local (experimental)" in ai_clients
             else next(iter(ai_clients))
         )
         self._conversation_provider_var = ctk.StringVar(value=preferred_conversation_provider)
         self._stt_status_var = ctk.StringVar(value="Speech input: ready." if stt_service else "Speech input: not configured.")
+        self._recording_timer_after_id: str | None = None
         self._conversation_question: str | None = None
         self._conversation_history: list[tuple[str, str]] = []
         self._latest_suggestions: list[str] = []
@@ -331,10 +334,28 @@ class ModernVocabularyGui:
             current_tab = tabs.get()
         except Exception:
             return
-        if current_tab == "Speech / Audio":
+        if current_tab in {"Speech / Audio", "Conversation Practice"}:
             top_settings.grid_remove()
         else:
             top_settings.grid(row=1, column=0, sticky="ew", padx=24, pady=(8, 4))
+
+        # Avoid stale global messages from a previous workflow, for example
+        # Conversation status still visible in Speech / Audio.
+        context_status = {
+            "Single flashcard": "Single flashcard ready.",
+            "Batch / Queue": "Batch / Queue ready.",
+            "Grammar": "Grammar tab ready.",
+            "Import Material": "Import Material ready.",
+            "Speech / Audio": "Speech / Audio ready.",
+            "Fix Cards": "Fix Cards ready.",
+            "Practice & Print": "Practice & Print ready.",
+            "Conversation Practice": "Conversation Practice ready.",
+        }.get(current_tab)
+        if context_status and not any(
+            token in self._status_var.get().lower()
+            for token in ("generating", "recording", "transcribing", "adding", "scanning")
+        ):
+            self._status_var.set(context_status)
 
     def _build_single_flashcard_tab(self, parent: ctk.CTkFrame) -> None:
         layout = ctk.CTkFrame(parent, fg_color="transparent")
@@ -370,14 +391,23 @@ class ModernVocabularyGui:
         speech_frame = ctk.CTkFrame(left, fg_color="transparent")
         speech_frame.grid(row=6, column=0, sticky="ew", padx=18, pady=(2, 8))
         speech_frame.grid_columnconfigure((0, 1), weight=1)
+        ctk.CTkLabel(speech_frame, text="Audio provider").grid(row=0, column=0, columnspan=2, sticky="w", pady=(0, 4))
+        self._single_tts_provider_box = ctk.CTkComboBox(
+            speech_frame,
+            variable=self._single_tts_provider_var,
+            values=(["Off"] + list(self._speech_service.providers.keys())) if self._speech_service else ["Off"],
+            state="readonly",
+            command=lambda _value: self._sync_single_tts_provider(),
+        )
+        self._single_tts_provider_box.grid(row=1, column=0, columnspan=2, sticky="ew", pady=(0, 8))
         ctk.CTkButton(
             speech_frame, text="Generate example audio",
             command=self._generate_single_audio,
-        ).grid(row=0, column=0, sticky="ew", padx=(0, 4))
+        ).grid(row=2, column=0, sticky="ew", padx=(0, 4))
         ctk.CTkButton(
             speech_frame, text="Preview audio",
             command=self._preview_generated_audio,
-        ).grid(row=0, column=1, sticky="ew", padx=(4, 0))
+        ).grid(row=2, column=1, sticky="ew", padx=(4, 0))
         ctk.CTkButton(
             left,
             text="Add reviewed card to Anki",
@@ -499,7 +529,7 @@ class ModernVocabularyGui:
         ).grid(row=0, column=0, sticky="w", padx=18, pady=(18, 8))
         ctk.CTkLabel(
             left,
-            text="Load lesson material, extract readable text, choose candidates, then send them to Batch / Queue. Nothing is added to Anki here.",
+            text="Load material, review/clean the extracted text, create editable candidate drafts, cherry-pick final candidates, then send them to Batch / Queue. Nothing is added to Anki here.",
             wraplength=280,
             justify="left",
             text_color=("gray35", "gray75"),
@@ -684,7 +714,7 @@ class ModernVocabularyGui:
         candidates_panel.grid_rowconfigure(1, weight=1)
         ctk.CTkLabel(
             candidates_panel,
-            text="Candidate review / cherry-pick",
+            text="Candidate drafts / cherry-pick",
             font=ctk.CTkFont(size=20, weight="bold"),
         ).grid(row=0, column=0, sticky="w", padx=18, pady=(18, 8))
         self._ocr_candidates_frame = ctk.CTkScrollableFrame(candidates_panel, fg_color=("gray92", "gray13"))
@@ -779,6 +809,16 @@ class ModernVocabularyGui:
         ctk.CTkButton(topic, text="Reset", width=80, command=self._reset_conversation).grid(
             row=0, column=5, padx=(0, 18), pady=14
         )
+        ctk.CTkLabel(topic, text="Conversation language").grid(
+            row=1, column=0, padx=(18, 8), pady=(0, 14), sticky="w"
+        )
+        ctk.CTkComboBox(
+            topic,
+            variable=self._conversation_language_var,
+            values=list(LANGUAGE_TAGS.keys()),
+            state="readonly",
+            width=180,
+        ).grid(row=1, column=1, padx=(0, 10), pady=(0, 14), sticky="w")
         ctk.CTkLabel(topic, text="Feedback language").grid(
             row=1, column=2, padx=(4, 6), pady=(0, 14), sticky="e"
         )
@@ -797,13 +837,8 @@ class ModernVocabularyGui:
             variable=self._conversation_provider_var,
             values=list(self._ai_clients.keys()),
             state="readonly",
-            width=150,
+            width=190,
         ).grid(row=1, column=5, padx=(0, 18), pady=(0, 14), sticky="ew")
-        ctk.CTkLabel(
-            topic,
-            text="Conversation language uses the top Target language selector.",
-            text_color=("gray35", "gray70"),
-        ).grid(row=1, column=0, columnspan=2, sticky="w", padx=18, pady=(0, 14))
 
         chat_panel = ctk.CTkFrame(layout, corner_radius=18)
         chat_panel.grid(row=1, column=0, sticky="nsew", padx=(0, 12))
@@ -828,33 +863,45 @@ class ModernVocabularyGui:
 
         speech_row = ctk.CTkFrame(chat_panel, fg_color="transparent")
         speech_row.grid(row=3, column=0, sticky="ew", padx=18, pady=(0, 18))
-        speech_row.grid_columnconfigure(3, weight=1)
+        speech_row.grid_columnconfigure(5, weight=1)
         self._record_button = ctk.CTkButton(
             speech_row,
             text="Record answer",
             width=130,
             command=self._start_conversation_recording,
         )
-        self._record_button.grid(row=0, column=0, padx=(0, 8), sticky="w")
+        self._record_button.grid(row=0, column=0, padx=(0, 8), pady=(0, 6), sticky="w")
         self._stop_record_button = ctk.CTkButton(
             speech_row,
             text="Stop & transcribe",
             width=150,
             command=self._stop_conversation_recording,
         )
-        self._stop_record_button.grid(row=0, column=1, padx=(0, 12), sticky="w")
+        self._stop_record_button.grid(row=0, column=1, padx=(0, 8), pady=(0, 6), sticky="w")
+        ctk.CTkButton(
+            speech_row,
+            text="Play last recording",
+            width=150,
+            command=self._play_last_conversation_recording,
+        ).grid(row=0, column=2, padx=(0, 8), pady=(0, 6), sticky="w")
+        ctk.CTkButton(
+            speech_row,
+            text="Open audio file",
+            width=130,
+            command=self._open_last_conversation_recording,
+        ).grid(row=0, column=3, padx=(0, 8), pady=(0, 6), sticky="w")
         ctk.CTkButton(
             speech_row,
             text="Read question",
             width=130,
             command=self._read_conversation_question_aloud,
-        ).grid(row=0, column=2, padx=(0, 12), sticky="w")
+        ).grid(row=0, column=4, padx=(0, 12), pady=(0, 6), sticky="w")
         ctk.CTkLabel(
             speech_row,
             textvariable=self._stt_status_var,
             text_color=("gray35", "gray70"),
             anchor="w",
-        ).grid(row=0, column=3, sticky="ew")
+        ).grid(row=0, column=5, sticky="ew")
 
         vocab_panel = ctk.CTkFrame(layout, corner_radius=18)
         vocab_panel.grid(row=1, column=1, sticky="nsew")
@@ -1024,10 +1071,16 @@ class ModernVocabularyGui:
         self._batch_word_entry.grid(row=0, column=0, sticky="ew", padx=(0, 8))
         ctk.CTkButton(
             current_row,
+            text="Save item edit",
+            width=140,
+            command=self._save_current_batch_item_edit,
+        ).grid(row=0, column=1, padx=(0, 8))
+        ctk.CTkButton(
+            current_row,
             text="Generate card",
             width=170,
             command=lambda: self._generate_current_batch_card("generate_selected"),
-        ).grid(row=0, column=1)
+        ).grid(row=0, column=2)
 
         ctk.CTkLabel(
             right,
@@ -1533,17 +1586,20 @@ class ModernVocabularyGui:
                 wraplength=520,
                 text_color=("gray30", "gray75"),
             ).grid(row=2, column=1, sticky="ew", padx=(4, 10), pady=(2, 0))
-            if source:
+            if source or item.get("edited"):
+                source_label = f"Source: {source or 'manual'}"
+                if item.get("edited"):
+                    source_label += " · edited"
                 ctk.CTkLabel(
                     card,
-                    text=f"Source: {source}",
+                    text=source_label,
                     font=ctk.CTkFont(size=11),
                     text_color=("gray40", "gray65"),
                 ).grid(row=3, column=1, sticky="w", padx=(4, 10), pady=(2, 2))
 
             mark_buttons = ctk.CTkFrame(card, fg_color="transparent")
             mark_buttons.grid(row=4, column=1, sticky="ew", padx=(4, 10), pady=(4, 8))
-            mark_buttons.grid_columnconfigure((0, 1, 2, 3), weight=1)
+            mark_buttons.grid_columnconfigure((0, 1, 2, 3, 4), weight=1)
             ctk.CTkButton(
                 mark_buttons,
                 text="As word/phrase",
@@ -1567,11 +1623,81 @@ class ModernVocabularyGui:
             ).grid(row=0, column=2, sticky="ew", padx=4)
             ctk.CTkButton(
                 mark_buttons,
+                text="Edit",
+                width=68,
+                height=28,
+                command=lambda i=index: self._open_ocr_candidate_editor(i),
+            ).grid(row=0, column=3, sticky="ew", padx=4)
+            ctk.CTkButton(
+                mark_buttons,
                 text="Remove",
                 width=68,
                 height=28,
                 command=lambda i=index: self._remove_ocr_candidate(i),
-            ).grid(row=0, column=3, sticky="ew", padx=(4, 0))
+            ).grid(row=0, column=4, sticky="ew", padx=(4, 0))
+
+
+    def _open_ocr_candidate_editor(self, index: int) -> None:
+        """Edit a candidate draft before it becomes the final cherry-pick item."""
+        if index < 0 or index >= len(self._ocr_candidate_items):
+            return
+        item = self._ocr_candidate_items[index]
+        editor = tk.Toplevel(self._root)
+        editor.title("Edit candidate draft")
+        editor.geometry("720x420")
+        editor.transient(self._root)
+        editor.grid_columnconfigure(1, weight=1)
+        editor.grid_rowconfigure(2, weight=1)
+
+        type_var = tk.StringVar(value=self._normalize_ocr_candidate_type(item.get("type", "vocabulary")))
+        tk.Label(editor, text="Type", anchor="w").grid(row=0, column=0, sticky="w", padx=10, pady=8)
+        type_box = ttk.Combobox(
+            editor,
+            textvariable=type_var,
+            values=["vocabulary", "grammar", "provided_example"],
+            state="readonly",
+        )
+        type_box.grid(row=0, column=1, sticky="ew", padx=10, pady=8)
+
+        target_var = tk.StringVar(value=item.get("target", ""))
+        tk.Label(editor, text="Target / candidate", anchor="w").grid(row=1, column=0, sticky="w", padx=10, pady=8)
+        target_entry = tk.Entry(editor, textvariable=target_var)
+        target_entry.grid(row=1, column=1, sticky="ew", padx=10, pady=8)
+
+        tk.Label(editor, text="Example / sentence", anchor="w").grid(row=2, column=0, sticky="nw", padx=10, pady=8)
+        sentence_box = tk.Text(editor, height=8, wrap="word")
+        sentence_box.insert("1.0", item.get("sentence", ""))
+        sentence_box.grid(row=2, column=1, sticky="nsew", padx=10, pady=8)
+
+        tk.Label(editor, text="Source", anchor="w").grid(row=3, column=0, sticky="w", padx=10, pady=8)
+        source_var = tk.StringVar(value=item.get("source", "manual"))
+        source_entry = tk.Entry(editor, textvariable=source_var)
+        source_entry.grid(row=3, column=1, sticky="ew", padx=10, pady=8)
+
+        def save() -> None:
+            kind = self._normalize_ocr_candidate_type(type_var.get())
+            target = clean_ocr_text(target_var.get()).replace("\n", " ").strip()
+            sentence = clean_ocr_text(sentence_box.get("1.0", "end")).replace("\n", " ").strip()
+            target, sentence = self._ocr_fields_for_candidate_type(kind, target, sentence)
+            if not target and not sentence:
+                messagebox.showwarning("Edit candidate", "Target or example cannot be empty.")
+                return
+            item["type"] = kind
+            item["target"] = target
+            item["sentence"] = sentence
+            item["source"] = (source_var.get().strip() or item.get("source") or "manual")
+            item["edited"] = "true"
+            if index < len(self._ocr_candidate_vars):
+                self._ocr_candidate_vars[index].set(True)
+            self._render_ocr_candidate_cards()
+            self._update_ocr_candidate_status()
+            self._ocr_candidate_status_var.set("Candidate draft saved. Cherry-pick uses the edited version.")
+            editor.destroy()
+
+        button_row = tk.Frame(editor)
+        button_row.grid(row=4, column=0, columnspan=2, sticky="ew", padx=10, pady=12)
+        tk.Button(button_row, text="Save changes", command=save).pack(side="left")
+        tk.Button(button_row, text="Cancel", command=editor.destroy).pack(side="left", padx=(8, 0))
 
     @staticmethod
     def _ocr_candidate_display_type(candidate_type: str) -> str:
@@ -2356,7 +2482,9 @@ class ModernVocabularyGui:
                     "batch_mode": batch_mode,
                     "target_language": target_language,
                     "explanation_language": explanation_language,
-                    "source": "ocr_import",
+                    "source": f"ocr_import/{candidate.get('source', 'candidate')}",
+                    "candidate_source": candidate.get("source", ""),
+                    "edited": bool(candidate.get("edited")),
                 }
             )
         if not items:
@@ -2496,6 +2624,58 @@ class ModernVocabularyGui:
         if error:
             preview += f"\n\nDETAILS\n{error}"
         return preview
+
+
+    def _save_current_batch_item_edit(self) -> None:
+        """Persist edits made in the Current item entry before generation.
+
+        Older UX let the user edit the entry visually, but the saved Batch row
+        could still keep stale generated payloads or old status. This makes the
+        current entry the source of truth for the selected Batch item.
+        """
+        if not self._batch_items:
+            messagebox.showwarning("Batch edit", "Load Batch items first.")
+            return
+        new_word = clean_ocr_text(self._batch_word_var.get()).replace("\n", " ").strip()
+        if not new_word:
+            messagebox.showwarning("Batch edit", "Current item cannot be empty.")
+            return
+        item = self._batch_items[self._batch_index]
+        old_word = str(item.get("word", "")).strip()
+        topic_context = self._current_batch_topic()
+        item["word"] = new_word
+        item["topic"] = topic_context
+        item["target_language"] = self._language_var.get().strip()
+        item["explanation_language"] = self._explanation_language_var.get().strip()
+        item["batch_mode"] = self._batch_mode_var.get().strip() or "Vocabulary"
+        item["edited"] = True
+
+        if new_word != old_word:
+            # The generated card belongs to the old input. Clear it so a later
+            # Add/Preview cannot accidentally use stale content.
+            item["status"] = "pending"
+            for key in (
+                "card",
+                "grammar_card",
+                "provider_name",
+                "quality_warnings",
+                "error",
+                "duplicate_prechecked",
+                "resolved_mode",
+                "provided_target",
+                "provided_sentence",
+            ):
+                item.pop(key, None)
+            self._batch_generated_card = None
+            self._batch_generated_grammar = None
+            self._batch_generated_provider_name = None
+
+        self._show_current_batch_item(generate=False)
+        self._autosave_batch_session(f"batch item edited: {new_word}")
+        message = "Batch item saved. Generation will use the edited value."
+        self._batch_status_var.set(message)
+        self._status_var.set(message)
+        self._record_activity(f"Batch item edited: {new_word}")
 
     def _open_batch_card_editor(self) -> None:
         """Open a small editor for the currently generated Batch card."""
@@ -6020,6 +6200,14 @@ class ModernVocabularyGui:
         self._generated_provider_name = None
         self._generated_audio = None
 
+    def _sync_single_tts_provider(self) -> None:
+        """Mirror the Single Flashcard TTS selector into shared TTS defaults."""
+        provider_name = self._single_tts_provider_var.get().strip()
+        if provider_name == "Off":
+            return
+        self._tts_provider_var.set(provider_name)
+        self._sync_tts_defaults()
+
     def _sync_tts_defaults(self) -> None:
         if not self._speech_service or not self._tts_provider_var.get():
             self._tts_model_var.set("")
@@ -6104,14 +6292,20 @@ class ModernVocabularyGui:
         if self._generated_card is None:
             messagebox.showerror("No card", "Generate a vocabulary card first.")
             return
-        if not self._speech_service or not self._tts_provider_var.get():
-            messagebox.showerror("Audio provider unavailable", "Configure at least one audio provider.")
+        provider_name = self._single_tts_provider_var.get().strip()
+        if provider_name == "Off":
+            messagebox.showinfo("Audio disabled", "Select a TTS provider before generating audio.")
             return
-        self._status_var.set("Generating example audio...")
+        if not self._speech_service or provider_name not in self._speech_service.providers:
+            messagebox.showerror("Audio provider unavailable", "Configure at least one audio provider, e.g. Piper Local.")
+            return
+        self._tts_provider_var.set(provider_name)
+        self._sync_tts_defaults()
+        self._status_var.set(f"Generating example audio with {provider_name}...")
         self._root.update_idletasks()
         try:
             self._generated_audio = self._speech_service.generate(
-                self._tts_provider_var.get(),
+                provider_name,
                 self._generated_card.example,
                 self._generated_card.target_language,
                 self._tts_model_var.get(),
@@ -6125,7 +6319,8 @@ class ModernVocabularyGui:
                 self._tts_voice_var.get(),
                 self._generated_card.word_or_phrase,
             )
-            message = f"Audio generation failed: {exc}"
+            friendly = self._friendly_tts_error_message(exc)
+            message = f"Audio generation failed: {friendly}"
             self._status_var.set(message)
             self._record_activity("Audio generation failed")
             messagebox.showerror("TTS error", message)
@@ -6598,7 +6793,14 @@ class ModernVocabularyGui:
             return "Audio provider rate limit. Wait before retrying or switch provider."
         if status is not None and 500 <= status <= 599:
             return "Audio provider server error. Progress was saved; retry later or switch provider."
-        if ModernVocabularyGui._is_timeout_detail(str(exc)):
+        detail = str(exc)
+        if "Piper executable not found" in detail:
+            return "Piper is not configured correctly. Check PIPER_EXE_PATH in .env."
+        if "Piper voice model not found" in detail or "Configure at least one Piper voice" in detail:
+            return "Piper voice is not configured. Check PIPER_VOICE_EN / PIPER_VOICE_ES / PIPER_VOICE_PL in .env."
+        if "Piper failed" in detail:
+            return "Piper failed to generate audio. Check that piper.exe and the selected .onnx voice work from PowerShell."
+        if ModernVocabularyGui._is_timeout_detail(detail):
             return "Audio provider timed out. Progress was saved; retry later or switch provider."
         return "TTS error. Raw provider details were saved in logs/autosave."
 
@@ -6917,11 +7119,28 @@ class ModernVocabularyGui:
         try:
             self._stt_service.start_recording()
         except Exception as exc:
-            self._stt_status_var.set("Speech input failed.")
-            messagebox.showerror("Speech input error", str(exc))
+            self._handle_stt_error(exc)
             return
-        self._stt_status_var.set("Recording... click Stop & transcribe when finished.")
+        self._stt_status_var.set("Recording... 00:00")
         self._status_var.set("Recording answer...")
+        self._schedule_recording_timer()
+
+    def _schedule_recording_timer(self) -> None:
+        """Update the visible recording timer while the microphone is active."""
+        if not self._stt_service or not self._stt_service.is_recording:
+            self._recording_timer_after_id = None
+            return
+        seconds = int(self._stt_service.recording_duration_seconds)
+        self._stt_status_var.set(f"Recording... {seconds // 60:02d}:{seconds % 60:02d}")
+        self._recording_timer_after_id = self._root.after(500, self._schedule_recording_timer)
+
+    def _cancel_recording_timer(self) -> None:
+        if self._recording_timer_after_id:
+            try:
+                self._root.after_cancel(self._recording_timer_after_id)
+            except Exception:
+                pass
+            self._recording_timer_after_id = None
 
     def _stop_conversation_recording(self) -> None:
         """Stop recording and transcribe the audio in a background thread."""
@@ -6931,8 +7150,9 @@ class ModernVocabularyGui:
         if not self._stt_service.is_recording:
             messagebox.showinfo("Speech input", "No recording is running.")
             return
-        self._stt_status_var.set("Transcribing with Local Whisper... first run can be slow.")
-        self._status_var.set("Transcribing spoken answer...")
+        self._cancel_recording_timer()
+        self._stt_status_var.set("Finishing recording, then transcribing... first run can be slow.")
+        self._status_var.set("Finishing recording and transcribing spoken answer...")
         self._root.update_idletasks()
 
         def _worker() -> None:
@@ -6946,9 +7166,16 @@ class ModernVocabularyGui:
         threading.Thread(target=_worker, daemon=True).start()
 
     def _handle_stt_error(self, exc: Exception) -> None:
+        detail = str(exc) or exc.__class__.__name__
+        if "No microphone/input device detected" in detail or "Error querying device -1" in detail:
+            message = "No microphone/input device detected. Connect or enable a microphone, then try again."
+            self._stt_status_var.set("No microphone detected.")
+            self._status_var.set("Speech input unavailable: no microphone detected.")
+            messagebox.showerror("No microphone detected", message)
+            return
         self._stt_status_var.set("Transcription failed.")
         self._status_var.set("Speech transcription failed.")
-        messagebox.showerror("Speech transcription error", str(exc))
+        messagebox.showerror("Speech transcription error", detail)
 
     def _insert_stt_transcript(self, transcript: str, model: str, language: str | None) -> None:
         transcript = transcript.strip()
@@ -6962,8 +7189,42 @@ class ModernVocabularyGui:
         else:
             self._message_input.insert("1.0", transcript)
         language_part = f", detected: {language}" if language else ""
-        self._stt_status_var.set(f"Transcript inserted ({model}{language_part}). Edit it before sending.")
-        self._status_var.set("Spoken answer transcribed. Review/edit it, then click Send.")
+        audio_hint = " Last recording saved for playback." if self._stt_service and self._stt_service.last_recording_path else ""
+        self._stt_status_var.set(f"Transcript inserted ({model}{language_part}). Edit it before sending.{audio_hint}")
+        self._status_var.set("Spoken answer transcribed. Play last recording if the transcript looks cut, then review/edit and click Send.")
+
+
+    def _last_recording_path(self) -> Path | None:
+        if not self._stt_service:
+            return None
+        path = self._stt_service.last_recording_path
+        if path and path.exists():
+            return path
+        return None
+
+    def _play_last_conversation_recording(self) -> None:
+        """Play the last recorded WAV so the user can check whether STT or recording failed."""
+        path = self._last_recording_path()
+        if not path:
+            messagebox.showinfo("No recording", "No saved recording yet. Record and transcribe an answer first.")
+            return
+        self._open_audio_file(path)
+        self._status_var.set(f"Playing last recording: {path.name}")
+
+    def _open_last_conversation_recording(self) -> None:
+        """Open the folder containing the last recorded WAV for diagnostics."""
+        path = self._last_recording_path()
+        if not path:
+            messagebox.showinfo("No recording", "No saved recording yet. Record and transcribe an answer first.")
+            return
+        folder = path.parent
+        if sys.platform.startswith("win"):
+            subprocess.Popen(["explorer", "/select,", str(path)])
+        elif sys.platform == "darwin":
+            subprocess.Popen(["open", str(folder)])
+        else:
+            subprocess.Popen(["xdg-open", str(folder)])
+        self._status_var.set(f"Opened last recording location: {path}")
 
     def _read_conversation_question_aloud(self) -> None:
         """Generate and play audio for the current Conversation Practice question."""
@@ -6986,7 +7247,7 @@ class ModernVocabularyGui:
             result = self._speech_service.generate(
                 provider_name,
                 self._conversation_question,
-                self._language_var.get(),
+                self._conversation_language_var.get(),
                 model_name,
                 voice_name,
             )
@@ -7017,7 +7278,7 @@ class ModernVocabularyGui:
         try:
             start = self._conversation_ai_client().start_conversation(
                 topic=topic,
-                target_language=self._language_var.get(),
+                target_language=self._conversation_language_var.get(),
             )
         except Exception as exc:
             self._status_var.set("Conversation start failed.")
@@ -7049,7 +7310,7 @@ class ModernVocabularyGui:
                 topic=self._topic_var.get().strip(),
                 question=self._conversation_question,
                 answer=answer,
-                target_language=self._language_var.get(),
+                target_language=self._conversation_language_var.get(),
                 improvement_level=self._improvement_level_var.get(),
                 feedback_language=self._feedback_language_var.get(),
             )
@@ -7072,8 +7333,23 @@ class ModernVocabularyGui:
     def _append_conversation_feedback(self, feedback: ConversationFeedback) -> None:
         """Render AI feedback and the next question in the chat panel."""
         self._append_chat(f"FEEDBACK ({feedback.feedback_language or self._feedback_language_var.get()})", feedback.feedback)
+        if feedback.corrections:
+            correction_lines: list[str] = []
+            for idx, correction in enumerate(feedback.corrections, start=1):
+                original = correction.original.strip() or "original wording"
+                fixed = correction.correction.strip() or "corrected wording"
+                explanation = correction.explanation.strip()
+                block = f"{idx}. ❌ {original}\n   ✅ {fixed}"
+                if explanation:
+                    block += f"\n   💡 {explanation}"
+                correction_lines.append(block)
+            self._append_chat("MAIN CORRECTIONS", "\n\n".join(correction_lines))
         self._append_chat("CORRECTED VERSION", feedback.corrected_version)
         self._append_chat("STRONGER ANSWER", feedback.advanced_answer)
+        if feedback.mini_practice:
+            self._append_chat("MINI PRACTICE", feedback.mini_practice)
+        if feedback.suggested_vocabulary:
+            self._append_chat("SUGGESTED EXPRESSIONS", "\n".join(f"• {item}" for item in feedback.suggested_vocabulary))
         self._append_chat("AI TUTOR", feedback.next_question)
 
     def _append_chat(self, speaker: str, text: str) -> None:
@@ -7167,8 +7443,10 @@ class ModernVocabularyGui:
             messagebox.showerror("Missing deck", str(exc))
             return
 
-        provider_name = self._provider_var.get()
-        target_language = self._language_var.get()
+        # Conversation suggestions should continue with the same language/model
+        # used in Conversation Practice, not the hidden global Card AI provider.
+        provider_name = self._conversation_provider_var.get()
+        target_language = self._conversation_language_var.get()
         added = 0
         failed: list[str] = []
 
@@ -7176,7 +7454,7 @@ class ModernVocabularyGui:
             self._status_var.set(f"Generating and adding: {phrase}")
             self._root.update_idletasks()
             try:
-                card = self._current_ai_client().generate_card(
+                card = self._conversation_ai_client().generate_card(
                     phrase, target_language, self._explanation_language_var.get()
                 )
                 if not card.is_valid:

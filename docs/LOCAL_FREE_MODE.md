@@ -53,8 +53,16 @@ start C:\tools\piper\test.wav
 
 Conversation Practice can now use:
 
-- `Ollama Local` as the conversation model.
+- `Ollama Local (experimental)` as the conversation model.
 - `Read question` to generate and play the current AI question with the configured TTS provider.
 - Existing Whisper/STT buttons remain for later testing on a computer with a working microphone.
 
 This is intentionally small: no cloud agent, no LangGraph, no RAG, no automatic pronunciation scoring.
+
+
+## v10.1 notes
+
+- Conversation Practice has its own Conversation language selector.
+- The top Card AI provider bar is hidden in Conversation Practice to avoid confusion.
+- Single Flashcard has an Audio provider selector for Piper/other configured TTS providers.
+- If no microphone is detected, STT shows a friendly no-microphone message.

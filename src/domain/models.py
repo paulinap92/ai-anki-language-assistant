@@ -119,6 +119,14 @@ class ConversationStart(BaseModel):
     question: str = Field(description="A natural question in the target language.")
 
 
+class ConversationCorrection(BaseModel):
+    """One visible learner mistake and its correction."""
+
+    original: str = Field(default="", description="The learner's original wording or fragment.")
+    correction: str = Field(default="", description="A corrected version of the fragment.")
+    explanation: str = Field(default="", description="Short explanation of how to improve it.")
+
+
 class ConversationFeedback(BaseModel):
     """Represents feedback after one learner response."""
 
@@ -130,11 +138,19 @@ class ConversationFeedback(BaseModel):
         validation_alias=AliasChoices("feedback", "feedback_pl"),
         description="Short, helpful feedback in the selected feedback language.",
     )
+    corrections: list[ConversationCorrection] = Field(
+        default_factory=list,
+        description="Visible mistake/correction/explanation triples for teacher-like feedback.",
+    )
     corrected_version: str = Field(
         description="Learner answer corrected without unnecessarily changing its meaning."
     )
     advanced_answer: str = Field(
         description="A richer model answer written at the selected learning level."
+    )
+    mini_practice: str = Field(
+        default="",
+        description="One short follow-up practice task in the feedback language.",
     )
     next_question: str = Field(description="Next conversation question in the target language.")
     suggested_vocabulary: list[str] = Field(
@@ -149,6 +165,10 @@ class ConversationFeedback(BaseModel):
         normalized = dict(data)
         if "feedback" not in normalized and "feedback_pl" in normalized:
             normalized["feedback"] = normalized.get("feedback_pl") or ""
+        if "corrections" not in normalized:
+            normalized["corrections"] = []
+        if "mini_practice" not in normalized:
+            normalized["mini_practice"] = ""
         return normalized
 
     @property

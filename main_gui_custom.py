@@ -28,6 +28,7 @@ def main() -> None:
         stt_service = LocalWhisperSttService(
             model_name=settings.whisper_model,
             language=settings.whisper_language,
+            cache_dir=settings.audio_cache_dir,
         )
 
     root = ctk.CTk()
