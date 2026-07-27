@@ -1,5 +1,9 @@
 # AI Anki Language Assistant
 
+### v11.2 — Smart Grammar Import / Mixed Source Mode
+
+Adds a **Smart grammar import** AI extraction mode for OCR / Import Material. The app now routes grammar fragments by source type: structure + sentence, rule-only, word-form transformation, exercise, or sentence-only. Candidate drafts and Batch preview show the detected type and strategy, so textbook rules can generate natural example sentences instead of becoming bad audio/text fields. See `RELEASE_NOTES_v11_2_SMART_GRAMMAR_IMPORT_MIXED_SOURCE_MODE.md`.
+
 ### v11.1 — Grammar OCR / Source Focus Fix
 
 Improves grammar cards created from OCR / Import Material. The app now protects the source focus: the grammar target/structure stays in `Structure`, the source sentence stays as the sentence/audio target, and textbook rules are kept as notes instead of becoming audio sentences. See `RELEASE_NOTES_v11_1_GRAMMAR_OCR_SOURCE_FOCUS_FIX.md`.

@@ -562,6 +562,12 @@ Mode-specific rules:
 - If mode is Vocabulary, return mostly vocabulary candidates with target only.
 - If mode is Provided examples, return provided_example candidates in target + sentence form.
 - If mode is Grammar, return grammar candidates with a clear target whenever possible, e.g. verb pattern, tense pattern, connector, prefix, or structure. Preserve the source sentence as sentence/provided_example. If you cannot identify the target, return the sentence with type grammar and an empty target; do not label it as provided_example.
+- If mode is Smart grammar import or Mixed, first classify each useful fragment, then choose the card strategy:
+  1. structure_sentence: source has a clear grammar structure plus a readable example sentence. Return type="grammar", target=the structure, sentence=the exact source sentence, source_type="structure_sentence", strategy="preserve_source_sentence".
+  2. rule: source is a grammar rule/explanation without a good example sentence. Return type="grammar", target=a concrete structure, sentence=ONE natural generated example sentence that uses the structure, source_type="rule", strategy="generated_example_from_rule", source_rule=the short source rule. Never put the rule itself in sentence.
+  3. transformation: source is a word-form or grammar transformation, e.g. "un hippi -> hippies". Return type="grammar", target=the exact transformation, sentence=a natural sentence using the transformed form, source_type="transformation", strategy="word_form_example".
+  4. exercise: source is a gap-fill or multiple-choice exercise. Return type="grammar", source_type="exercise", strategy="exercise_draft_review_answer". If the correct completed sentence is very clear, put it in sentence; otherwise preserve the raw exercise in reason/source_rule and leave sentence empty for user review.
+  5. sentence_only: source is only a useful sentence and the grammar focus is unclear. Return type="grammar", target="", sentence=the exact source sentence, source_type="sentence_only", strategy="infer_later".
 - If mode is Mixed, return a careful mix, but do not over-extract.
 
 For provided_example:
@@ -574,9 +580,11 @@ For grammar candidates:
 - Preserve the exact source focus from headings, highlighted items, structure boxes, word-form transformations, or exercise prompts.
 - If the source focus is a concrete structure or transformation, e.g. "used to + base verb", "Can I + base verb", "un hippi -> hippies", target must contain that structure/transformation, not a broad topic such as "repeated actions in the past".
 - sentence should be the exact source example if available; this sentence becomes the audio/readable sentence later.
-- Do not put textbook rules or explanations in sentence. Put rules only in reason/context.
+- If the source only gives a rule, generate a short natural example sentence for sentence and put the original rule in source_rule/reason. Do not use the rule itself as the audio sentence.
+- Do not put textbook rules or explanations in sentence. Put rules only in source_rule/reason/context.
 - If target is known, return type="grammar", target="...", sentence="...".
 - If only a useful sentence is found and no grammar target is clear, return type="grammar", target="", sentence="...".
+- Add source_type and strategy for grammar candidates whenever possible so the UI can show why the card was created.
 
 Return ONLY valid JSON, no markdown, no comments.
 
@@ -587,7 +595,10 @@ Return this exact structure:
       "type": "provided_example",
       "target": "string",
       "sentence": "string",
-      "reason": "short reason"
+      "reason": "short reason",
+      "source_type": "vocabulary | provided_example | structure_sentence | rule | transformation | exercise | sentence_only",
+      "strategy": "preserve_source_sentence | generated_example_from_rule | word_form_example | exercise_draft_review_answer | infer_later | vocabulary_candidate",
+      "source_rule": "short original rule/exercise text when relevant"
     }}
   ]
 }}

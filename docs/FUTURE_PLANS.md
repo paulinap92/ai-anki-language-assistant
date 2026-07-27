@@ -325,3 +325,15 @@ source rule or explanation -> Usage / source note
 ```
 
 Review-driven Fix Cards should keep reasons such as `wrong_source_focus`, `target_buried_in_structure`, `unclear_card_focus`, and `audio_sentence_mismatch`, but v11.1 already adds first-line prompt and post-generation guards for OCR grammar cards.
+
+## v11.2 Smart Grammar Import note
+
+Smart grammar import now routes OCR grammar fragments by source type before creating candidate drafts:
+
+- `structure_sentence` → preserve source structure and source sentence;
+- `rule` → generate a natural example sentence and keep the textbook rule as note;
+- `transformation` → preserve word-form transformation such as `un hippi -> hippies`;
+- `exercise` → keep as reviewable exercise draft instead of silently making a final card;
+- `sentence_only` → preserve sentence and infer grammar later.
+
+Future Fix Cards work should reuse these metadata fields when repairing review errors such as `wrong_source_focus`, `target_buried_in_structure`, or `audio_sentence_quality`.

@@ -45,7 +45,7 @@ from src.observability import get_llmops_tracer
 EXPLANATION_LANGUAGES = ["Polish", "English", "Spanish", "German", "Italian", "Same as target", "No translation"]
 IMPROVEMENT_LEVELS = ["Natural B1/B2", "Strong B2/C1", "Professional / Interview"]
 BATCH_MODES = ["Vocabulary", "Grammar", "Mixed", "Provided examples"]
-OCR_EXTRACTION_MODES = ["Provided examples", "Vocabulary", "Grammar", "Mixed"]
+OCR_EXTRACTION_MODES = ["Provided examples", "Vocabulary", "Grammar", "Smart grammar import", "Mixed"]
 OCR_IMPORT_METHODS = ["Local extraction (free)", "Mistral OCR (cloud text only)"]
 
 TOPIC_PRESETS = [
@@ -2288,7 +2288,7 @@ class ModernVocabularyGui:
 
             var = self._ocr_candidate_vars[index]
             ctk.CTkCheckBox(card, text="", variable=var, width=22, command=self._update_ocr_candidate_status).grid(
-                row=0, column=0, rowspan=5, sticky="nw", padx=(10, 4), pady=10
+                row=0, column=0, rowspan=6, sticky="nw", padx=(10, 4), pady=10
             )
 
             label = self._ocr_candidate_display_type(item.get("type", "vocabulary"), item.get("target", ""), item.get("sentence", ""))
@@ -2327,8 +2327,31 @@ class ModernVocabularyGui:
                     text_color=("gray40", "gray65"),
                 ).grid(row=3, column=1, sticky="w", padx=(4, 10), pady=(2, 2))
 
+            meta_bits: list[str] = []
+            source_type = str(item.get("source_type") or "").strip()
+            strategy = str(item.get("strategy") or "").strip()
+            reason = str(item.get("reason") or "").strip()
+            source_rule = str(item.get("source_rule") or "").strip()
+            if source_type:
+                meta_bits.append(f"Detected as: {source_type.replace('_', ' ')}")
+            if strategy:
+                meta_bits.append(f"Strategy: {strategy.replace('_', ' ')}")
+            if reason:
+                meta_bits.append(f"Why: {reason}")
+            if source_rule:
+                meta_bits.append(f"Rule/source note: {source_rule}")
+            if meta_bits:
+                ctk.CTkLabel(
+                    card,
+                    text="\n".join(meta_bits),
+                    font=ctk.CTkFont(size=11),
+                    justify="left",
+                    wraplength=520,
+                    text_color=("gray38", "gray68"),
+                ).grid(row=4, column=1, sticky="ew", padx=(4, 10), pady=(2, 2))
+
             mark_buttons = ctk.CTkFrame(card, fg_color="transparent")
-            mark_buttons.grid(row=4, column=1, sticky="ew", padx=(4, 10), pady=(4, 8))
+            mark_buttons.grid(row=5, column=1, sticky="ew", padx=(4, 10), pady=(4, 8))
             mark_buttons.grid_columnconfigure((0, 1, 2, 3, 4), weight=1)
             ctk.CTkButton(
                 mark_buttons,
@@ -3156,28 +3179,186 @@ class ModernVocabularyGui:
             return
         try:
             raw_text = generate_text(prompt)
-            rows = self._ocr_candidate_rows_from_ai_response(raw_text, default_mode=mode)
+            items = self._ocr_candidate_items_from_ai_response(raw_text, default_mode=mode, source=source)
         except Exception as exc:
             self._ocr_candidate_status_var.set("Candidate extraction failed.")
             messagebox.showerror("Import Material", f"Candidate extraction failed: {exc}")
             return
-        if not rows:
+        if not items:
             self._ocr_candidate_status_var.set("No candidates found. Edit OCR text or try another extraction mode.")
-            self._set_ocr_candidates_text("")
+            self._set_ocr_candidate_items([])
             return
-        self._set_ocr_candidates_text("\n".join(rows))
-        for item in self._ocr_candidate_items:
-            if not item.get("source") or item.get("source") == "basket":
-                item["source"] = source
-        self._render_ocr_candidate_cards()
-        self._update_ocr_candidate_status()
-        self._record_activity(f"OCR candidates: {len(rows)}")
+        self._set_ocr_candidate_items(items)
+        self._ocr_candidate_status_var.set(
+            f"AI found {len(items)} candidate draft(s). Review detected type/strategy before Batch."
+        )
+        self._record_activity(f"OCR candidates: {len(items)}")
 
     @staticmethod
     def _ocr_clean_json_text(raw_text: str) -> str:
         value = (raw_text or "").strip()
         value = value.replace("```json", "").replace("```", "").strip()
         return value
+
+    @staticmethod
+    def _normalize_smart_grammar_source_type(value: str) -> str:
+        """Normalize AI source-type labels for Smart grammar import."""
+        text = (value or "").strip().casefold().replace("-", "_").replace(" ", "_")
+        aliases = {
+            "structure": "structure_sentence",
+            "structure_example": "structure_sentence",
+            "structure_sentence": "structure_sentence",
+            "pattern_sentence": "structure_sentence",
+            "rule": "rule",
+            "grammar_rule": "rule",
+            "explanation": "rule",
+            "transformation": "transformation",
+            "word_form": "transformation",
+            "wordform": "transformation",
+            "exercise": "exercise",
+            "gap_fill": "exercise",
+            "multiple_choice": "exercise",
+            "sentence": "sentence_only",
+            "sentence_only": "sentence_only",
+            "provided_example": "provided_example",
+            "vocabulary": "vocabulary",
+        }
+        return aliases.get(text, text or "")
+
+    @classmethod
+    def _infer_smart_grammar_source_type(cls, candidate_type: str, target: str, sentence: str, source_rule: str = "") -> str:
+        """Best-effort classifier for AI/fallback candidate rows.
+
+        This only drives UI labels and Batch metadata. It should not block the
+        user from editing/cherry-picking the candidate.
+        """
+        kind = cls._normalize_ocr_candidate_type(candidate_type)
+        target = clean_ocr_text(str(target or "")).strip()
+        sentence = clean_ocr_text(str(sentence or "")).strip()
+        source_rule = clean_ocr_text(str(source_rule or "")).strip()
+        combined = f"{target} {sentence} {source_rule}".casefold()
+        if kind == "vocabulary":
+            return "vocabulary"
+        if kind == "provided_example":
+            return "provided_example"
+        if re.search(r"_{2,}|\b___\b|\b(blank|gap[- ]?fill|choose|circle|complete)\b", combined):
+            return "exercise"
+        if "->" in target or "→" in target:
+            return "transformation"
+        if source_rule or cls._ocr_looks_like_rule_explanation(sentence):
+            return "rule"
+        if target and sentence:
+            return "structure_sentence"
+        if sentence and not target:
+            return "sentence_only"
+        return "rule" if target else ""
+
+    @classmethod
+    def _smart_grammar_strategy_for_source_type(cls, source_type: str) -> str:
+        mapping = {
+            "structure_sentence": "preserve_source_sentence",
+            "rule": "generated_example_from_rule",
+            "transformation": "word_form_example",
+            "exercise": "exercise_draft_review_answer",
+            "sentence_only": "infer_later",
+            "provided_example": "preserve_source_sentence",
+            "vocabulary": "vocabulary_candidate",
+        }
+        return mapping.get(source_type, "review_candidate")
+
+    def _ocr_candidate_items_from_ai_response(self, raw_text: str, default_mode: str, source: str) -> list[dict[str, str]]:
+        """Convert AI JSON into structured candidate drafts with Smart Grammar metadata.
+
+        v11.2 keeps the candidate basket editable, but no longer throws away
+        why AI chose a candidate. Grammar candidates can now show:
+        detected source type + chosen strategy + optional source rule.
+        """
+        cleaned = self._ocr_clean_json_text(raw_text)
+        items: list[dict[str, str]] = []
+        try:
+            data = json.loads(cleaned)
+            candidates = data.get("candidates", data) if isinstance(data, dict) else data
+            if not isinstance(candidates, list):
+                raise ValueError("candidates is not a list")
+            for candidate in candidates:
+                if not isinstance(candidate, dict):
+                    continue
+                raw_type = str(candidate.get("type") or default_mode or "vocabulary")
+                candidate_type = self._normalize_ocr_candidate_type(raw_type, default_mode)
+                target = str(
+                    candidate.get("target")
+                    or candidate.get("word")
+                    or candidate.get("phrase")
+                    or candidate.get("structure")
+                    or candidate.get("grammar")
+                    or ""
+                ).strip()
+                sentence = str(
+                    candidate.get("sentence")
+                    or candidate.get("provided_example")
+                    or candidate.get("example")
+                    or candidate.get("source_sentence")
+                    or candidate.get("context")
+                    or ""
+                ).strip()
+                source_rule = str(
+                    candidate.get("source_rule")
+                    or candidate.get("rule")
+                    or candidate.get("exercise")
+                    or ""
+                ).strip()
+
+                if not target and not sentence and not source_rule:
+                    continue
+
+                # A rule/exercise must never become the audio sentence. If the
+                # provider still put a rule into sentence, keep it as metadata.
+                if candidate_type == "grammar" and sentence and self._ocr_looks_like_rule_explanation(sentence):
+                    source_rule = source_rule or sentence
+                    sentence = ""
+
+                item = self._make_ocr_candidate_item(candidate_type, target, sentence, source=f"AI {source}")
+                if item is None:
+                    continue
+                source_type = self._normalize_smart_grammar_source_type(
+                    str(candidate.get("source_type") or candidate.get("detected_as") or "")
+                )
+                if not source_type:
+                    source_type = self._infer_smart_grammar_source_type(candidate_type, target, sentence, source_rule)
+                strategy = str(candidate.get("strategy") or "").strip() or self._smart_grammar_strategy_for_source_type(source_type)
+                reason = str(candidate.get("reason") or "").strip()
+                confidence = str(candidate.get("confidence") or "").strip()
+                answer = str(candidate.get("answer") or candidate.get("completed_answer") or "").strip()
+
+                if source_type:
+                    item["source_type"] = source_type
+                if strategy:
+                    item["strategy"] = strategy
+                if source_rule:
+                    item["source_rule"] = clean_ocr_text(source_rule).replace("\n", " ").strip()
+                if reason:
+                    item["reason"] = clean_ocr_text(reason).replace("\n", " ").strip()
+                if confidence:
+                    item["confidence"] = confidence
+                if answer:
+                    item["answer"] = clean_ocr_text(answer).replace("\n", " ").strip()
+                items.append(item)
+        except Exception:
+            # Fallback for a provider that ignored JSON and returned lines.
+            for row in self._ocr_candidate_rows_from_ai_response(cleaned, default_mode):
+                parsed = self._parse_ocr_candidate_row(row, default_mode)
+                if parsed is None:
+                    continue
+                candidate_type, target, sentence = parsed
+                item = self._make_ocr_candidate_item(candidate_type, target, sentence, source=f"AI {source}")
+                if item is None:
+                    continue
+                source_type = self._infer_smart_grammar_source_type(candidate_type, target, sentence)
+                if source_type:
+                    item["source_type"] = source_type
+                    item["strategy"] = self._smart_grammar_strategy_for_source_type(source_type)
+                items.append(item)
+        return items
 
     def _ocr_candidate_rows_from_ai_response(self, raw_text: str, default_mode: str) -> list[str]:
         """Convert an AI response into readable, editable candidate rows."""
@@ -3324,6 +3505,18 @@ class ModernVocabularyGui:
             target = candidate.get("target", "").strip()
             sentence = candidate.get("sentence", "").strip()
             item_extra: dict[str, object] = {}
+            source_type = str(candidate.get("source_type") or "").strip()
+            strategy = str(candidate.get("strategy") or "").strip()
+            source_rule_meta = str(candidate.get("source_rule") or "").strip()
+            reason_meta = str(candidate.get("reason") or "").strip()
+            if source_type:
+                item_extra["source_type"] = source_type
+            if strategy:
+                item_extra["strategy"] = strategy
+            if source_rule_meta:
+                item_extra["source_rule"] = source_rule_meta
+            if reason_meta:
+                item_extra["source_reason"] = reason_meta
             if candidate_type == "provided_example":
                 word = f"{target} | {sentence}" if target and sentence else (sentence or target)
                 batch_mode = "Provided examples"
@@ -3335,6 +3528,8 @@ class ModernVocabularyGui:
                 batch_mode = "Grammar"
                 target_is_sentence = self._looks_like_complete_sentence(target)
                 sentence_is_rule = self._ocr_looks_like_rule_explanation(sentence)
+                if source_type == "exercise" and not self._looks_like_complete_sentence(sentence):
+                    item_extra["source_focus_warning"] = "Exercise draft: verify or complete the answer before generation."
 
                 if target and sentence and not sentence_is_rule and not target_is_sentence:
                     # Best case: explicit grammar pattern + one real sentence.
@@ -3352,7 +3547,7 @@ class ModernVocabularyGui:
                     # only as source context and generate a natural example later.
                     word = target
                     item_extra["grammar_target"] = target
-                    item_extra["source_rule"] = sentence
+                    item_extra["source_rule"] = source_rule_meta or sentence
                 else:
                     word = target or sentence
                     if target and not target_is_sentence:
@@ -3435,12 +3630,15 @@ class ModernVocabularyGui:
         item_mode = str(item.get("batch_mode") or "").strip()
         item_has_generated_payload = bool(item.get("card") or item.get("grammar_card"))
         item_status = str(item.get("status", "pending"))
-        if item_mode in BATCH_MODES and (item_has_generated_payload or item_status != "pending"):
+        explicit_import_mode = str(item.get("source") or "").startswith("ocr_import/") or bool(
+            item.get("source_type") or item.get("provided_target") or item.get("grammar_target")
+        )
+        if item_mode in BATCH_MODES and (item_has_generated_payload or item_status != "pending" or explicit_import_mode):
             self._batch_mode_var.set(item_mode)
         elif item_status == "pending":
-            # Pending rows follow the current session mode. Do not let a mode
-            # stored at import time silently reset the combobox from Grammar
-            # back to Vocabulary before generation.
+            # Manual pending rows follow the current session mode. OCR/Smart Import
+            # rows keep their own mode so Mixed imports can contain Vocabulary,
+            # Grammar, and Provided examples in one queue.
             item["batch_mode"] = self._batch_mode_var.get().strip() or "Vocabulary"
             item.pop("resolved_mode", None)
         self._batch_word_var.set(str(item["word"]))
@@ -3521,6 +3719,21 @@ class ModernVocabularyGui:
         source_focus_warning = str(item.get("source_focus_warning", "")).strip()
         if source_focus_warning:
             preview += f"\n\nSOURCE FOCUS CHECK\n{source_focus_warning}"
+        source_type = str(item.get("source_type", "")).strip()
+        strategy = str(item.get("strategy", "")).strip()
+        if source_type or strategy:
+            route_lines = []
+            if source_type:
+                route_lines.append(f"Detected as: {source_type.replace('_', ' ')}")
+            if strategy:
+                route_lines.append(f"Strategy: {strategy.replace('_', ' ')}")
+            preview += "\n\nSMART IMPORT ROUTING\n" + "\n".join(route_lines)
+        source_rule = str(item.get("source_rule", "")).strip()
+        if source_rule:
+            preview += f"\n\nSOURCE RULE / NOTE\n{source_rule}"
+        source_reason = str(item.get("source_reason", "")).strip()
+        if source_reason:
+            preview += f"\n\nWHY\n{source_reason}"
         grammar_target = str(item.get("grammar_target", "")).strip()
         if grammar_target:
             preview += f"\n\nSOURCE GRAMMAR TARGET\n{grammar_target}"
@@ -3889,8 +4102,20 @@ class ModernVocabularyGui:
                 sentence_to_read or "AI will generate a natural example sentence.",
             ])
             source_focus_warning = str((item or {}).get("source_focus_warning") or "").strip()
+            source_type = str((item or {}).get("source_type") or "").strip()
+            strategy = str((item or {}).get("strategy") or "").strip()
+            source_reason = str((item or {}).get("source_reason") or "").strip()
+            if source_type or strategy:
+                meta = []
+                if source_type:
+                    meta.append(f"Detected as: {source_type.replace('_', ' ')}")
+                if strategy:
+                    meta.append(f"Strategy: {strategy.replace('_', ' ')}")
+                blocks.extend(["", "SMART IMPORT ROUTING", "\n".join(meta)])
             if source_rule:
                 blocks.extend(["", "SOURCE RULE / NOTE", source_rule])
+            if source_reason:
+                blocks.extend(["", "WHY", source_reason])
             if source_focus_warning:
                 blocks.extend(["", "SOURCE FOCUS WARNING", source_focus_warning])
         elif effective_mode == "Provided examples":
@@ -4936,13 +5161,23 @@ class ModernVocabularyGui:
         grammar_target = str(item.get("grammar_target") or "").strip()
         provided_sentence = str(item.get("provided_sentence") or "").strip()
         source_rule = str(item.get("source_rule") or "").strip()
+        source_type = str(item.get("source_type") or "").strip()
+        strategy = str(item.get("strategy") or "").strip()
+        source_reason = str(item.get("source_reason") or "").strip()
         if grammar_target:
             pieces.append(f"Source grammar target/focus: {grammar_target}")
         if provided_sentence:
             pieces.append(f"Source sentence to preserve as audio sentence: {provided_sentence}")
         if source_rule:
             pieces.append(f"Source rule/note, not audio: {source_rule}")
+        if source_type:
+            pieces.append(f"Smart import detected source type: {source_type}")
+        if strategy:
+            pieces.append(f"Smart import card strategy: {strategy}")
+        if source_reason:
+            pieces.append(f"Smart import reason: {source_reason}")
         return "\n".join(pieces)
+
 
     def _quality_expected_input_for_item(self, item: dict[str, object], card: VocabularyCard) -> str:
         """Return the expected lexical item for quality validation.
