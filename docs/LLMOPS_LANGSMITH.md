@@ -69,3 +69,30 @@ This feature demonstrates that the app treats LLM calls as observable production
 - runs by provider/model;
 - recent failed or low-quality generations;
 - links to LangSmith traces.
+
+
+## v11.3 quality metrics
+
+The tracer now records quality and review metadata, not only raw AI calls.
+
+Each generated-card event can include:
+
+- `provider` and `model`;
+- `feature` and `source` workflow (`single_flashcard`, `batch_queue`, `grammar_tab`, `conversation_practice`, `import_material_grammar`);
+- `prompt_version`;
+- `latency_ms`;
+- `validation_passed`;
+- `red_flags_count`;
+- `issue_type` such as `invalid_input`, `exact_input_changed`, `example_target_mismatch`, `translation_issue`, `topic_mismatch`, `language_mismatch`, `missing_required_field`, `naturalness_issue`, `wrong_source_focus`, or `audio_sentence_mismatch`;
+- `outcome` such as `generated`, `generated_with_warnings`, `invalid_input`, `added_to_anki`, `updated_existing_note`, `skipped`, or `add_failed`.
+
+The app also records local human-review outcomes when a reviewed card is added to Anki, updated, skipped, or fails during export. These local events help connect generation quality with learner decisions without requiring every UI action to become an external LangSmith run.
+
+Status wording was clarified:
+
+- `disabled`
+- `configured but inactive: package missing`
+- `configured but inactive: API key missing`
+- `enabled`
+
+The `Open LangSmith app` button opens `https://smith.langchain.com/`.

@@ -3,6 +3,7 @@
 from src.observability.langsmith_tracing import (
     LlmOpsEvent,
     LlmOpsTracer,
+    QualitySnapshot,
     TracedVocabularyAiClient,
     configure_llmops,
     get_llmops_tracer,
@@ -12,6 +13,7 @@ from src.observability.langsmith_tracing import (
 __all__ = [
     "LlmOpsEvent",
     "LlmOpsTracer",
+    "QualitySnapshot",
     "TracedVocabularyAiClient",
     "configure_llmops",
     "get_llmops_tracer",

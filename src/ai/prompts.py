@@ -380,6 +380,8 @@ Requirements:
 - Explain the meaning/use in simple {target_language}.
 - Keep it practical for learners, not a long academic lesson.
 - Give a natural context example in {target_language} that uses the structure correctly.
+- Do not create two competing example sentences. If "sentence" is a full learner-visible example, "context_example" must either be the same sentence or include that exact sentence unchanged.
+- If you generate an example from a rule-only source, use the same best natural example as both "sentence" and "context_example" unless the source explicitly provides a different sentence.
 - Include 2-4 short breakdown points.
 - Include 1-3 contrasts with similar structures or common alternatives.
 - Include 1-3 common mistakes with corrected forms.
@@ -564,7 +566,7 @@ Mode-specific rules:
 - If mode is Grammar, return grammar candidates with a clear target whenever possible, e.g. verb pattern, tense pattern, connector, prefix, or structure. Preserve the source sentence as sentence/provided_example. If you cannot identify the target, return the sentence with type grammar and an empty target; do not label it as provided_example.
 - If mode is Smart grammar import or Mixed, first classify each useful fragment, then choose the card strategy:
   1. structure_sentence: source has a clear grammar structure plus a readable example sentence. Return type="grammar", target=the structure, sentence=the exact source sentence, source_type="structure_sentence", strategy="preserve_source_sentence".
-  2. rule: source is a grammar rule/explanation without a good example sentence. Return type="grammar", target=a concrete structure, sentence=ONE natural generated example sentence that uses the structure, source_type="rule", strategy="generated_example_from_rule", source_rule=the short source rule. Never put the rule itself in sentence.
+  2. rule: source is a grammar rule/explanation without a good example sentence. Return type="grammar", target=a concrete structure, sentence=ONE natural generated example sentence that uses the structure, source_type="rule", strategy="generated_example_from_rule", source_rule=the short source rule. Never put the rule itself in sentence. Rule-like text includes lines such as "have with this meaning is a stative verb", "we use have to to express obligation", "have is also a stative verb", or "have as an auxiliary verb". For these, INVENT a short natural example sentence.
   3. transformation: source is a word-form or grammar transformation, e.g. "un hippi -> hippies". Return type="grammar", target=the exact transformation, sentence=a natural sentence using the transformed form, source_type="transformation", strategy="word_form_example".
   4. exercise: source is a gap-fill or multiple-choice exercise. Return type="grammar", source_type="exercise", strategy="exercise_draft_review_answer". If the correct completed sentence is very clear, put it in sentence; otherwise preserve the raw exercise in reason/source_rule and leave sentence empty for user review.
   5. sentence_only: source is only a useful sentence and the grammar focus is unclear. Return type="grammar", target="", sentence=the exact source sentence, source_type="sentence_only", strategy="infer_later".
@@ -581,6 +583,7 @@ For grammar candidates:
 - If the source focus is a concrete structure or transformation, e.g. "used to + base verb", "Can I + base verb", "un hippi -> hippies", target must contain that structure/transformation, not a broad topic such as "repeated actions in the past".
 - sentence should be the exact source example if available; this sentence becomes the audio/readable sentence later.
 - If the source only gives a rule, generate a short natural example sentence for sentence and put the original rule in source_rule/reason. Do not use the rule itself as the audio sentence.
+- For rule-only grammar lines, sentence MUST look like a learner-friendly example, not a definition. Bad sentence: "have with this meaning is a stative verb". Good sentence: "I have two older brothers."
 - Do not put textbook rules or explanations in sentence. Put rules only in source_rule/reason/context.
 - If target is known, return type="grammar", target="...", sentence="...".
 - If only a useful sentence is found and no grammar target is clear, return type="grammar", target="", sentence="...".

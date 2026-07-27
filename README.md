@@ -1,5 +1,16 @@
 # AI Anki Language Assistant
 
+## Latest: v11.3 LangSmith Quality Metrics
+
+Improves the existing LLMOps / LangSmith layer with quality metadata for generated cards: provider, model, feature, source workflow, prompt version, latency, validation status, red-flag count, issue type and outcome. The local LLMOps log also records review outcomes such as added to Anki, updated existing note, skipped and add failed. See `RELEASE_NOTES_v11_3_LANGSMITH_QUALITY_METRICS.md` and `docs/LLMOPS_LANGSMITH.md`.
+
+## Latest: v11.2.1 Smart Grammar Rule Example Hotfix
+
+Improves Smart grammar import for rule-only OCR material. Textbook rules such as `have with this meaning is a stative verb...` are no longer treated as example/audio sentences. They are stored as source rules, and Batch is expected to generate natural learner examples from them. Candidate previews now label grammar rows as `Grammar focus` and `Example / audio` for clearer review.
+
+See `RELEASE_NOTES_v11_2_1_SMART_GRAMMAR_RULE_EXAMPLE_HOTFIX.md`.
+
+
 ### v11.2 — Smart Grammar Import / Mixed Source Mode
 
 Adds a **Smart grammar import** AI extraction mode for OCR / Import Material. The app now routes grammar fragments by source type: structure + sentence, rule-only, word-form transformation, exercise, or sentence-only. Candidate drafts and Batch preview show the detected type and strategy, so textbook rules can generate natural example sentences instead of becoming bad audio/text fields. See `RELEASE_NOTES_v11_2_SMART_GRAMMAR_IMPORT_MIXED_SOURCE_MODE.md`.

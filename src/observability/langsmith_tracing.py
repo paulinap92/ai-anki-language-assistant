@@ -2,8 +2,14 @@
 
 This module is intentionally dependency-light: the desktop app must continue to
 work when `langsmith` is not installed or when LANGSMITH_TRACING is disabled.
-The wrapper records a small local event log for the UI tab and, when enabled,
-sends redacted trace inputs/outputs to LangSmith.
+
+The tracer has two jobs:
+
+1. keep a local UI event log so the app can be debugged without any external
+   service;
+2. when enabled, send redacted LangSmith traces with quality metadata such as
+   provider/model, prompt version, source workflow, latency, validation status,
+   red flags, issue type and outcome.
 """
 
 from __future__ import annotations
@@ -11,7 +17,7 @@ from __future__ import annotations
 import os
 import time
 from collections import deque
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Any, Callable, Deque
 
@@ -23,7 +29,7 @@ from src.domain.models import ConversationFeedback, ConversationStart, GrammarAn
 
 @dataclass
 class LlmOpsEvent:
-    """Small UI-friendly summary of one AI call."""
+    """Small UI-friendly summary of one AI/quality/outcome event."""
 
     timestamp: str
     feature: str
@@ -34,6 +40,49 @@ class LlmOpsEvent:
     sent_to_langsmith: bool
     detail: str = ""
     trace_url: str = ""
+    prompt_version: str = "unknown"
+    source: str = "unknown"
+    validation_passed: bool | None = None
+    red_flags_count: int | None = None
+    issue_type: str = ""
+    outcome: str = ""
+
+
+@dataclass
+class QualitySnapshot:
+    """Quality metadata extracted from a generated result or UI outcome."""
+
+    validation_passed: bool | None = None
+    red_flags_count: int | None = None
+    issue_type: str = ""
+    outcome: str = "generated"
+    details: dict[str, Any] = field(default_factory=dict)
+
+    def as_metadata(self) -> dict[str, Any]:
+        data: dict[str, Any] = {
+            "outcome": self.outcome,
+            "issue_type": self.issue_type,
+            **self.details,
+        }
+        if self.validation_passed is not None:
+            data["validation_passed"] = self.validation_passed
+        if self.red_flags_count is not None:
+            data["red_flags_count"] = self.red_flags_count
+        return {key: value for key, value in data.items() if value not in (None, "", [], {})}
+
+
+FEATURE_DEFAULTS: dict[str, dict[str, str]] = {
+    "raw_text_generation": {"prompt_version": "raw_prompt", "source": "internal_ai_call"},
+    "vocabulary_card_generation": {"prompt_version": "vocab_prompt_v3", "source": "single_flashcard"},
+    "batch_card_generation": {"prompt_version": "vocab_prompt_v3", "source": "batch_queue"},
+    "provided_example_card_generation": {"prompt_version": "provided_example_prompt_v1", "source": "batch_provided_examples"},
+    "grammar_analysis": {"prompt_version": "sentence_first_grammar_prompt_v1", "source": "grammar_tab"},
+    "grammar_card_generation": {"prompt_version": "grammar_card_prompt_v1", "source": "batch_grammar"},
+    "conversation_start": {"prompt_version": "conversation_start_prompt_v1", "source": "conversation_practice"},
+    "conversation_feedback": {"prompt_version": "conversation_feedback_prompt_v2", "source": "conversation_practice"},
+    "llmops_test_trace": {"prompt_version": "manual_test", "source": "llmops_tab"},
+    "anki_outcome": {"prompt_version": "not_applicable", "source": "anki_connect"},
+}
 
 
 class LlmOpsTracer:
@@ -46,7 +95,7 @@ class LlmOpsTracer:
         self.api_key_configured: bool = False
         self.langsmith_available: bool | None = None
         self.last_error: str = ""
-        self._events: Deque[LlmOpsEvent] = deque(maxlen=80)
+        self._events: Deque[LlmOpsEvent] = deque(maxlen=120)
 
     def configure(
         self,
@@ -78,17 +127,12 @@ class LlmOpsTracer:
         if self.enabled:
             os.environ.setdefault("LANGSMITH_TRACING", "true")
             os.environ.setdefault("LANGCHAIN_TRACING_V2", "true")
-        else:
-            # Do not force-disable if the user deliberately set env vars outside
-            # the app; just report our app-level setting as disabled.
-            pass
 
-        # Detect import lazily but store a human-readable status for the tab.
         self.langsmith_available = self._load_traceable() is not None
         if self.enabled and not self.langsmith_available:
-            self.last_error = "Install langsmith package: pip install langsmith"
+            self.last_error = "LangSmith configured but inactive: package missing. Install with: pip install langsmith"
         elif self.enabled and not self.api_key_configured:
-            self.last_error = "LANGSMITH_API_KEY is missing"
+            self.last_error = "LangSmith configured but inactive: API key missing"
         else:
             self.last_error = ""
 
@@ -109,9 +153,9 @@ class LlmOpsTracer:
         if not self.enabled:
             return "disabled"
         if not self.langsmith_available:
-            return "enabled, but langsmith package is missing"
+            return "configured but inactive: package missing"
         if not self.api_key_configured:
-            return "enabled, but API key is missing"
+            return "configured but inactive: API key missing"
         return "enabled"
 
     def snapshot_events(self) -> list[LlmOpsEvent]:
@@ -119,6 +163,9 @@ class LlmOpsTracer:
 
     def clear_events(self) -> None:
         self._events.clear()
+
+    def feature_defaults(self, feature: str) -> dict[str, str]:
+        return dict(FEATURE_DEFAULTS.get(feature, {"prompt_version": "unknown", "source": "unknown"}))
 
     def _record_event(
         self,
@@ -130,6 +177,12 @@ class LlmOpsTracer:
         latency_ms: int,
         sent_to_langsmith: bool,
         detail: str = "",
+        prompt_version: str = "unknown",
+        source: str = "unknown",
+        validation_passed: bool | None = None,
+        red_flags_count: int | None = None,
+        issue_type: str = "",
+        outcome: str = "",
     ) -> None:
         self._events.appendleft(
             LlmOpsEvent(
@@ -140,8 +193,59 @@ class LlmOpsTracer:
                 status=status,
                 latency_ms=latency_ms,
                 sent_to_langsmith=sent_to_langsmith,
-                detail=detail[:500],
+                detail=detail[:700],
+                prompt_version=prompt_version,
+                source=source,
+                validation_passed=validation_passed,
+                red_flags_count=red_flags_count,
+                issue_type=issue_type,
+                outcome=outcome,
             )
+        )
+
+    def record_outcome(
+        self,
+        *,
+        outcome: str,
+        feature: str = "anki_outcome",
+        provider: str = "system",
+        model: str = "none",
+        source: str = "anki_connect",
+        prompt_version: str = "not_applicable",
+        item: str = "",
+        card_type: str = "",
+        validation_passed: bool | None = None,
+        red_flags_count: int | None = None,
+        issue_type: str = "",
+        detail: str = "",
+    ) -> None:
+        """Record a non-LLM user/outcome event in the local LLMOps log.
+
+        This is intentionally local-only. It connects generated-card traces with
+        human review outcomes such as added_to_anki, updated_existing_note or
+        skipped, without requiring an external service.
+        """
+        bits = [f"outcome={outcome}"]
+        if item:
+            bits.append(f"item={item}")
+        if card_type:
+            bits.append(f"card_type={card_type}")
+        if detail:
+            bits.append(detail)
+        self._record_event(
+            feature=feature,
+            provider=provider,
+            model=model,
+            status="ok",
+            latency_ms=0,
+            sent_to_langsmith=False,
+            detail=" | ".join(bits),
+            prompt_version=prompt_version,
+            source=source,
+            validation_passed=validation_passed,
+            red_flags_count=red_flags_count,
+            issue_type=issue_type,
+            outcome=outcome,
         )
 
     def sanitize_value(self, value: Any) -> Any:
@@ -164,6 +268,7 @@ class LlmOpsTracer:
     def output_summary(self, value: Any) -> dict[str, Any] | str:
         """Return a compact, serializable output summary for traces."""
         if isinstance(value, VocabularyCard):
+            quality = self.quality_snapshot("vocabulary_card_generation", value).as_metadata()
             return {
                 "type": "VocabularyCard",
                 "word_or_phrase": value.word_or_phrase,
@@ -171,18 +276,22 @@ class LlmOpsTracer:
                 "is_valid": value.is_valid,
                 "quality_warnings_count": len(value.quality_warnings or []),
                 "example_preview": (value.example or "")[:220],
+                "quality": quality,
             }
         if isinstance(value, GrammarAnalysis):
+            quality = self.quality_snapshot("grammar_card_generation", value).as_metadata()
             return {
                 "type": "GrammarAnalysis",
                 "structure": value.structure,
                 "target_language": value.target_language,
                 "sentence_preview": (value.sentence or "")[:220],
+                "quality": quality,
             }
         if isinstance(value, ConversationStart):
             return {
                 "type": "ConversationStart",
                 "question_preview": (value.question or "")[:220],
+                "quality": self.quality_snapshot("conversation_start", value).as_metadata(),
             }
         if isinstance(value, ConversationFeedback):
             return {
@@ -190,6 +299,7 @@ class LlmOpsTracer:
                 "corrections_count": len(value.corrections or []),
                 "suggestions_count": len(value.suggested_vocabulary or []),
                 "next_question_preview": (value.next_question or "")[:220],
+                "quality": self.quality_snapshot("conversation_feedback", value).as_metadata(),
             }
         if isinstance(value, str):
             if self.redact_inputs:
@@ -199,6 +309,220 @@ class LlmOpsTracer:
         if isinstance(value, BaseModel):
             return {"type": value.__class__.__name__}
         return str(value)[:1000]
+
+    def quality_snapshot(self, feature: str, result: Any) -> QualitySnapshot:
+        """Extract quality/outcome metrics from a generated result."""
+        if isinstance(result, VocabularyCard):
+            warnings = list(result.quality_warnings or [])
+            hard_warnings = [warning for warning in warnings if str(warning).upper().startswith("HARD")]
+            issues = self._issue_types_from_text([*warnings, result.validation_error, result.topic_warning])
+            if not result.is_valid:
+                issue_type = "invalid_input" if not issues else ",".join(_dedupe(["invalid_input", *issues]))
+                return QualitySnapshot(
+                    validation_passed=False,
+                    red_flags_count=max(1, len(warnings) + (1 if result.validation_error else 0)),
+                    issue_type=issue_type,
+                    outcome="invalid_input",
+                    details={
+                        "card_type": "vocabulary",
+                        "target_language": result.target_language,
+                        "topic_fit": result.topic_fit,
+                        "has_suggested_correction": bool(result.suggested_correction),
+                    },
+                )
+            red_flags_count = len(warnings)
+            validation_passed = not hard_warnings and red_flags_count == 0
+            outcome = "generated" if validation_passed else "generated_with_warnings"
+            return QualitySnapshot(
+                validation_passed=validation_passed,
+                red_flags_count=red_flags_count,
+                issue_type=",".join(issues),
+                outcome=outcome,
+                details={
+                    "card_type": "vocabulary",
+                    "target_language": result.target_language,
+                    "topic_fit": result.topic_fit,
+                    "hard_warnings_count": len(hard_warnings),
+                    "example_uses_target": result.example_uses_target,
+                    "collocation_naturalness": result.collocation_naturalness,
+                    "translation_naturalness": result.translation_naturalness,
+                },
+            )
+
+        if isinstance(result, GrammarAnalysis):
+            issues: list[str] = []
+            missing = [
+                name
+                for name, value in {
+                    "sentence": result.sentence,
+                    "structure": result.structure,
+                    "meaning": result.meaning,
+                    "usage": result.usage,
+                }.items()
+                if not str(value or "").strip()
+            ]
+            if missing:
+                issues.append("missing_required_field")
+            # Guard against the exact class of bug we saw earlier: a grammar card
+            # with a visible source sentence and a separate competing context
+            # sentence. This is a warning, not an auto-blocker.
+            sentence = str(result.sentence or "").strip()
+            context = str(result.context_example or "").strip()
+            if sentence and context and sentence not in context and context not in sentence:
+                issues.append("possible_sentence_context_mismatch")
+            validation_passed = not issues
+            return QualitySnapshot(
+                validation_passed=validation_passed,
+                red_flags_count=len(issues),
+                issue_type=",".join(_dedupe(issues)),
+                outcome="generated" if validation_passed else "generated_with_warnings",
+                details={
+                    "card_type": "grammar",
+                    "target_language": result.target_language,
+                    "breakdown_count": len(result.breakdown or []),
+                    "contrasts_count": len(result.contrasts or []),
+                    "common_mistakes_count": len(result.common_mistakes or []),
+                },
+            )
+
+        if isinstance(result, ConversationFeedback):
+            return QualitySnapshot(
+                validation_passed=True,
+                red_flags_count=0,
+                issue_type="",
+                outcome="generated",
+                details={
+                    "card_type": "conversation_feedback",
+                    "corrections_count": len(result.corrections or []),
+                    "suggestions_count": len(result.suggested_vocabulary or []),
+                    "has_mini_practice": bool(result.mini_practice),
+                },
+            )
+
+        if isinstance(result, ConversationStart):
+            has_question = bool(str(result.question or "").strip())
+            return QualitySnapshot(
+                validation_passed=has_question,
+                red_flags_count=0 if has_question else 1,
+                issue_type="" if has_question else "missing_required_field",
+                outcome="generated" if has_question else "generated_with_warnings",
+                details={"card_type": "conversation_start"},
+            )
+
+        return QualitySnapshot(validation_passed=None, red_flags_count=None, outcome="generated")
+
+    def _issue_types_from_text(self, values: list[Any]) -> list[str]:
+        text = "\n".join(str(value or "") for value in values).casefold()
+        issues: list[str] = []
+        if not text.strip():
+            return issues
+        if "input phrase changed" in text or "exact" in text and "input" in text:
+            issues.append("exact_input_changed")
+        if "example does not use" in text or "target item" in text or "target word" in text:
+            issues.append("example_target_mismatch")
+        if "translation" in text:
+            issues.append("translation_issue")
+        if "topic" in text:
+            issues.append("topic_mismatch")
+        if "language" in text:
+            issues.append("language_mismatch")
+        if "required field" in text or "empty" in text:
+            issues.append("missing_required_field")
+        if "natural" in text or "forced" in text or "collocation" in text:
+            issues.append("naturalness_issue")
+        if "source focus" in text:
+            issues.append("wrong_source_focus")
+        if "audio" in text:
+            issues.append("audio_sentence_mismatch")
+        return _dedupe(issues)
+
+    def _metadata_value(self, value: Any) -> Any:
+        """Keep operational metadata readable while avoiding huge payloads."""
+        if value is None or isinstance(value, (bool, int, float)):
+            return value
+        if isinstance(value, str):
+            return value.strip()[:500]
+        if isinstance(value, (list, tuple, set)):
+            return [self._metadata_value(item) for item in list(value)[:20]]
+        if isinstance(value, dict):
+            return {str(k): self._metadata_value(v) for k, v in value.items()}
+        return str(value)[:500]
+
+    def _base_metadata(self, feature: str, provider: str, model: str, metadata: dict[str, Any] | None) -> dict[str, Any]:
+        base = self.feature_defaults(feature)
+        combined = {
+            "app": "AI Anki Language Assistant",
+            "feature": feature,
+            "provider": provider,
+            "model": model,
+            **base,
+            **(metadata or {}),
+            "redaction": "ON" if self.redact_inputs else "OFF",
+        }
+        return {str(key): self._metadata_value(value) for key, value in combined.items() if value not in (None, "", [], {})}
+
+    def _quality_detail(self, quality: QualitySnapshot, fallback_detail: str = "") -> str:
+        parts: list[str] = []
+        if quality.outcome:
+            parts.append(f"outcome={quality.outcome}")
+        if quality.validation_passed is not None:
+            parts.append(f"validation_passed={quality.validation_passed}")
+        if quality.red_flags_count is not None:
+            parts.append(f"red_flags={quality.red_flags_count}")
+        if quality.issue_type:
+            parts.append(f"issue_type={quality.issue_type}")
+        if fallback_detail:
+            parts.append(fallback_detail)
+        return " | ".join(parts)
+
+    def _run_plain(
+        self,
+        *,
+        feature: str,
+        provider: str,
+        model: str,
+        call_fn: Callable[[], Any],
+        metadata: dict[str, Any],
+        disabled_detail: str,
+    ) -> Any:
+        start = time.perf_counter()
+        try:
+            result = call_fn()
+        except Exception as exc:
+            latency_ms = int((time.perf_counter() - start) * 1000)
+            defaults = self.feature_defaults(feature)
+            self._record_event(
+                feature=feature,
+                provider=provider,
+                model=model,
+                status="error",
+                latency_ms=latency_ms,
+                sent_to_langsmith=False,
+                detail=str(exc),
+                prompt_version=str(metadata.get("prompt_version") or defaults.get("prompt_version") or "unknown"),
+                source=str(metadata.get("source") or defaults.get("source") or "unknown"),
+                outcome="error",
+            )
+            raise
+        latency_ms = int((time.perf_counter() - start) * 1000)
+        quality = self.quality_snapshot(feature, result)
+        defaults = self.feature_defaults(feature)
+        self._record_event(
+            feature=feature,
+            provider=provider,
+            model=model,
+            status="ok" if not self.enabled else "not_sent",
+            latency_ms=latency_ms,
+            sent_to_langsmith=False,
+            detail=self._quality_detail(quality, disabled_detail),
+            prompt_version=str(metadata.get("prompt_version") or defaults.get("prompt_version") or "unknown"),
+            source=str(metadata.get("source") or defaults.get("source") or "unknown"),
+            validation_passed=quality.validation_passed,
+            red_flags_count=quality.red_flags_count,
+            issue_type=quality.issue_type,
+            outcome=quality.outcome,
+        )
+        return result
 
     def trace_call(
         self,
@@ -211,46 +535,40 @@ class LlmOpsTracer:
         call_fn: Callable[[], Any],
     ) -> Any:
         """Run call_fn, optionally sending a LangSmith trace and always logging locally."""
-        start = time.perf_counter()
-        sent_to_langsmith = False
         traceable = self._load_traceable() if self.enabled else None
         can_send = bool(self.enabled and traceable and self.api_key_configured)
         safe_inputs = self.sanitize_value(inputs)
-        safe_metadata = self.sanitize_value(metadata or {})
+        safe_metadata = self._base_metadata(feature, provider, model, metadata)
 
         if not can_send:
-            try:
-                result = call_fn()
-            except Exception as exc:
-                latency_ms = int((time.perf_counter() - start) * 1000)
-                self._record_event(
-                    feature=feature,
-                    provider=provider,
-                    model=model,
-                    status="error",
-                    latency_ms=latency_ms,
-                    sent_to_langsmith=False,
-                    detail=str(exc),
-                )
-                raise
-            latency_ms = int((time.perf_counter() - start) * 1000)
-            self._record_event(
+            detail = self.last_error if self.enabled else "LangSmith disabled; local event only."
+            return self._run_plain(
                 feature=feature,
                 provider=provider,
                 model=model,
-                status="ok" if not self.enabled else "not_sent",
-                latency_ms=latency_ms,
-                sent_to_langsmith=False,
-                detail=self.last_error if self.enabled else "LangSmith disabled; local event only.",
+                call_fn=call_fn,
+                metadata=safe_metadata,
+                disabled_detail=detail,
             )
-            return result
 
         holder: dict[str, Any] = {}
+        start = time.perf_counter()
 
-        def _run_traced(safe_inputs_arg: dict[str, Any]) -> Any:
-            result = call_fn()
+        def _run_traced(payload: dict[str, Any]) -> dict[str, Any]:
+            try:
+                result = call_fn()
+            except Exception as exc:
+                holder["provider_exception"] = exc
+                raise
+            quality = self.quality_snapshot(feature, result)
             holder["result"] = result
-            return self.output_summary(result)
+            holder["quality"] = quality
+            return {
+                "inputs": payload,
+                "result_summary": self.output_summary(result),
+                "quality_metrics": quality.as_metadata(),
+                "metadata": safe_metadata,
+            }
 
         try:
             try:
@@ -258,14 +576,19 @@ class LlmOpsTracer:
                     name=feature,
                     run_type="chain",
                     metadata=safe_metadata,
-                    tags=["ai-anki", str(provider), str(feature)],
+                    tags=[
+                        "ai-anki",
+                        str(provider),
+                        str(feature),
+                        str(safe_metadata.get("prompt_version", "unknown")),
+                        str(safe_metadata.get("source", "unknown")),
+                    ],
                 )(_run_traced)
             except TypeError:
-                # Older SDK fallback: fewer decorator kwargs.
                 traced_fn = traceable(name=feature)(_run_traced)  # type: ignore[misc]
             traced_fn(safe_inputs)
-            sent_to_langsmith = True
             result = holder.get("result")
+            quality = holder.get("quality") or self.quality_snapshot(feature, result)
             latency_ms = int((time.perf_counter() - start) * 1000)
             self._record_event(
                 feature=feature,
@@ -274,24 +597,77 @@ class LlmOpsTracer:
                 status="ok",
                 latency_ms=latency_ms,
                 sent_to_langsmith=True,
-                detail=f"Sent to LangSmith project: {self.project_name}",
+                detail=self._quality_detail(quality, f"Sent to LangSmith project: {self.project_name}"),
+                prompt_version=str(safe_metadata.get("prompt_version") or "unknown"),
+                source=str(safe_metadata.get("source") or "unknown"),
+                validation_passed=quality.validation_passed,
+                red_flags_count=quality.red_flags_count,
+                issue_type=quality.issue_type,
+                outcome=quality.outcome,
             )
             return result
         except Exception as exc:
-            latency_ms = int((time.perf_counter() - start) * 1000)
-            self._record_event(
+            if "provider_exception" in holder:
+                latency_ms = int((time.perf_counter() - start) * 1000)
+                self._record_event(
+                    feature=feature,
+                    provider=provider,
+                    model=model,
+                    status="error",
+                    latency_ms=latency_ms,
+                    sent_to_langsmith=False,
+                    detail=str(holder["provider_exception"]),
+                    prompt_version=str(safe_metadata.get("prompt_version") or "unknown"),
+                    source=str(safe_metadata.get("source") or "unknown"),
+                    outcome="error",
+                )
+                raise holder["provider_exception"]
+            if "result" in holder:
+                # The provider call succeeded but LangSmith reporting failed. Do
+                # not break the app; keep the generated card and record locally.
+                result = holder["result"]
+                quality = holder.get("quality") or self.quality_snapshot(feature, result)
+                latency_ms = int((time.perf_counter() - start) * 1000)
+                self._record_event(
+                    feature=feature,
+                    provider=provider,
+                    model=model,
+                    status="ok_not_sent",
+                    latency_ms=latency_ms,
+                    sent_to_langsmith=False,
+                    detail=self._quality_detail(quality, f"LangSmith send failed after generation: {exc}"),
+                    prompt_version=str(safe_metadata.get("prompt_version") or "unknown"),
+                    source=str(safe_metadata.get("source") or "unknown"),
+                    validation_passed=quality.validation_passed,
+                    red_flags_count=quality.red_flags_count,
+                    issue_type=quality.issue_type,
+                    outcome=quality.outcome,
+                )
+                return result
+
+            return self._run_plain(
                 feature=feature,
                 provider=provider,
                 model=model,
-                status="error",
-                latency_ms=latency_ms,
-                sent_to_langsmith=sent_to_langsmith,
-                detail=str(exc),
+                call_fn=call_fn,
+                metadata=safe_metadata,
+                disabled_detail=f"LangSmith wrapper failed before provider call: {exc}",
             )
-            raise
 
 
 TRACER = LlmOpsTracer()
+
+
+def _dedupe(values: list[str]) -> list[str]:
+    seen: set[str] = set()
+    result: list[str] = []
+    for value in values:
+        item = str(value or "").strip()
+        if not item or item in seen:
+            continue
+        seen.add(item)
+        result.append(item)
+    return result
 
 
 def configure_llmops(
@@ -329,19 +705,29 @@ class TracedVocabularyAiClient(VocabularyAiClient):
     def provider_name(self) -> str:
         return self._inner.provider_name
 
-    def _trace(self, feature: str, inputs: dict[str, Any], call_fn: Callable[[], Any]) -> Any:
-        metadata = {
+    def _trace(
+        self,
+        feature: str,
+        inputs: dict[str, Any],
+        call_fn: Callable[[], Any],
+        *,
+        metadata: dict[str, Any] | None = None,
+    ) -> Any:
+        defaults = TRACER.feature_defaults(feature)
+        base_metadata = {
             "feature": feature,
             "provider": self.provider_name,
             "model": self._model,
             "app": "AI Anki Language Assistant",
+            **defaults,
+            **(metadata or {}),
         }
         return TRACER.trace_call(
             feature=feature,
             provider=self.provider_name,
             model=self._model,
             inputs=inputs,
-            metadata=metadata,
+            metadata=base_metadata,
             call_fn=call_fn,
         )
 
@@ -369,6 +755,7 @@ class TracedVocabularyAiClient(VocabularyAiClient):
                 "topic_context": topic_context,
             },
             lambda: self._inner.generate_card(word_or_phrase, target_language, explanation_language, topic_context),
+            metadata={"source": "single_flashcard"},
         )
 
     def start_conversation(self, topic: str, target_language: str) -> ConversationStart:
@@ -388,10 +775,14 @@ class TracedVocabularyAiClient(VocabularyAiClient):
     def generate_grammar_card(
         self, grammar_item: str, target_language: str, topic_context: str = ""
     ) -> GrammarAnalysis:
+        source = "batch_grammar"
+        if any(token in str(topic_context or "").casefold() for token in ("source", "ocr", "import", "rule-only", "detected")):
+            source = "import_material_grammar"
         return self._trace(
             "grammar_card_generation",
             {"grammar_item": grammar_item, "target_language": target_language, "topic_context": topic_context},
             lambda: self._inner.generate_grammar_card(grammar_item, target_language, topic_context),
+            metadata={"source": source},
         )
 
     def generate_sentence_card(
@@ -434,6 +825,7 @@ class TracedVocabularyAiClient(VocabularyAiClient):
             lambda: self._inner.review_conversation_answer(
                 topic, question, answer, target_language, improvement_level, feedback_language
             ),
+            metadata={"improvement_level": improvement_level, "feedback_language": feedback_language},
         )
 
 

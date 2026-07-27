@@ -609,7 +609,7 @@ class ModernVocabularyGui:
         ctk.CTkButton(status, text="Copy .env setup", width=140, command=self._copy_llmops_setup).grid(
             row=3, column=2, sticky="w", padx=(0, 8), pady=(0, 16)
         )
-        ctk.CTkButton(status, text="Open LangSmith", width=140, command=self._open_langsmith).grid(
+        ctk.CTkButton(status, text="Open LangSmith app", width=160, command=self._open_langsmith).grid(
             row=3, column=3, sticky="w", padx=(0, 18), pady=(0, 16)
         )
 
@@ -675,10 +675,22 @@ class ModernVocabularyGui:
         lines = []
         for event in events[:40]:
             sent = "sent" if event.sent_to_langsmith else "local"
+            quality_bits = []
+            if event.outcome:
+                quality_bits.append(f"outcome={event.outcome}")
+            if event.validation_passed is not None:
+                quality_bits.append(f"validation={event.validation_passed}")
+            if event.red_flags_count is not None:
+                quality_bits.append(f"red_flags={event.red_flags_count}")
+            if event.issue_type:
+                quality_bits.append(f"issue={event.issue_type}")
+            quality = " | " + " · ".join(quality_bits) if quality_bits else ""
             lines.append(
                 f"[{event.timestamp}] {event.feature} | {event.provider} {event.model} | "
-                f"{event.status} | {event.latency_ms} ms | {sent}"
+                f"{event.status} | {event.latency_ms} ms | {sent}{quality}"
             )
+            if event.prompt_version or event.source:
+                lines.append(f"    prompt={event.prompt_version} | source={event.source}")
             if event.detail:
                 lines.append(f"    {event.detail}")
         return "\n".join(lines)
@@ -987,26 +999,35 @@ class ModernVocabularyGui:
         )
         ctk.CTkLabel(
             left,
-            text="AI finds candidate drafts from the reviewed source text. Uses the Card AI provider selected at the top.",
+            text=(
+                "Choose what the AI should extract. For grammar pages with rules + examples, "
+                "use Smart grammar import: rules become notes, and AI generates natural example sentences."
+            ),
             wraplength=280,
             justify="left",
             text_color=("gray35", "gray75"),
         ).grid(row=11, column=0, sticky="w", padx=18, pady=(0, 4))
+        ctk.CTkLabel(
+            left,
+            text="AI import strategy",
+            font=ctk.CTkFont(size=11, weight="bold"),
+            text_color=("gray35", "gray75"),
+        ).grid(row=12, column=0, sticky="w", padx=18, pady=(0, 2))
         ctk.CTkComboBox(
             left,
             variable=self._ocr_mode_var,
             values=OCR_EXTRACTION_MODES,
             state="readonly",
-        ).grid(row=12, column=0, sticky="ew", padx=18, pady=(0, 6))
+        ).grid(row=13, column=0, sticky="ew", padx=18, pady=(0, 6))
         ctk.CTkButton(
             left,
-            text="AI assist: find candidates",
+            text="Find candidates with selected strategy",
             height=36,
             command=self._extract_ocr_candidates_with_ai,
-        ).grid(row=13, column=0, sticky="ew", padx=18, pady=(0, 12))
+        ).grid(row=14, column=0, sticky="ew", padx=18, pady=(0, 12))
 
         ctk.CTkButton(left, text="Clear import", command=self._clear_ocr_import).grid(
-            row=14, column=0, sticky="ew", padx=18, pady=(4, 10)
+            row=15, column=0, sticky="ew", padx=18, pady=(4, 10)
         )
 
         ctk.CTkLabel(
@@ -1015,7 +1036,7 @@ class ModernVocabularyGui:
             wraplength=280,
             justify="left",
             text_color=("gray35", "gray75"),
-        ).grid(row=15, column=0, sticky="w", padx=18, pady=(0, 18))
+        ).grid(row=16, column=0, sticky="w", padx=18, pady=(0, 18))
 
         text_panel = ctk.CTkFrame(layout, corner_radius=18)
         text_panel.grid(row=0, column=1, sticky="nsew", padx=(0, 12))
@@ -2160,17 +2181,43 @@ class ModernVocabularyGui:
         rule_markers = (
             "we use ",
             "we can use ",
+            "we often use ",
+            "you can use ",
             "is used to ",
             "are used to ",
+            "used to express",
+            "used for ",
             "to talk about ",
             "to say that ",
+            "to express ",
+            "means to ",
             "is stronger",
             "the negative is",
             "normally refers",
             "the most common",
             "completely different",
+            "stative",
+            "dynamic",
+            "continuous tense",
+            "continuous tenses",
+            "main verb",
+            "auxiliary verb",
+            "past participle",
+            "base verb",
+            "object + past",
+            "obligation",
+            "possession",
+            "relationships or illnesses",
+            "rules and regulations",
         )
-        return any(marker in value for marker in rule_markers)
+        if any(marker in value for marker in rule_markers):
+            return True
+        # Textbook rules often begin with a grammar item and then explain it,
+        # e.g. "have with this meaning is a stative verb...". These are not
+        # audio/example sentences and should be kept as notes/source rules.
+        if re.search(r"\b(have|be|do|can|could|must|should|ought to|need|used to)\b.{0,45}\bis\b.{0,80}\b(verb|tense|form|structure|meaning|used|stative|dynamic)\b", value):
+            return True
+        return False
 
     @classmethod
     def _merge_ocr_grammar_candidate_items(cls, items: list[dict[str, str]]) -> list[dict[str, str]]:
@@ -2302,12 +2349,32 @@ class ModernVocabularyGui:
             target = item.get("target", "").strip()
             sentence = item.get("sentence", "").strip()
             source = item.get("source", "").strip()
+            source_type = str(item.get("source_type") or "").strip()
+            strategy = str(item.get("strategy") or "").strip()
+            candidate_kind = self._normalize_ocr_candidate_type(item.get("type", ""))
 
-            target_text = f"Target: {target}" if target else "Target: —"
+            if candidate_kind == "grammar":
+                target_label = "Grammar focus"
+                example_label = "Example / audio"
+            elif candidate_kind == "provided_example":
+                target_label = "Target phrase"
+                example_label = "Source sentence"
+            else:
+                target_label = "Word / phrase"
+                example_label = "Example"
+
+            target_text = f"{target_label}: {target}" if target else f"{target_label}: —"
             ctk.CTkLabel(card, text=target_text, anchor="w", justify="left", wraplength=520).grid(
                 row=1, column=1, sticky="ew", padx=(4, 10), pady=(4, 0)
             )
-            example_text = f"Example: {sentence}" if sentence else "Example: —"
+            if sentence:
+                example_text = f"{example_label}: {sentence}"
+            elif candidate_kind == "grammar" and source_type == "rule":
+                example_text = "Example / audio: AI will generate a natural example in Batch"
+            elif candidate_kind == "grammar" and strategy == "generated_example_from_rule":
+                example_text = "Example / audio: AI will generate a natural example in Batch"
+            else:
+                example_text = f"{example_label}: —"
             ctk.CTkLabel(
                 card,
                 text=example_text,
@@ -3323,9 +3390,17 @@ class ModernVocabularyGui:
                 source_type = self._normalize_smart_grammar_source_type(
                     str(candidate.get("source_type") or candidate.get("detected_as") or "")
                 )
+                # If the provider claimed structure_sentence but the alleged
+                # sentence was actually a textbook rule, downgrade to rule.
+                # This prevents candidates like "have with this meaning is a
+                # stative verb..." from becoming audio/example text.
+                if candidate_type == "grammar" and source_rule and not sentence and source_type == "structure_sentence":
+                    source_type = "rule"
                 if not source_type:
                     source_type = self._infer_smart_grammar_source_type(candidate_type, target, sentence, source_rule)
                 strategy = str(candidate.get("strategy") or "").strip() or self._smart_grammar_strategy_for_source_type(source_type)
+                if candidate_type == "grammar" and source_type == "rule" and strategy == "preserve_source_sentence":
+                    strategy = "generated_example_from_rule"
                 reason = str(candidate.get("reason") or "").strip()
                 confidence = str(candidate.get("confidence") or "").strip()
                 answer = str(candidate.get("answer") or candidate.get("completed_answer") or "").strip()
@@ -4628,6 +4703,7 @@ class ModernVocabularyGui:
     def _add_current_batch_card(self) -> None:
         if self._batch_generated_grammar is not None:
             provider_name = self._batch_generated_provider_name or self._provider_var.get()
+            was_update = False
             try:
                 deck = self._set_selected_deck()
                 self._anki_client.add_grammar_card(self._batch_generated_grammar, provider_name, extra_tags=self._batch_tags_for_item(self._batch_items[self._batch_index]))
@@ -4647,6 +4723,7 @@ class ModernVocabularyGui:
                     messagebox.showerror("Anki update error", str(update_exc))
                     return
                 deck = self._anki_client.deck_name
+                was_update = True
             except Exception as exc:
                 self._batch_status_var.set(f"Could not add grammar card: {exc}")
                 messagebox.showerror("Anki error", str(exc))
@@ -4659,6 +4736,13 @@ class ModernVocabularyGui:
             self._batch_status_var.set(f"✓ Added grammar card to {deck}: {sentence}")
             self._status_var.set(self._batch_status_var.get())
             self._record_activity(f"✓ Grammar added: {sentence}")
+            self._record_llmops_outcome(
+                outcome="updated_existing_note" if was_update else "added_to_anki",
+                item=sentence,
+                card_type="grammar",
+                source="batch_queue",
+                validation_passed=True,
+            )
             self._update_batch_progress()
             self._root.after(350, self._advance_batch_after_action)
             return
@@ -4676,6 +4760,7 @@ class ModernVocabularyGui:
             self._batch_status_var.set("Add to Anki cancelled because of quality warnings.")
             return
         provider_name = self._batch_generated_provider_name or self._provider_var.get()
+        was_update = False
         try:
             deck = self._set_selected_deck()
             self._anki_client.add_card(
@@ -4703,6 +4788,7 @@ class ModernVocabularyGui:
                 messagebox.showerror("Anki update error", str(update_exc))
                 return
             deck = self._anki_client.deck_name
+            was_update = True
         except Exception as exc:
             self._batch_status_var.set(f"Could not add card: {exc}")
             messagebox.showerror("Anki error", str(exc))
@@ -4715,6 +4801,13 @@ class ModernVocabularyGui:
         self._batch_status_var.set(f"✓ Added to {deck}: {word}")
         self._status_var.set(self._batch_status_var.get())
         self._record_activity(f"✓ {word} added")
+        self._record_llmops_outcome(
+            outcome="updated_existing_note" if was_update else "added_to_anki",
+            item=word,
+            card_type="vocabulary",
+            source="batch_queue",
+            validation_passed=True,
+        )
         self._update_batch_progress()
         self._root.after(350, self._advance_batch_after_action)
 
@@ -4727,6 +4820,13 @@ class ModernVocabularyGui:
         self._batch_status_var.set(f"Skipped: {word}")
         self._status_var.set(self._batch_status_var.get())
         self._record_activity(f"↷ {word} skipped")
+        self._record_llmops_outcome(
+            outcome="skipped",
+            item=word,
+            card_type=str(self._batch_items[self._batch_index].get("mode") or "batch_item"),
+            source="batch_queue",
+            detail="User skipped Batch item after review.",
+        )
         self._update_batch_progress()
         self._root.after(250, self._advance_batch_after_action)
 
@@ -5142,6 +5242,28 @@ class ModernVocabularyGui:
             warnings.append("source_target_restored_in_structure")
 
         effective_sentence = str(update.get("sentence") or card.sentence)
+        context_example = clean_ocr_text(str(card.context_example or "")).replace("\n", " ").strip()
+
+        # Avoid cards where the front/visible grammar sentence and the audio
+        # candidate in Natural Context are two unrelated examples. If there is
+        # a source sentence from OCR, it remains the single visible/audio
+        # sentence. If there is no source sentence and the provider generated a
+        # better full Natural Context while the Sentence is also a full but
+        # different sentence, promote the Natural Context to Sentence so users
+        # read and hear the same example. Short targets/connectors such as
+        # "therefore" are not promoted; they can still use ContextExample as
+        # audio because the top item is a target, not a competing sentence.
+        if provided_sentence:
+            if context_example and cls._looks_like_complete_sentence(context_example) and context_example != provided_sentence:
+                update["context_example"] = provided_sentence
+                warnings.append("natural_context_aligned_to_source_sentence")
+        elif context_example and context_example != effective_sentence:
+            if cls._looks_like_complete_sentence(effective_sentence) and cls._looks_like_complete_sentence(context_example):
+                update["sentence"] = context_example
+                update["context_example"] = context_example
+                effective_sentence = context_example
+                warnings.append("visible_sentence_aligned_to_natural_context")
+
         if grammar_target and not provided_sentence and cls._grammar_sentence_needs_focus_warning(grammar_target, effective_sentence):
             warnings.append("unclear_card_focus_generated_sentence_does_not_show_target")
 
@@ -6224,6 +6346,26 @@ class ModernVocabularyGui:
                 self._batch_add_all_failed_details.append(friendly_error)
             self._batch_status_var.set(friendly_error)
             self._status_var.set(friendly_error)
+
+        outcome_status = str(item.get("status") or "")
+        if outcome_status in {"added_to_anki", "updated_in_anki", "duplicate_skipped", "duplicate_uncertain", "add_failed"}:
+            outcome_map = {
+                "added_to_anki": "added_to_anki",
+                "updated_in_anki": "updated_existing_note",
+                "duplicate_skipped": "duplicate_skipped",
+                "duplicate_uncertain": "duplicate_uncertain",
+                "add_failed": "add_failed",
+            }
+            self._record_llmops_outcome(
+                outcome=outcome_map.get(outcome_status, outcome_status),
+                item=card.word_or_phrase,
+                card_type="vocabulary",
+                source="batch_add_all",
+                validation_passed=outcome_status in {"added_to_anki", "updated_in_anki"},
+                red_flags_count=len(card_warnings),
+                issue_type="anki_export_error" if outcome_status == "add_failed" else "",
+                detail=str(item.get("error") or ""),
+            )
 
         self._autosave_batch_session(f"add all {self._batch_add_all_position}/{total}")
         self._root.after(120, self._add_next_ready_batch_card)
@@ -7397,6 +7539,35 @@ class ModernVocabularyGui:
         previous.append(text)
         self._activity_var.set(" | ".join(previous[-3:]))
 
+    def _record_llmops_outcome(
+        self,
+        *,
+        outcome: str,
+        item: str = "",
+        card_type: str = "",
+        source: str = "anki_connect",
+        validation_passed: bool | None = None,
+        red_flags_count: int | None = None,
+        issue_type: str = "",
+        detail: str = "",
+    ) -> None:
+        """Record user review / Anki outcome in the local LLMOps log."""
+        try:
+            get_llmops_tracer().record_outcome(
+                outcome=outcome,
+                item=item,
+                card_type=card_type,
+                source=source,
+                validation_passed=validation_passed,
+                red_flags_count=red_flags_count,
+                issue_type=issue_type,
+                detail=detail,
+            )
+            self._refresh_llmops_log()
+        except Exception:
+            # Observability must never break review/export flows.
+            LOGGER.debug("Could not record LLMOps outcome", exc_info=True)
+
     def _current_ai_client(self) -> VocabularyAiClient:
         return self._ai_clients[self._provider_var.get()]
 
@@ -7593,6 +7764,13 @@ class ModernVocabularyGui:
                 f"✓ Updated existing card in {deck}: {self._generated_card.word_or_phrase}"
             )
             self._record_activity(f"↻ {self._generated_card.word_or_phrase} updated")
+            self._record_llmops_outcome(
+                outcome="updated_existing_note",
+                item=self._generated_card.word_or_phrase,
+                card_type="vocabulary",
+                source="single_flashcard",
+                validation_passed=True,
+            )
             self._word_var.set("")
             self._generated_card = None
             self._generated_provider_name = None
@@ -7607,10 +7785,26 @@ class ModernVocabularyGui:
             message = f"Could not add card to Anki: {exc}"
             self._status_var.set(message)
             self._record_activity("Add to Anki failed")
+            self._record_llmops_outcome(
+                outcome="add_failed",
+                item=self._generated_card.word_or_phrase if self._generated_card else "",
+                card_type="vocabulary",
+                source="single_flashcard",
+                validation_passed=False,
+                issue_type="anki_export_error",
+                detail=message,
+            )
             messagebox.showerror("Anki error", message)
             return
         self._status_var.set(f"✓ Added to Anki deck {deck}: {self._generated_card.word_or_phrase}")
         self._record_activity(f"✓ {self._generated_card.word_or_phrase} added")
+        self._record_llmops_outcome(
+            outcome="added_to_anki",
+            item=self._generated_card.word_or_phrase,
+            card_type="vocabulary",
+            source="single_flashcard",
+            validation_passed=True,
+        )
         self._word_var.set("")
         self._generated_card = None
         self._generated_provider_name = None
@@ -7833,12 +8027,36 @@ class ModernVocabularyGui:
                 button.configure(state=state)
 
     def _speech_source_text_for_note(self, note: dict[str, object]) -> tuple[str, str]:
-        """Return source text and source field name for TTS generation."""
+        """Return source text and source field name for TTS generation.
+
+        Auto mode must not create a hidden mismatch where the learner sees one
+        complete grammar sentence on the card but hears a different natural
+        context sentence. For grammar notes, if the visible Sentence/Word field
+        already looks like a full sentence, that visible sentence wins. Natural
+        Context is still preferred when the visible field is only a target,
+        connector, phrase, or structure.
+        """
         fields = note.get("fields") if isinstance(note.get("fields"), dict) else {}
         selected = self._speech_source_field_var.get().strip()
         if selected and not selected.startswith("Auto"):
             return self._plain_text(str(fields.get(selected, ""))), selected
-        for field_name in ("Example", "ContextExample", "Sentence", "ExampleSentence", "Back", "Word", "Front", "Phrase", "Term"):
+
+        model_name = str(note.get("model") or "").casefold()
+        is_grammar_note = "grammar" in model_name
+
+        # For grammar cards whose visible front is already a sentence, audio
+        # should read that same visible sentence. Otherwise users read one
+        # sentence and hear another.
+        if is_grammar_note:
+            for visible_field in ("Sentence", "Word", "Front"):
+                if visible_field in fields:
+                    visible_text = self._plain_text(str(fields.get(visible_field, "")))
+                    if visible_text and self._looks_like_complete_sentence(visible_text):
+                        return visible_text, visible_field
+
+        # For word/phrase/connector cards, Natural Context is usually the best
+        # audio source because the visible field may only be the target.
+        for field_name in ("ContextExample", "Example", "ExampleSentence", "Sentence", "Back", "Word", "Front", "Phrase", "Term"):
             if field_name in fields:
                 value = self._plain_text(str(fields.get(field_name, "")))
                 if value:
