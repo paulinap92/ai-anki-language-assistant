@@ -549,18 +549,24 @@ Your task:
 Candidate types:
 - vocabulary: a word/phrase only. Use when there is no useful source sentence.
 - provided_example: target + exact source sentence. Best for textbook sentences.
-- grammar: a grammar structure/pattern + optional source sentence.
+- grammar: a grammar target/pattern/structure + optional source sentence. If there is only a sentence and no target, mark it as grammar with an empty target; the UI will show it as Grammar from sentence.
 
 Mode-specific rules:
 - If mode is Vocabulary, return mostly vocabulary candidates with target only.
 - If mode is Provided examples, return provided_example candidates in target + sentence form.
-- If mode is Grammar, return grammar candidates such as prefixes, verb patterns, connectors, tense patterns, or structures.
+- If mode is Grammar, return grammar candidates with a clear target whenever possible, e.g. verb pattern, tense pattern, connector, prefix, or structure. Preserve the source sentence as sentence/provided_example. If you cannot identify the target, return the sentence with type grammar and an empty target; do not label it as provided_example.
 - If mode is Mixed, return a careful mix, but do not over-extract.
 
 For provided_example:
 - target must be the word/phrase/chunk to learn.
 - sentence must be a complete useful source sentence from the OCR text.
 - Do not choose a random word from the sentence when a bold/highlighted/lesson item is obvious.
+
+For grammar candidates:
+- target must be the grammar focus/pattern, not the whole sentence.
+- sentence should be the exact source example if available.
+- If target is known, return type="grammar", target="...", sentence="...".
+- If only a useful sentence is found and no grammar target is clear, return type="grammar", target="", sentence="...".
 
 Return ONLY valid JSON, no markdown, no comments.
 

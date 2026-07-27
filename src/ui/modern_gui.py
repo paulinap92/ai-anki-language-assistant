@@ -575,12 +575,12 @@ class ModernVocabularyGui:
             command=self._clean_ocr_preview_text,
         ).grid(row=6, column=0, sticky="ew", padx=18, pady=(0, 10))
 
-        ctk.CTkLabel(left, text="Free local cherry-pick").grid(
+        ctk.CTkLabel(left, text="Find candidates without AI").grid(
             row=7, column=0, sticky="w", padx=18, pady=(4, 4)
         )
         ctk.CTkLabel(
             left,
-            text="Works without API calls. Uses selected text if highlighted, otherwise all extracted text.",
+            text="Local candidate finder. Works without API calls. Uses highlighted text if selected, otherwise all reviewed text.",
             wraplength=280,
             justify="left",
             text_color=("gray35", "gray75"),
@@ -751,7 +751,7 @@ class ModernVocabularyGui:
         ).grid(row=1, column=0, sticky="ew", padx=(0, 5), pady=(0, 6))
         ctk.CTkButton(
             candidate_actions,
-            text="Selected → Grammar Batch",
+            text="Selected → Grammar",
             command=lambda: self._mark_selected_ocr_candidates_as("grammar"),
         ).grid(row=1, column=1, sticky="ew", padx=5, pady=(0, 6))
         ctk.CTkButton(
@@ -1561,7 +1561,7 @@ class ModernVocabularyGui:
                 row=0, column=0, rowspan=5, sticky="nw", padx=(10, 4), pady=10
             )
 
-            label = self._ocr_candidate_display_type(item.get("type", "vocabulary"))
+            label = self._ocr_candidate_display_type(item.get("type", "vocabulary"), item.get("target", ""), item.get("sentence", ""))
             ctk.CTkLabel(
                 card,
                 text=label,
@@ -1609,7 +1609,7 @@ class ModernVocabularyGui:
             ).grid(row=0, column=0, sticky="ew", padx=(0, 4))
             ctk.CTkButton(
                 mark_buttons,
-                text="To Grammar Batch",
+                text="Use for Grammar",
                 width=100,
                 height=28,
                 command=lambda i=index: self._mark_ocr_candidate_as(i, "grammar"),
@@ -1700,11 +1700,15 @@ class ModernVocabularyGui:
         tk.Button(button_row, text="Cancel", command=editor.destroy).pack(side="left", padx=(8, 0))
 
     @staticmethod
-    def _ocr_candidate_display_type(candidate_type: str) -> str:
+    def _ocr_candidate_display_type(candidate_type: str, target: str = "", sentence: str = "") -> str:
         kind = ModernVocabularyGui._normalize_ocr_candidate_type(candidate_type)
+        target = (target or "").strip()
+        sentence = (sentence or "").strip()
         if kind == "provided_example":
-            return "provided example"
-        return kind
+            return "Provided example"
+        if kind == "grammar":
+            return "Grammar target" if target else "Grammar from sentence"
+        return "Word / phrase"
 
     def _update_ocr_candidate_status(self) -> None:
         total = len(self._ocr_candidate_items)
@@ -1730,10 +1734,11 @@ class ModernVocabularyGui:
     def _ocr_fields_for_candidate_type(candidate_type: str, target: str, sentence: str) -> tuple[str, str]:
         """Normalize candidate fields for the selected Batch intention.
 
-        Important UX rule for Import Material:
-        - grammar marking means "send this sentence/fragment to Grammar Batch".
-          It must not create a guessed grammar target in Import Material.
-        - Batch mode is responsible for choosing the grammar focus from the sentence.
+        UX rule for Import Material:
+        - If a grammar candidate already has a target/pattern, preserve it.
+        - If it only has a sentence/example, treat it as "Grammar from sentence"
+          and let Batch infer the grammar focus later.
+        - Never destroy a useful AI-found target when the user marks an item for Grammar.
         """
         kind = ModernVocabularyGui._normalize_ocr_candidate_type(candidate_type)
         target = (target or "").strip()
@@ -1747,10 +1752,9 @@ class ModernVocabularyGui:
                 return sentence, ""
             return target, sentence
         if kind == "grammar":
-            # Treat the selected content as a grammar example, not as a grammar focus.
-            # This prevents bad rows like "sentence | same sentence" and avoids
-            # manual Import trying to guess the grammar point.
-            return "", sentence or target
+            # Preserve an explicit grammar target if AI/manual input provided one.
+            # Empty target is allowed only for "Grammar from sentence".
+            return target, sentence or ("" if target else target)
         return target, sentence
 
     def _mark_ocr_candidate_as(self, index: int, candidate_type: str) -> None:
@@ -1793,7 +1797,7 @@ class ModernVocabularyGui:
             changed += 1
         self._render_ocr_candidate_cards()
         self._update_ocr_candidate_status()
-        label = "Grammar Batch examples" if kind == "grammar" else self._ocr_candidate_display_type(candidate_type)
+        label = "Grammar candidate(s)" if kind == "grammar" else self._ocr_candidate_display_type(candidate_type)
         self._ocr_candidate_status_var.set(f"Marked {changed} selected candidate(s) as {label}.")
 
     def _remove_selected_ocr_candidates(self) -> None:
@@ -1843,9 +1847,9 @@ class ModernVocabularyGui:
     @staticmethod
     def _normalize_ocr_candidate_type(candidate_type: str, default_mode: str = "Vocabulary") -> str:
         value = (candidate_type or default_mode or "vocabulary").strip().casefold().replace("_", " ")
-        if value in {"provided", "provided example", "provided examples", "sentence", "source sentence"}:
+        if value in {"provided", "provided example", "provided examples", "sentence", "source sentence", "example"}:
             return "provided_example"
-        if value in {"grammar", "structure", "pattern"}:
+        if value in {"grammar", "grammar target", "grammar from sentence", "structure", "pattern", "verb pattern", "tense pattern"}:
             return "grammar"
         return "vocabulary"
 
@@ -1860,7 +1864,9 @@ class ModernVocabularyGui:
                 return f"{label} | {target} | {sentence}"
             return f"{label} | {sentence or target}"
         if kind == "grammar":
-            return f"{label} | {sentence or target}"
+            if target and sentence:
+                return f"grammar | {target} | {sentence}"
+            return f"grammar | {target or sentence}"
         return f"{label} | {target or sentence}"
 
     def _ocr_append_candidate(self, candidate_type: str, target: str = "", sentence: str = "") -> None:
@@ -2373,6 +2379,8 @@ class ModernVocabularyGui:
         candidate_names = {
             "vocabulary",
             "grammar",
+            "grammar target",
+            "grammar from sentence",
             "provided_example",
             "provided example",
             "provided examples",
@@ -2462,11 +2470,9 @@ class ModernVocabularyGui:
                 word = f"{target} | {sentence}" if target and sentence else (sentence or target)
                 batch_mode = "Provided examples"
             elif candidate_type == "grammar":
-                # Import Material grammar means: send the selected sentence/fragment
-                # to Grammar Batch and let the Batch prompt identify the useful
-                # grammar point. Do not pass "target | same sentence" or a guessed
-                # grammar focus from Import.
-                word = sentence or target
+                # Preserve explicit AI/manual grammar targets. If there is no target,
+                # send the example sentence alone so Batch can infer the grammar focus.
+                word = f"{target} | {sentence}" if target and sentence else (target or sentence)
                 batch_mode = "Grammar"
             else:
                 word = target or sentence
