@@ -1,7 +1,34 @@
 # AI Anki Language Assistant
 
+### v11.1 — Grammar OCR / Source Focus Fix
+
+Improves grammar cards created from OCR / Import Material. The app now protects the source focus: the grammar target/structure stays in `Structure`, the source sentence stays as the sentence/audio target, and textbook rules are kept as notes instead of becoming audio sentences. See `RELEASE_NOTES_v11_1_GRAMMAR_OCR_SOURCE_FOCUS_FIX.md`.
+
+### v11.0.1 — Conversation staged visibility hotfix
+
+Conversation Practice now shows staged expressions as a clear numbered list before sending them to Batch / Queue. After sending, it keeps a visible **Last sent to Batch / Queue** summary and adds an **Open Batch / Queue** button. See `RELEASE_NOTES_v11_0_1_CONVERSATION_STAGED_VISIBILITY_HOTFIX.md`.
+
+### v11.0 — LLMOps / LangSmith Foundation
+
+Adds optional LangSmith tracing and a new **LLMOps / LangSmith** tab. The app now records a local AI event log and can send redacted traces for vocabulary generation, grammar generation, provided examples, Conversation Practice, and Import Material AI extraction. See `docs/LLMOPS_LANGSMITH.md`.
+
+Recommended `.env` for tracing:
+
+```env
+LANGSMITH_TRACING=true
+LANGSMITH_API_KEY=your_langsmith_api_key_here
+LANGSMITH_PROJECT=ai-anki-language-assistant
+LANGSMITH_REDACT_INPUTS=true
+```
+
+
 Desktop application for generating vocabulary and grammar cards, practising conversations, and exporting reviewed content to Anki.
 
+
+
+### v10.6.9 — Import/Batch runtime cleanup
+
+Adds a top-bar **Clean runtime** maintenance button, safe cleanup on app close, garbage collection after large Import/Batch clear operations, controlled cleanup of app-created `.import_cache` files, and diagnostics for TEMP/cache/pagefile usage. This is a stability hotfix for Windows sessions where disk space appears to disappear because pagefile usage grows during heavy import/generation workflows.
 
 ## v10.6.7 Grammar sentence split + audio-ready import
 

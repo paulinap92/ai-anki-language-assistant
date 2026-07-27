@@ -368,9 +368,14 @@ The input may be a grammar structure, connector, discourse phrase, verb pattern,
 exam-writing expression, or a complete example sentence.
 
 Requirements:
-- If the input uses the review format "grammar target | source sentence", put ONLY the source sentence, the part after "|", in the "sentence" field, and use the left side as the structure/pattern clue.
-- If the input is only a sentence, preserve that sentence exactly in the "sentence" field.
-- If the input is only a grammar pattern with no source sentence, create ONE natural example sentence for the "sentence" field and put the pattern itself in "structure".
+- SOURCE-FOCUS RULE: preserve the exact grammar/word-form target from the input. Do not replace a specific target with a broader lesson label.
+- If the input uses the review format "grammar target | source sentence", put ONLY the source sentence, the part after "|", in the "sentence" field, and use the left side as the structure/pattern clue by putting it in "structure" or at the start of "structure".
+- In "grammar target | source sentence" rows, the right side is the sentence/audio target. Never use a textbook rule, explanation, or abstract heading as the sentence/audio field.
+- If the left side is a concrete structure such as "used to + base verb", "Can I + base verb", "should have + past participle", or a word-form transformation such as "un hippi -> hippies", the card must visibly teach that exact target.
+- For word-form or transformation targets, keep the transformation in "structure" and use/generate a sentence that contains the transformed form.
+- If the input is only a sentence, preserve that sentence exactly in the "sentence" field and infer the most useful structure.
+- If the input is only a connector/discourse word such as "therefore", the "sentence" field may be that connector itself, and "structure" should describe its writing/connector function.
+- If the input is only a grammar pattern with no source sentence, create ONE natural example sentence for the "sentence" field and put the pattern itself in "structure"; otherwise a natural example sentence using the grammar item is required. Do not put abstract titles like "repeated actions in the past" in the sentence field unless that exact phrase is the target being learned.
 - Identify the useful grammar structure or writing function.
 - Explain the meaning/use in simple {target_language}.
 - Keep it practical for learners, not a long academic lesson.
@@ -385,10 +390,10 @@ Return ONLY valid JSON. Do not use markdown or comments outside JSON.
 Return this exact JSON structure:
 
 {{
-  "sentence": "source sentence if the input contains target | sentence; otherwise a natural example sentence using the grammar item",
+  "sentence": "the exact source sentence after |, the connector itself, or a natural example sentence using the grammar target; never a long rule/explanation",
   "target_language": "{target_language}",
   "meaning": "string",
-  "structure": "string",
+  "structure": "the exact source grammar target/pattern/word-form transformation whenever one is provided",
   "breakdown": ["string", "string"],
   "usage": "string",
   "context_example": "string",
@@ -565,8 +570,11 @@ For provided_example:
 - Do not choose a random word from the sentence when a bold/highlighted/lesson item is obvious.
 
 For grammar candidates:
-- target must be the grammar focus/pattern, not the whole sentence.
-- sentence should be the exact source example if available.
+- target must be the grammar focus/pattern/source target, not the whole sentence.
+- Preserve the exact source focus from headings, highlighted items, structure boxes, word-form transformations, or exercise prompts.
+- If the source focus is a concrete structure or transformation, e.g. "used to + base verb", "Can I + base verb", "un hippi -> hippies", target must contain that structure/transformation, not a broad topic such as "repeated actions in the past".
+- sentence should be the exact source example if available; this sentence becomes the audio/readable sentence later.
+- Do not put textbook rules or explanations in sentence. Put rules only in reason/context.
 - If target is known, return type="grammar", target="...", sentence="...".
 - If only a useful sentence is found and no grammar target is clear, return type="grammar", target="", sentence="...".
 

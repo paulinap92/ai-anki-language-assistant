@@ -8,6 +8,7 @@ from src.ai.providers.gemini import GeminiVocabularyClient
 from src.ai.providers.openai_provider import OpenAiVocabularyClient
 from src.ai.providers.claude import ClaudeVocabularyClient
 from src.ai.providers.ollama import OllamaVocabularyClient
+from src.observability import configure_llmops, wrap_ai_client
 
 
 def build_ai_clients(settings: Settings) -> dict[str, VocabularyAiClient]:
@@ -19,6 +20,14 @@ def build_ai_clients(settings: Settings) -> dict[str, VocabularyAiClient]:
     Returns:
         Provider names mapped to initialized clients.
     """
+    configure_llmops(
+        enabled=settings.langsmith_tracing,
+        project_name=settings.langsmith_project,
+        api_key=settings.langsmith_api_key,
+        endpoint=settings.langsmith_endpoint,
+        redact_inputs=settings.langsmith_redact_inputs,
+    )
+
     clients: dict[str, VocabularyAiClient] = {}
 
     if settings.gemini_api_key:
@@ -49,4 +58,4 @@ def build_ai_clients(settings: Settings) -> dict[str, VocabularyAiClient]:
         )
         clients[client.provider_name] = client
 
-    return clients
+    return {name: wrap_ai_client(client) for name, client in clients.items()}

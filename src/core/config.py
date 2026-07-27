@@ -38,6 +38,14 @@ def _clean_env_value(value: str | None) -> str | None:
     return cleaned
 
 
+def _env_bool(name: str, default: bool = False) -> bool:
+    """Parse common truthy/falsy environment values."""
+    value = _clean_env_value(os.getenv(name))
+    if value is None:
+        return default
+    return value.strip().lower() in {"1", "true", "yes", "on", "y"}
+
+
 @dataclass(frozen=True)
 class Settings:
     """Application settings."""
@@ -69,6 +77,11 @@ class Settings:
     stt_provider: str
     whisper_model: str
     whisper_language: str | None
+    langsmith_tracing: bool
+    langsmith_api_key: str | None
+    langsmith_project: str
+    langsmith_endpoint: str | None
+    langsmith_redact_inputs: bool
 
 
 def get_settings() -> Settings:
@@ -83,6 +96,15 @@ def get_settings() -> Settings:
     gemini_api_key = _clean_env_value(os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY"))
     openai_api_key = _clean_env_value(os.getenv("OPENAI_API_KEY"))
     anthropic_api_key = _clean_env_value(os.getenv("ANTHROPIC_API_KEY") or os.getenv("CLAUDE_API_KEY"))
+
+    langsmith_api_key = _clean_env_value(os.getenv("LANGSMITH_API_KEY") or os.getenv("LANGCHAIN_API_KEY"))
+    langsmith_project = (
+        _clean_env_value(os.getenv("LANGSMITH_PROJECT") or os.getenv("LANGCHAIN_PROJECT"))
+        or "ai-anki-language-assistant"
+    )
+    langsmith_endpoint = _clean_env_value(os.getenv("LANGSMITH_ENDPOINT") or os.getenv("LANGCHAIN_ENDPOINT"))
+    langsmith_tracing = _env_bool("LANGSMITH_TRACING", _env_bool("LANGCHAIN_TRACING_V2", False))
+    langsmith_redact_inputs = _env_bool("LANGSMITH_REDACT_INPUTS", True)
 
     ollama_model = _clean_env_value(os.getenv("OLLAMA_MODEL"))
 
@@ -122,4 +144,9 @@ def get_settings() -> Settings:
         stt_provider=_clean_env_value(os.getenv("STT_PROVIDER")) or "local_whisper",
         whisper_model=_clean_env_value(os.getenv("WHISPER_MODEL")) or "base",
         whisper_language=_clean_env_value(os.getenv("WHISPER_LANGUAGE")),
+        langsmith_tracing=langsmith_tracing,
+        langsmith_api_key=langsmith_api_key,
+        langsmith_project=langsmith_project,
+        langsmith_endpoint=langsmith_endpoint,
+        langsmith_redact_inputs=langsmith_redact_inputs,
     )

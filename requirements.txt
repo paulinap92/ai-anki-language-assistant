@@ -17,3 +17,5 @@ tenacity
 faster-whisper
 sounddevice
 soundfile
+
+langsmith

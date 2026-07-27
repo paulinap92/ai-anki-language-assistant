@@ -7,6 +7,7 @@ both the single flashcard generator and Conversation Practice workflow.
 from __future__ import annotations
 
 import csv
+import gc
 import html
 import json
 import logging
@@ -14,9 +15,12 @@ import os
 import re
 import subprocess
 import sys
+import shutil
+import tempfile
 import threading
 import time
 import tkinter as tk
+import webbrowser
 from datetime import datetime
 from pathlib import Path
 from tkinter import filedialog, messagebox, ttk
@@ -35,6 +39,7 @@ from src.ocr import HTML_EXTENSIONS, TEXT_EXTENSIONS, OcrExtractionError, clean_
 from src.speech import LocalWhisperSttService, SpeechService
 from src.speech.models import TtsResult
 from src.speech.voice_presets import get_voice_by_label, get_voice_labels
+from src.observability import get_llmops_tracer
 
 
 EXPLANATION_LANGUAGES = ["Polish", "English", "Spanish", "German", "Italian", "Same as target", "No translation"]
@@ -139,8 +144,9 @@ class ModernVocabularyGui:
         self._suggestion_vars: list[ctk.BooleanVar] = []
         self._suggestion_entry_vars: list[ctk.StringVar] = []
         self._flashcard_queue: list[str] = []
+        self._conversation_last_batch_send: list[str] = []
         self._conversation_queue_log_var = ctk.StringVar(
-            value="Select AI suggestions, edit them if needed, then send them to Batch / Queue. Nothing is added to Anki from this panel."
+            value="Select AI suggestions, edit them if needed, then stage them here. Nothing is added to Anki from this panel."
         )
 
         # Batch / Queue mode state.
@@ -168,6 +174,12 @@ class ModernVocabularyGui:
         self._batch_add_all_counts = {"added": 0, "updated": 0, "duplicates": 0, "uncertain": 0, "failed": 0}
         self._batch_add_all_failed_details: list[str] = []
         self._activity_var = ctk.StringVar(value="")
+
+        # LLMOps / LangSmith observability state. The real tracing is optional
+        # and configured through environment variables; the tab shows status and
+        # a small local event log even when external LangSmith is disabled.
+        self._llmops_status_var = ctk.StringVar(value="LLMOps status: not checked yet.")
+        self._llmops_project_var = ctk.StringVar(value="Project: ai-anki-language-assistant")
 
         # OCR / Import workflow state. OCR prepares candidate rows only; Batch
         # remains the place where cards are generated, reviewed, and added.
@@ -226,6 +238,7 @@ class ModernVocabularyGui:
         self._root.minsize(980, 680)
         self._root.grid_columnconfigure(0, weight=1)
         self._root.grid_rowconfigure(0, weight=1)
+        self._root.protocol("WM_DELETE_WINDOW", self._on_app_close)
 
     def _build_widgets(self) -> None:
         main = ctk.CTkFrame(self._root, corner_radius=0)
@@ -262,6 +275,7 @@ class ModernVocabularyGui:
             "Fix Cards",
             "Practice & Print",
             "Conversation Practice",
+            "LLMOps / LangSmith",
         ]
         for tab_name in tab_order:
             tabs.add(tab_name)
@@ -276,6 +290,7 @@ class ModernVocabularyGui:
         self._build_existing_cards_tab(tabs.tab("Fix Cards"))
         self._build_practice_tab(tabs.tab("Practice & Print"))
         self._build_conversation_tab(tabs.tab("Conversation Practice"))
+        self._build_llmops_tab(tabs.tab("LLMOps / LangSmith"))
         self._on_tab_changed()
 
         footer = ctk.CTkFrame(main, fg_color="transparent")
@@ -320,8 +335,195 @@ class ModernVocabularyGui:
         self._deck_box = ctk.CTkComboBox(settings, variable=self._deck_var, values=[])
         self._deck_box.grid(row=0, column=5, padx=(0, 8), pady=14, sticky="ew")
         ctk.CTkButton(settings, text="Refresh", width=90, command=self._load_decks).grid(
-            row=0, column=6, padx=(0, 16), pady=14
+            row=0, column=6, padx=(0, 8), pady=14
         )
+        ctk.CTkButton(
+            settings,
+            text="Clean runtime",
+            width=120,
+            command=self._manual_runtime_cleanup,
+        ).grid(row=0, column=7, padx=(0, 16), pady=14)
+
+
+    def _safe_destroy_children(self, widget: object | None) -> int:
+        """Destroy direct child widgets and ignore already-destroyed Tk objects."""
+        if widget is None:
+            return 0
+        destroyed = 0
+        try:
+            children = list(widget.winfo_children())  # type: ignore[attr-defined]
+        except Exception:
+            return 0
+        for child in children:
+            try:
+                child.destroy()
+                destroyed += 1
+            except Exception:
+                continue
+        return destroyed
+
+    def _folder_size_mb(self, path: Path) -> float:
+        """Best-effort folder size helper for diagnostics, not for core flow."""
+        total = 0
+        try:
+            for item in path.rglob("*"):
+                try:
+                    if item.is_file():
+                        total += item.stat().st_size
+                except OSError:
+                    continue
+        except OSError:
+            return 0.0
+        return round(total / (1024 * 1024), 2)
+
+    def _windows_pagefile_summary(self) -> str:
+        """Return a short pagefile summary on Windows without requiring psutil."""
+        if os.name != "nt":
+            return "pagefile: n/a"
+        command = (
+            "$p=Get-CimInstance Win32_PageFileUsage; "
+            "if($p){($p|ForEach-Object{\"$($_.Name): current=$($_.CurrentUsage) MB, peak=$($_.PeakUsage) MB\"}) -join '; '}"
+        )
+        try:
+            result = subprocess.run(
+                ["powershell", "-NoProfile", "-Command", command],
+                capture_output=True,
+                text=True,
+                timeout=4,
+                check=False,
+            )
+        except Exception:
+            return "pagefile: unavailable"
+        output = (result.stdout or "").strip()
+        return output or "pagefile: unavailable"
+
+    def _clear_current_import_cache_files(self) -> int:
+        """Delete only app-created import-cache files referenced by current OCR sources."""
+        cache_root = Path(".import_cache").resolve()
+        removed = 0
+        for source_path in list(getattr(self, "_ocr_source_paths", [])):
+            try:
+                resolved = Path(source_path).resolve()
+                if not resolved.is_file() or not resolved.is_relative_to(cache_root):
+                    continue
+                resolved.unlink(missing_ok=True)
+                removed += 1
+            except Exception:
+                continue
+        if removed:
+            LOGGER.info("Import cache cleanup removed %s current file(s)", removed)
+        return removed
+
+    def _runtime_diagnostics_summary(self) -> str:
+        """Summarise the sizes that explain most temporary disk pressure."""
+        try:
+            disk = shutil.disk_usage(Path.cwd().anchor or ".")
+            free_gb = disk.free / (1024 ** 3)
+        except Exception:
+            free_gb = 0.0
+        temp_mb = self._folder_size_mb(Path(tempfile.gettempdir()))
+        import_mb = self._folder_size_mb(Path(".import_cache"))
+        audio_mb = self._folder_size_mb(Path(".audio_cache"))
+        pagefile = self._windows_pagefile_summary()
+        return (
+            f"C: free approx: {free_gb:.2f} GB\n"
+            f"TEMP: {temp_mb:.2f} MB\n"
+            f".import_cache: {import_mb:.2f} MB\n"
+            f".audio_cache: {audio_mb:.2f} MB\n"
+            f"{pagefile}"
+        )
+
+    def _cleanup_runtime_memory(self, reason: str = "runtime cleanup", *, aggressive: bool = False) -> int:
+        """Release app-owned references and ask Python to collect garbage.
+
+        This intentionally does not touch C:\\pagefile.sys. It only clears app
+        state that can keep large OCR/import/batch objects alive. In non-aggressive
+        mode it keeps current user data; aggressive mode is used on app close.
+        """
+        if aggressive:
+            self._generated_card = None
+            self._generated_provider_name = None
+            self._generated_audio = None
+            self._generated_grammar = None
+            self._generated_grammar_provider_name = None
+            self._batch_generated_card = None
+            self._batch_generated_provider_name = None
+            self._batch_generated_grammar = None
+            self._latest_suggestions = []
+            self._suggestion_items = []
+            self._suggestion_vars = []
+            self._suggestion_entry_vars = []
+            self._flashcard_queue = []
+            self._conversation_last_batch_send = []
+            self._ocr_source_paths = []
+            self._ocr_candidate_items = []
+            self._ocr_candidate_vars = []
+            self._batch_items = []
+            self._batch_add_all_indexes = []
+            self._batch_add_all_existing_notes = {}
+            self._batch_add_all_failed_details = []
+            self._speech_notes = []
+            self._speech_note_vars = []
+            self._speech_audio_status_by_note_id = {}
+            self._speech_audio_error_by_note_id = {}
+            self._speech_audio_path_by_note_id = {}
+            self._existing_cards = []
+            self._existing_card_vars = []
+            self._practice_items = []
+            self._practice_item_vars = []
+            self._practice_questions = []
+        else:
+            # Safe cleanup: clear stale generated payloads only when there is no
+            # active Batch item using them. Current visible user data stays intact.
+            if not self._batch_items:
+                self._batch_generated_card = None
+                self._batch_generated_provider_name = None
+                self._batch_generated_grammar = None
+                self._batch_add_all_indexes = []
+                self._batch_add_all_existing_notes = {}
+                self._batch_add_all_failed_details = []
+                try:
+                    self._batch_paste_text.delete("1.0", "end")
+                except Exception:
+                    pass
+            if not self._ocr_candidate_items and not self._get_ocr_text().strip():
+                self._ocr_source_paths = []
+            if not self._flashcard_queue:
+                self._latest_suggestions = []
+        collected = gc.collect()
+        LOGGER.info("Runtime cleanup completed: reason=%s aggressive=%s collected=%s", reason, aggressive, collected)
+        try:
+            self._record_activity(f"Runtime cleanup: {collected} object(s) collected")
+        except Exception:
+            pass
+        return collected
+
+    def _manual_runtime_cleanup(self) -> None:
+        collected = self._cleanup_runtime_memory("manual button", aggressive=False)
+        summary = self._runtime_diagnostics_summary()
+        self._status_var.set(f"Runtime cleanup completed. Collected {collected} object(s).")
+        messagebox.showinfo("Runtime cleanup", f"Runtime cleanup completed.\nCollected objects: {collected}\n\n{summary}")
+
+    def _on_app_close(self) -> None:
+        """Stop background loops, release app state, and close the Tk root safely."""
+        self._batch_auto_generate_stop_requested = True
+        self._batch_add_all_stop_requested = True
+        try:
+            self._speech_audio_stop_requested.set()
+        except Exception:
+            pass
+        after_id = getattr(self, "_recording_timer_after_id", None)
+        if after_id:
+            try:
+                self._root.after_cancel(after_id)
+            except Exception:
+                pass
+            self._recording_timer_after_id = None
+        self._cleanup_runtime_memory("app close", aggressive=True)
+        try:
+            self._root.destroy()
+        except Exception:
+            pass
 
 
     def _on_tab_changed(self) -> None:
@@ -339,7 +541,7 @@ class ModernVocabularyGui:
             current_tab = tabs.get()
         except Exception:
             return
-        if current_tab in {"Speech / Audio", "Conversation Practice"}:
+        if current_tab in {"Speech / Audio", "Conversation Practice", "LLMOps / LangSmith"}:
             top_settings.grid_remove()
         else:
             top_settings.grid(row=1, column=0, sticky="ew", padx=24, pady=(8, 4))
@@ -355,12 +557,180 @@ class ModernVocabularyGui:
             "Fix Cards": "Fix Cards ready.",
             "Practice & Print": "Practice & Print ready.",
             "Conversation Practice": "Conversation Practice ready.",
+            "LLMOps / LangSmith": "LLMOps / LangSmith ready.",
         }.get(current_tab)
         if context_status and not any(
             token in self._status_var.get().lower()
             for token in ("generating", "recording", "transcribing", "adding", "scanning")
         ):
             self._status_var.set(context_status)
+
+
+    def _build_llmops_tab(self, parent: ctk.CTkFrame) -> None:
+        """Build a small LangSmith/LLMOps status and event-log tab."""
+        layout = ctk.CTkFrame(parent, fg_color="transparent")
+        layout.grid(row=0, column=0, sticky="nsew", padx=8, pady=8)
+        layout.grid_columnconfigure(0, weight=1)
+        layout.grid_rowconfigure(3, weight=1)
+
+        header = ctk.CTkFrame(layout, corner_radius=18)
+        header.grid(row=0, column=0, sticky="ew", pady=(0, 12))
+        header.grid_columnconfigure(0, weight=1)
+        ctk.CTkLabel(
+            header,
+            text="LLMOps / LangSmith",
+            font=ctk.CTkFont(size=22, weight="bold"),
+        ).grid(row=0, column=0, sticky="w", padx=18, pady=(18, 4))
+        ctk.CTkLabel(
+            header,
+            text="Optional tracing layer for AI calls: provider, model, latency, validation flow and safe input/output summaries.",
+            text_color=("gray35", "gray75"),
+            wraplength=1000,
+        ).grid(row=1, column=0, sticky="w", padx=18, pady=(0, 18))
+
+        status = ctk.CTkFrame(layout, corner_radius=18)
+        status.grid(row=1, column=0, sticky="ew", pady=(0, 12))
+        status.grid_columnconfigure(1, weight=1)
+        ctk.CTkLabel(status, text="Status", font=ctk.CTkFont(size=16, weight="bold")).grid(
+            row=0, column=0, sticky="w", padx=18, pady=(16, 4)
+        )
+        ctk.CTkLabel(status, textvariable=self._llmops_status_var, anchor="w").grid(
+            row=1, column=0, columnspan=4, sticky="ew", padx=18, pady=(0, 4)
+        )
+        ctk.CTkLabel(status, textvariable=self._llmops_project_var, anchor="w").grid(
+            row=2, column=0, columnspan=4, sticky="ew", padx=18, pady=(0, 12)
+        )
+        ctk.CTkButton(status, text="Refresh status", width=130, command=self._refresh_llmops_status).grid(
+            row=3, column=0, sticky="w", padx=(18, 8), pady=(0, 16)
+        )
+        ctk.CTkButton(status, text="Test trace", width=110, command=self._send_llmops_test_trace).grid(
+            row=3, column=1, sticky="w", padx=(0, 8), pady=(0, 16)
+        )
+        ctk.CTkButton(status, text="Copy .env setup", width=140, command=self._copy_llmops_setup).grid(
+            row=3, column=2, sticky="w", padx=(0, 8), pady=(0, 16)
+        )
+        ctk.CTkButton(status, text="Open LangSmith", width=140, command=self._open_langsmith).grid(
+            row=3, column=3, sticky="w", padx=(0, 18), pady=(0, 16)
+        )
+
+        info = ctk.CTkFrame(layout, corner_radius=18)
+        info.grid(row=2, column=0, sticky="ew", pady=(0, 12))
+        info.grid_columnconfigure(0, weight=1)
+        ctk.CTkLabel(info, text="What is traced", font=ctk.CTkFont(size=16, weight="bold")).grid(
+            row=0, column=0, sticky="w", padx=18, pady=(16, 4)
+        )
+        ctk.CTkLabel(
+            info,
+            text=(
+                "Current MVP traces vocabulary cards, grammar cards, provided-example cards, conversation start/feedback, "
+                "and raw AI extraction calls used by Import Material. Redaction is ON by default, so source text is summarized "
+                "instead of being sent in full unless you disable LANGSMITH_REDACT_INPUTS."
+            ),
+            wraplength=1000,
+            justify="left",
+            text_color=("gray35", "gray75"),
+        ).grid(row=1, column=0, sticky="ew", padx=18, pady=(0, 16))
+
+        log_panel = ctk.CTkFrame(layout, corner_radius=18)
+        log_panel.grid(row=3, column=0, sticky="nsew")
+        log_panel.grid_columnconfigure(0, weight=1)
+        log_panel.grid_rowconfigure(1, weight=1)
+        ctk.CTkLabel(log_panel, text="Recent AI events", font=ctk.CTkFont(size=16, weight="bold")).grid(
+            row=0, column=0, sticky="w", padx=18, pady=(16, 8)
+        )
+        self._llmops_log_text = ctk.CTkTextbox(log_panel, wrap="word", font=ctk.CTkFont(size=13))
+        self._llmops_log_text.grid(row=1, column=0, sticky="nsew", padx=18, pady=(0, 12))
+        buttons = ctk.CTkFrame(log_panel, fg_color="transparent")
+        buttons.grid(row=2, column=0, sticky="ew", padx=18, pady=(0, 16))
+        ctk.CTkButton(buttons, text="Refresh log", width=120, command=self._refresh_llmops_log).grid(
+            row=0, column=0, sticky="w", padx=(0, 8)
+        )
+        ctk.CTkButton(buttons, text="Clear local log", width=130, command=self._clear_llmops_log).grid(
+            row=0, column=1, sticky="w"
+        )
+        self._refresh_llmops_status()
+        self._refresh_llmops_log()
+
+    def _refresh_llmops_status(self) -> None:
+        tracer = get_llmops_tracer()
+        package_status = "available" if tracer.langsmith_available else "missing"
+        if tracer.langsmith_available is None:
+            package_status = "not checked"
+        api_status = "configured" if tracer.api_key_configured else "missing"
+        redact_status = "ON" if tracer.redact_inputs else "OFF"
+        self._llmops_status_var.set(
+            f"LangSmith: {tracer.status_text()} | package: {package_status} | API key: {api_status} | redaction: {redact_status}"
+        )
+        self._llmops_project_var.set(f"Project: {tracer.project_name}")
+        self._refresh_llmops_log()
+
+    def _format_llmops_events(self) -> str:
+        tracer = get_llmops_tracer()
+        events = tracer.snapshot_events()
+        if not events:
+            return (
+                "No AI events yet. Generate a card, run Import Material with AI, or click Test trace.\n\n"
+                "If LangSmith is disabled, this tab still shows a local event log. If enabled, successful events are also sent to LangSmith."
+            )
+        lines = []
+        for event in events[:40]:
+            sent = "sent" if event.sent_to_langsmith else "local"
+            lines.append(
+                f"[{event.timestamp}] {event.feature} | {event.provider} {event.model} | "
+                f"{event.status} | {event.latency_ms} ms | {sent}"
+            )
+            if event.detail:
+                lines.append(f"    {event.detail}")
+        return "\n".join(lines)
+
+    def _refresh_llmops_log(self) -> None:
+        text_widget = getattr(self, "_llmops_log_text", None)
+        if text_widget is None:
+            return
+        text_widget.configure(state="normal")
+        text_widget.delete("1.0", "end")
+        text_widget.insert("1.0", self._format_llmops_events())
+        text_widget.configure(state="disabled")
+
+    def _clear_llmops_log(self) -> None:
+        get_llmops_tracer().clear_events()
+        self._refresh_llmops_log()
+        self._record_activity("LLMOps log cleared")
+
+    def _send_llmops_test_trace(self) -> None:
+        tracer = get_llmops_tracer()
+        try:
+            result = tracer.trace_call(
+                feature="llmops_test_trace",
+                provider="system",
+                model="none",
+                inputs={"message": "Manual Test trace from AI Anki desktop UI"},
+                metadata={"source": "LLMOps tab", "app": "AI Anki Language Assistant"},
+                call_fn=lambda: "LangSmith test trace OK",
+            )
+        except Exception as exc:
+            self._refresh_llmops_status()
+            messagebox.showerror("LangSmith test trace", f"Test trace failed: {exc}")
+            return
+        self._refresh_llmops_status()
+        self._status_var.set(f"LLMOps test trace completed: {result}")
+        messagebox.showinfo("LangSmith test trace", "Test trace completed. Check the local log and LangSmith project if tracing is enabled.")
+
+    def _copy_llmops_setup(self) -> None:
+        setup = (
+            "# LangSmith / LLMOps tracing\n"
+            "LANGSMITH_TRACING=true\n"
+            "LANGSMITH_API_KEY=your_langsmith_api_key_here\n"
+            "LANGSMITH_PROJECT=ai-anki-language-assistant\n"
+            "LANGSMITH_REDACT_INPUTS=true\n"
+        )
+        self._root.clipboard_clear()
+        self._root.clipboard_append(setup)
+        self._status_var.set("LangSmith .env setup copied to clipboard.")
+        self._record_activity("LangSmith setup copied")
+
+    def _open_langsmith(self) -> None:
+        webbrowser.open("https://smith.langchain.com/")
 
     def _build_single_flashcard_tab(self, parent: ctk.CTkFrame) -> None:
         layout = ctk.CTkFrame(parent, fg_color="transparent")
@@ -880,7 +1250,7 @@ class ModernVocabularyGui:
         )
         ctk.CTkLabel(
             vocab_panel,
-            text="Checkbox → edit/remove → Add selected to Batch / Queue. No direct Anki write here.",
+            text="Checkbox → edit/remove → stage here → send to Batch / Queue. No direct Anki write here.",
             text_color=("gray35", "gray75"),
         ).grid(row=1, column=0, sticky="w", padx=18, pady=(0, 8))
         self._suggestions_frame = ctk.CTkScrollableFrame(vocab_panel, height=145, corner_radius=14)
@@ -917,13 +1287,13 @@ class ModernVocabularyGui:
             wraplength=430,
             justify="left",
         ).grid(row=7, column=0, sticky="ew", padx=18, pady=(0, 6))
-        self._queue_text = ctk.CTkTextbox(vocab_panel, wrap="word", height=165, font=ctk.CTkFont(size=13))
+        self._queue_text = ctk.CTkTextbox(vocab_panel, wrap="word", height=210, font=ctk.CTkFont(size=13))
         self._queue_text.grid(row=8, column=0, sticky="nsew", padx=18, pady=(0, 10))
         self._refresh_queue_text()
 
         queue_buttons = ctk.CTkFrame(vocab_panel, fg_color="transparent")
         queue_buttons.grid(row=9, column=0, sticky="ew", padx=18, pady=(0, 18))
-        queue_buttons.grid_columnconfigure((0, 1), weight=1)
+        queue_buttons.grid_columnconfigure((0, 1, 2), weight=1)
         ctk.CTkButton(queue_buttons, text="Clear staged", command=self._clear_queue).grid(
             row=0, column=0, sticky="ew", padx=(0, 6)
         )
@@ -931,7 +1301,19 @@ class ModernVocabularyGui:
             queue_buttons,
             text="Add staged to Batch / Queue",
             command=self._send_conversation_queue_to_batch,
-        ).grid(row=0, column=1, sticky="ew", padx=(6, 0))
+        ).grid(row=0, column=1, sticky="ew", padx=6)
+        ctk.CTkButton(
+            queue_buttons,
+            text="Open Batch / Queue",
+            command=self._open_batch_queue_tab,
+        ).grid(row=0, column=2, sticky="ew", padx=(6, 0))
+
+    def _open_batch_queue_tab(self) -> None:
+        try:
+            self._tabs.set("Batch / Queue")
+            self._status_var.set("Batch / Queue opened. Review staged conversation items there before adding to Anki.")
+        except Exception:
+            self._status_var.set("Could not switch to Batch / Queue automatically.")
 
     def _build_batch_tab(self, parent: ctk.CTkFrame) -> None:
         """Build the batch vocabulary review workflow."""
@@ -1328,6 +1710,7 @@ class ModernVocabularyGui:
         self._batch_generated_provider_name = None
         self._batch_generated_grammar = None
         self._show_current_batch_item(generate=False)
+        self._cleanup_runtime_memory("batch list loaded", aggressive=False)
         self._record_activity(f"Loaded {len(clean_words)} batch item(s) without generation")
         self._autosave_batch_session("list loaded")
 
@@ -2264,6 +2647,7 @@ class ModernVocabularyGui:
         self._ocr_candidate_vars = []
         self._render_ocr_candidate_cards()
         self._ocr_candidate_status_var.set("Candidate drafts cleared.")
+        self._cleanup_runtime_memory("clear ocr candidate drafts", aggressive=False)
 
     def _ocr_get_selected_text(self) -> str:
         textbox = getattr(self, "_ocr_textbox", None)
@@ -2610,6 +2994,7 @@ class ModernVocabularyGui:
     def _ocr_clear_manual_candidate_fields(self) -> None:
         self._ocr_manual_target_var.set("")
         self._ocr_manual_example_var.set("")
+        self._cleanup_runtime_memory("clear manual import candidate fields", aggressive=False)
 
     # Backward-compatible callbacks from previous OCR buttons.
     def _ocr_add_selection_as_provided_example(self) -> None:
@@ -3017,6 +3402,7 @@ class ModernVocabularyGui:
         self._show_current_batch_item(generate=False)
         self._autosave_batch_session("ocr candidates sent to batch")
         self._ocr_candidate_status_var.set(f"Sent {len(clean_items)} selected candidate(s) to Batch.")
+        self._cleanup_runtime_memory("ocr candidates sent to batch", aggressive=False)
         self._record_activity(f"OCR → Batch: {len(clean_items)}")
         try:
             self._tabs.set("Batch / Queue")
@@ -3024,6 +3410,7 @@ class ModernVocabularyGui:
             pass
 
     def _clear_ocr_import(self) -> None:
+        removed_cache_files = self._clear_current_import_cache_files()
         self._ocr_source_paths = []
         self._set_ocr_text("")
         self._clear_ocr_candidates()
@@ -3031,6 +3418,9 @@ class ModernVocabularyGui:
         self._ocr_candidate_status_var.set("No candidates extracted yet.")
         self._ocr_manual_target_var.set("")
         self._ocr_manual_example_var.set("")
+        self._cleanup_runtime_memory("clear import material", aggressive=False)
+        if removed_cache_files:
+            self._ocr_status_var.set(f"Import cleared. Removed {removed_cache_files} cached screenshot/file(s).")
 
     def _show_current_batch_item(self, generate: bool = False) -> None:
         if not self._batch_items:
@@ -3128,6 +3518,15 @@ class ModernVocabularyGui:
         topic = str(item.get("topic") or self._batch_topic_var.get()).strip()
         if topic:
             preview += f"\n\nTOPIC / CONTEXT\n{topic}"
+        source_focus_warning = str(item.get("source_focus_warning", "")).strip()
+        if source_focus_warning:
+            preview += f"\n\nSOURCE FOCUS CHECK\n{source_focus_warning}"
+        grammar_target = str(item.get("grammar_target", "")).strip()
+        if grammar_target:
+            preview += f"\n\nSOURCE GRAMMAR TARGET\n{grammar_target}"
+        provided_sentence = str(item.get("provided_sentence", "")).strip()
+        if provided_sentence:
+            preview += f"\n\nSOURCE SENTENCE / AUDIO\n{provided_sentence}"
         error = str(item.get("error", "")).strip()
         if error:
             preview += f"\n\nDETAILS\n{error}"
@@ -3489,8 +3888,11 @@ class ModernVocabularyGui:
                 "SENTENCE TO READ",
                 sentence_to_read or "AI will generate a natural example sentence.",
             ])
+            source_focus_warning = str((item or {}).get("source_focus_warning") or "").strip()
             if source_rule:
                 blocks.extend(["", "SOURCE RULE / NOTE", source_rule])
+            if source_focus_warning:
+                blocks.extend(["", "SOURCE FOCUS WARNING", source_focus_warning])
         elif effective_mode == "Provided examples":
             target, sentence = self._parse_provided_example_item(word)
             blocks.extend([
@@ -3863,11 +4265,12 @@ class ModernVocabularyGui:
             return
 
         if resolved_mode == "Grammar":
+            grammar_topic_context = self._grammar_topic_context_for_item(item, topic_context)
             try:
                 grammar_card = self._current_ai_client().generate_grammar_card(
                     word,
                     target_language,
-                    topic_context,
+                    grammar_topic_context,
                 )
             except Exception as exc:
                 detail = str(exc)
@@ -3900,6 +4303,11 @@ class ModernVocabularyGui:
                 else:
                     LOGGER.exception("Batch grammar generation failed for item=%s", word)
                 return
+            grammar_card, focus_warnings = self._grammar_card_with_source_focus_guard(item, grammar_card)
+            if focus_warnings:
+                item["source_focus_warning"] = ", ".join(focus_warnings)
+            else:
+                item.pop("source_focus_warning", None)
             item["status"] = "ready"
             item["grammar_card"] = self._grammar_to_batch_payload(grammar_card)
             item.pop("card", None)
@@ -4244,6 +4652,14 @@ class ModernVocabularyGui:
         self._batch_add_all_stop_requested = False
         self._show_current_batch_item()
         self._set_batch_preview("Load a list to start reviewing cards.")
+        self._batch_add_all_indexes = []
+        self._batch_add_all_existing_notes = {}
+        self._batch_add_all_failed_details = []
+        try:
+            self._batch_paste_text.delete("1.0", "end")
+        except Exception:
+            pass
+        self._cleanup_runtime_memory("clear batch", aggressive=False)
         self._record_activity("Batch cleared")
 
 
@@ -4383,6 +4799,150 @@ class ModernVocabularyGui:
         if cls._looks_like_complete_sentence(text):
             return "", text
         return text, ""
+
+    @staticmethod
+    def _normalize_focus_for_contains(value: str) -> str:
+        text = clean_ocr_text(str(value or "")).casefold()
+        text = text.replace("→", " -> ").replace("—", "-").replace("–", "-")
+        text = re.sub(r"[\"'“”‘’`]+", "", text)
+        text = re.sub(r"[^a-z0-9áéíóúüñ+>/-]+", " ", text)
+        return re.sub(r"\s+", " ", text).strip()
+
+    @classmethod
+    def _focus_fragments_for_guard(cls, target: str) -> list[str]:
+        """Small, visible source-focus fragments used to protect OCR grammar cards.
+
+        This is intentionally conservative: it should catch obvious targets
+        like "used to", "Can I", "should have", "hippi -> hippies" without
+        trying to validate every grammar topic semantically.
+        """
+        text = clean_ocr_text(str(target or "")).strip()
+        if not text:
+            return []
+        normalized = cls._normalize_focus_for_contains(text)
+        if not normalized:
+            return []
+
+        fragments: list[str] = []
+        # Word-form transformations: keep both sides and the whole target.
+        if "->" in normalized or "→" in text:
+            pieces = [part.strip(" -") for part in re.split(r"\s*(?:->|→)\s*", normalized) if part.strip(" -")]
+            fragments.extend(piece for piece in pieces if len(piece) >= 3)
+            fragments.append(normalized)
+
+        # Grammar alternatives / patterns.
+        stem = re.split(r"\s+\+\s+|\s+to talk about\s+|\s+used to show\s+", normalized, maxsplit=1)[0].strip()
+        pieces = [piece.strip(" -/") for piece in re.split(r"\s*/\s*", stem or normalized) if piece.strip(" -/")]
+        for piece in pieces:
+            piece = re.sub(r"\b(base verb|past participle|infinitive|object|complement|clause|adjective|noun|substantive)\b", "", piece).strip()
+            piece = re.sub(r"\s+", " ", piece).strip(" -+")
+            if len(piece) >= 3:
+                fragments.append(piece)
+
+        if len(normalized) <= 80:
+            fragments.append(normalized)
+
+        result: list[str] = []
+        seen: set[str] = set()
+        for fragment in fragments:
+            key = fragment.casefold()
+            if key and key not in seen:
+                result.append(fragment)
+                seen.add(key)
+        return result
+
+    @classmethod
+    def _text_contains_any_focus_fragment(cls, text: str, target: str) -> bool:
+        haystack = cls._normalize_focus_for_contains(text)
+        if not haystack:
+            return False
+        for fragment in cls._focus_fragments_for_guard(target):
+            frag = cls._normalize_focus_for_contains(fragment)
+            if frag and frag in haystack:
+                return True
+        return False
+
+    @classmethod
+    def _grammar_sentence_needs_focus_warning(cls, target: str, sentence: str) -> bool:
+        """Return True when an AI-generated grammar sentence looks like a topic label.
+
+        If Import Material provided a concrete grammar target but no source
+        sentence, the provider must create an actual example sentence. A short
+        abstract title such as "repeated actions in the past" is not a good
+        audio/readable sentence for the card.
+        """
+        target = clean_ocr_text(str(target or "")).strip()
+        sentence = clean_ocr_text(str(sentence or "")).strip()
+        if not target or not sentence:
+            return False
+        if cls._looks_like_complete_sentence(sentence):
+            return False
+        # Connectors and single discourse words can legitimately be the top item.
+        if len(target.split()) <= 2 and cls._text_contains_any_focus_fragment(sentence, target):
+            return False
+        if not cls._text_contains_any_focus_fragment(sentence, target):
+            return True
+        return False
+
+    @classmethod
+    def _grammar_card_with_source_focus_guard(
+        cls,
+        item: dict[str, object],
+        card: GrammarAnalysis,
+    ) -> tuple[GrammarAnalysis, list[str]]:
+        """Keep OCR/import grammar fields aligned after provider generation.
+
+        The provider may return a fluent but badly mapped card: source sentence
+        replaced by a rule, or exact target hidden inside a broad topic. This
+        guard is intentionally small and deterministic:
+        - exact source sentence from Import Material always wins for sentence/audio;
+        - explicit source grammar target always remains visible in Structure;
+        - suspicious abstract generated sentence gets a warning for review.
+        """
+        raw_target, raw_sentence = cls._split_batch_grammar_item(str(item.get("word") or ""))
+        grammar_target = clean_ocr_text(str(item.get("grammar_target") or raw_target or "")).replace("\n", " ").strip()
+        provided_sentence = clean_ocr_text(str(item.get("provided_sentence") or raw_sentence or "")).replace("\n", " ").strip()
+        source_rule = clean_ocr_text(str(item.get("source_rule") or "")).replace("\n", " ").strip()
+        update: dict[str, object] = {}
+        warnings: list[str] = []
+
+        if provided_sentence and clean_ocr_text(card.sentence).strip() != provided_sentence:
+            update["sentence"] = provided_sentence
+            warnings.append("audio_sentence_restored_from_source")
+
+        if grammar_target and not cls._text_contains_any_focus_fragment(card.structure, grammar_target):
+            # Do not let a concrete OCR target be buried or replaced by a broad
+            # functional label. Keep the original provider wording in usage if useful.
+            update["structure"] = grammar_target
+            warnings.append("source_target_restored_in_structure")
+
+        effective_sentence = str(update.get("sentence") or card.sentence)
+        if grammar_target and not provided_sentence and cls._grammar_sentence_needs_focus_warning(grammar_target, effective_sentence):
+            warnings.append("unclear_card_focus_generated_sentence_does_not_show_target")
+
+        if source_rule and source_rule not in card.usage and len(source_rule) <= 280:
+            # Preserve source rule as context, but never as audio sentence.
+            usage = (card.usage or "").strip()
+            update["usage"] = f"{usage}\n\nSource note: {source_rule}".strip()
+            warnings.append("source_rule_kept_as_note_not_audio")
+
+        if not update:
+            return card, warnings
+        return card.model_copy(update=update), warnings
+
+    def _grammar_topic_context_for_item(self, item: dict[str, object], base_topic_context: str) -> str:
+        """Append source-focus hints to the prompt context for OCR grammar rows."""
+        pieces = [base_topic_context.strip()] if base_topic_context.strip() else []
+        grammar_target = str(item.get("grammar_target") or "").strip()
+        provided_sentence = str(item.get("provided_sentence") or "").strip()
+        source_rule = str(item.get("source_rule") or "").strip()
+        if grammar_target:
+            pieces.append(f"Source grammar target/focus: {grammar_target}")
+        if provided_sentence:
+            pieces.append(f"Source sentence to preserve as audio sentence: {provided_sentence}")
+        if source_rule:
+            pieces.append(f"Source rule/note, not audio: {source_rule}")
+        return "\n".join(pieces)
 
     def _quality_expected_input_for_item(self, item: dict[str, object], card: VocabularyCard) -> str:
         """Return the expected lexical item for quality validation.
@@ -8069,28 +8629,47 @@ class ModernVocabularyGui:
                 self._flashcard_queue.append(cleaned)
                 existing_lower.add(cleaned.lower())
                 added += 1
+        if added:
+            self._conversation_last_batch_send = []
         self._refresh_queue_text()
         total = len(self._flashcard_queue)
         self._conversation_queue_log_var.set(
-            f"Staged {added} new expression(s). Total staged: {total}. Next step: Add staged to Batch / Queue."
+            f"Staged {added} new expression(s). Total staged: {total}. Review the list below, then send it to Batch / Queue."
         )
         self._status_var.set(f"Staged {added} expression(s) for Batch / Queue. Nothing added to Anki yet.")
 
     def _refresh_queue_text(self) -> None:
         self._queue_text.configure(state="normal")
         self._queue_text.delete("1.0", "end")
-        if not self._flashcard_queue:
-            self._queue_text.insert("1.0", "No staged expressions yet. Use Stage selected / Stage all above.")
+        if self._flashcard_queue:
+            lines = [
+                f"STAGED — NOT SENT YET ({len(self._flashcard_queue)} item(s))",
+                "These will go to Batch / Queue only after you click Add staged to Batch / Queue.",
+                "",
+            ]
+            lines.extend(f"{idx}. {item}" for idx, item in enumerate(self._flashcard_queue, start=1))
+            self._queue_text.insert("1.0", "\n".join(lines))
+        elif self._conversation_last_batch_send:
+            lines = [
+                f"LAST SENT TO BATCH / QUEUE ({len(self._conversation_last_batch_send)} item(s))",
+                "Nothing was added directly to Anki. Review/generate/add these in the Batch / Queue tab.",
+                "",
+            ]
+            lines.extend(f"{idx}. {item}" for idx, item in enumerate(self._conversation_last_batch_send, start=1))
+            self._queue_text.insert("1.0", "\n".join(lines))
         else:
             self._queue_text.insert(
                 "1.0",
-                "\n".join(f"{idx}. {item}" for idx, item in enumerate(self._flashcard_queue, start=1)),
+                "No staged expressions yet. Use Stage selected / Stage all above.\n\n"
+                "After staging, this box will show the exact items before they are sent to Batch / Queue.",
             )
         self._queue_text.configure(state="disabled")
 
     def _clear_queue(self) -> None:
         self._flashcard_queue.clear()
+        self._conversation_last_batch_send = []
         self._refresh_queue_text()
+        self._cleanup_runtime_memory("clear conversation staged queue", aggressive=False)
         self._conversation_queue_log_var.set(
             "Staged expressions cleared. Nothing was added to Anki."
         )
@@ -8182,8 +8761,10 @@ class ModernVocabularyGui:
         self._status_var.set(log_message)
         self._append_chat("QUEUE LOG", log_message)
         self._record_activity(f"Conversation → Batch: {len(new_items)}")
+        self._conversation_last_batch_send = [str(item.get("word", "")).strip() for item in new_items if str(item.get("word", "")).strip()]
         self._flashcard_queue.clear()
         self._refresh_queue_text()
+        self._cleanup_runtime_memory("clear conversation staged queue", aggressive=False)
         try:
             self._tabs.set("Batch / Queue")
         except Exception:
@@ -8201,6 +8782,7 @@ class ModernVocabularyGui:
         self._conversation_history.clear()
         self._conversation_question = None
         self._latest_suggestions = []
+        self._conversation_last_batch_send = []
         self._suggestion_items = []
         self._suggestion_vars = []
         self._suggestion_entry_vars = []
@@ -8208,5 +8790,10 @@ class ModernVocabularyGui:
         self._chat_text.configure(state="normal")
         self._chat_text.insert("1.0", "Choose a topic and click Start topic. Then continue the conversation here.\n")
         self._chat_text.configure(state="disabled")
+        self._flashcard_queue.clear()
         self._render_suggestions([])
+        self._refresh_queue_text()
+        self._conversation_queue_log_var.set(
+            "Conversation reset. Select AI suggestions, edit them if needed, then stage them here."
+        )
         self._status_var.set("Conversation reset.")

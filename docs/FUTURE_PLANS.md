@@ -307,3 +307,21 @@ The strongest portfolio angle is:
 ```text
 AI + language learning + OCR + human-in-the-loop review + Anki automation + LLMOps quality/cost monitoring.
 ```
+
+
+## LLMOps next step — Streamlit dashboard over LangSmith traces
+
+After v11.0 LangSmith Foundation, add a separate Streamlit dashboard that reads LangSmith runs and presents recruiter-friendly metrics: total calls, average latency, validation pass rate, retry/error rate, runs by provider/model, failed generations, and trace links.
+
+
+## v11.1 source-focus cleanup note
+
+Grammar cards produced from OCR / Import Material must preserve the exact source target. For grammar/word-form rows, the mapping is:
+
+```text
+source structure / target / transformation -> Structure / grammar focus
+source sentence -> Sentence to read / audio
+source rule or explanation -> Usage / source note
+```
+
+Review-driven Fix Cards should keep reasons such as `wrong_source_focus`, `target_buried_in_structure`, `unclear_card_focus`, and `audio_sentence_mismatch`, but v11.1 already adds first-line prompt and post-generation guards for OCR grammar cards.
