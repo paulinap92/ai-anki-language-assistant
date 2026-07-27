@@ -3,6 +3,69 @@
 Desktop application for generating vocabulary and grammar cards, practising conversations, and exporting reviewed content to Anki.
 
 
+## v10.6.7 Grammar sentence split + audio-ready import
+
+This hotfix keeps grammar import sentence-first:
+
+- matching grammar examples are no longer compressed into one grouped draft;
+- each real source sentence becomes its own grammar candidate;
+- the shared grammar target/pattern is preserved for each sentence;
+- Batch grammar generation now treats `target | sentence` as an instruction to keep only the sentence in the Anki `Sentence` field, so Speech / Audio can read each sentence separately.
+
+See `RELEASE_NOTES_v10_6_7_GRAMMAR_SENTENCE_SPLIT_AUDIO_READY.md`.
+
+## Future roadmap
+
+The current roadmap is documented in `docs/FUTURE_PLANS.md`.
+
+Planned direction after v10.6.1:
+
+- improve Import Material UX and make pasted text/screenshots the fastest input path;
+- continue tuning OCR quality warnings so short but valid vocabulary lists are not treated as bad OCR;
+- polish Suggested Expressions with editable draft rows, selection, and queue consistency;
+- stabilize grammar candidate flows;
+- add STT diagnostics for Whisper truncation checks;
+- keep Ollama Local experimental and Piper Local as the practical free/local TTS option;
+- add LLMOps observability later: model/provider, prompt version, token usage, estimated cost, latency, validation pass rate, retry rate, and user feedback;
+- postpone larger RAG/LangGraph work until the current desktop app is stable.
+
+See `RELEASE_NOTES_v10_6_2_FUTURE_ROADMAP_DOCS.md`.
+
+## v10.6.3 Conversation Batch / Queue UX Fix
+
+This hotfix fixes the confusing Conversation Practice suggestion flow:
+
+- Conversation Practice no longer writes directly to Anki.
+- The old **Generate selected + add to Anki** action was replaced with **Add staged to Batch / Queue**.
+- Selected expressions are visibly staged first, then transferred to the central **Batch / Queue** workflow.
+- The app shows a clear confirmation with item count, target deck, provider, and a short preview.
+- A `QUEUE LOG` entry is added to the conversation transcript.
+
+See `RELEASE_NOTES_v10_6_3_CONVERSATION_BATCH_QUEUE_UX_FIX.md`.
+
+## v10.6 Paste Material / Clipboard Import
+
+This version adds a faster input path for Import Material:
+
+- **Paste text / screenshot** button in the Import Material sidebar.
+- New dialog for pasting plain text, pasting a clipboard screenshot, or opening image/PDF/TXT material.
+- Plain text goes directly into **Reviewed source text**.
+- Clipboard screenshots are saved to `.import_cache/` and extracted with the selected OCR method.
+- The existing **Good / Medium / Poor** OCR quality check is shown after pasted text.
+
+See `RELEASE_NOTES_v10_6_PASTE_MATERIAL_CLIPBOARD_IMPORT.md`.
+
+## v10.5 Import UX + Suggestions Queue Fix
+
+This version cleans up the modern GUI flows that were confusing in v10.4:
+
+- **Import Material** now follows: OCR/import → Reviewed source text → Find from text without AI / with AI → Candidate drafts / cherry-pick → Batch / Queue.
+- The full **Manual candidate builder** is no longer shown in the main Import Material view; use **+ Add missing candidate** only when something is missing.
+- **Suggested expressions** in Conversation Practice now use editable draft rows with checkbox/remove controls.
+- Conversation suggestions use the edited values and are staged before being sent to **Batch / Queue**; they are not silently written to Anki.
+
+See `RELEASE_NOTES_v10_5_IMPORT_UX_SUGGESTIONS_QUEUE_FIX.md`.
+
 ## v10 local/free trial
 
 This version adds a minimal local/free mode:
@@ -1343,3 +1406,28 @@ In this mode the model must use the provided sentence as the main example. It sh
 - `Speech / Audio` hides global card-generation settings.
 - Audio has its own `Anki deck to scan` selector and deck refresh button.
 - Audio provider copy is clearer: audio provider is only for TTS/audio generation.
+
+### v10.6.1 OCR short-list quality hotfix
+
+- Short, clean vocabulary lists are no longer classified as poor OCR only because they contain fewer than 20 words.
+- Local word/phrase extraction now handles OCR output where a vocabulary table is flattened into space-separated words on one line.
+
+### v10.6.4 — Grammar duplicate guard + edited card add UX hotfix
+
+- Grammar Batch rows no longer run the broad raw-string duplicate precheck before AI generation.
+- Grammar duplicates are checked on Anki write using the exact Grammar note `Sentence` field.
+- The vocabulary and grammar card editors now support `Save + add to Anki`, so edited reviewed cards do not need to be regenerated.
+
+
+
+## v10.6.5
+
+See `RELEASE_NOTES_v10_6_5_QUALITY_WARNING_NONE_HOTFIX.md`.
+
+
+### v10.6.6 — Grammar candidate merge hotfix
+
+- Merges duplicated Import Material grammar drafts where AI returned both a grammar target/rule and a matching provided example.
+- Keeps the grammar target and attaches the real example sentence to it.
+- Reduces confusing duplicates in Candidate drafts / cherry-pick.
+

@@ -7,9 +7,9 @@ The Import Material tab prepares Batch candidates only. It never adds cards dire
 This is the main workflow for normal use. It avoids AI/API calls after text is extracted.
 
 ```text
-Load TXT/HTML/PDF/image, or paste text
-→ Extract text locally
-→ Clean/edit the extracted text if needed
+Paste text/screenshot or load TXT/HTML/PDF/image
+→ Extract text locally or with Mistral if needed
+→ Review and clean the extracted text if needed
 → Look for words / phrases OR Look for sentences
 → Cherry-pick candidates on the right
 → Mark each item as word/phrase, grammar, or sentence
@@ -19,6 +19,16 @@ Load TXT/HTML/PDF/image, or paste text
 ```
 
 Local candidate search is heuristic. It does not need Gemini, Claude, OpenAI, or Mistral. It simply finds useful chunks from the extracted text so the user can decide what becomes a card.
+
+## Paste text / screenshot
+
+Use **Paste text / screenshot** when the material is already in the clipboard:
+
+- pasted plain text goes directly to **Reviewed source text**;
+- pasted screenshots are saved in `.import_cache/` and then extracted with the selected import method;
+- copied image/PDF files from the clipboard can also be staged when the OS exposes them as file paths.
+
+This is only an input shortcut. It does not bypass review, candidate cherry-pick, Batch, or Anki review.
 
 ## Local buttons
 
@@ -34,17 +44,17 @@ Each candidate card can be marked as:
 - `As grammar` → Batch mode: Grammar
 - `As sentence` → Batch mode: Provided examples
 
-Then use `Send selected to Batch / Queue`.
+Then use `Add selected to Batch / Queue`.
 
-## Manual candidate builder
+## Manual missing candidates
 
-Use this when the local search found a useful sentence but you want to pair it with a specific target.
+The old full Manual candidate builder is intentionally not shown in the main view. Use **+ Add missing candidate** only when the local/AI finders missed something useful.
 
 ```text
-highlight word/phrase → Use selection as target
-highlight example → Use selection as example
-choose vocabulary / grammar / provided_example
-Add candidate
+highlight word/phrase or sentence
+→ + Add missing candidate
+→ optionally use selection as target/example
+→ Add missing candidate
 ```
 
 ## Optional AI assist
@@ -61,7 +71,7 @@ Load PDF/image
 → Mistral extracts text
 → use free local Look for words/sentences buttons
 → cherry-pick
-→ Send selected to Batch / Queue
+→ Add selected to Batch / Queue
 ```
 
 Mistral OCR does not automatically generate candidates in the default workflow.
@@ -123,3 +133,7 @@ image/PDF/text
 ## v9.1.8 note: Grammar Batch from sentences
 
 In Import Material, grammar marking is intentionally sentence-first. When a candidate is marked as grammar, the app sends only the selected sentence/fragment to Batch with `batch_mode = Grammar`. Import Material does not guess the grammar focus and does not build `target | same sentence` rows. Batch is responsible for identifying the useful grammar structure during generation.
+
+## Short vocabulary lists
+
+Short, clean vocabulary lists are valid import material. The OCR quality gate should not block them only because they have fewer than 20 tokens. When OCR flattens a table into lines such as `creepy fast-moving gripping haunting`, the local word/phrase finder splits clean list-like lines into individual draft candidates for cherry-picking.

@@ -12,7 +12,7 @@ def test_batch_grammar_prompt_contains_structure_and_topic_variety_rules():
     assert "aunque + subjuntivo" in prompt
     assert "Target language: Spanish" in prompt
     assert "Do not overuse one noun such as \"ensayo\"" in prompt
-    assert '"sentence": "aunque + subjuntivo"' in prompt
+    assert '"sentence": "source sentence only if the input contains target | sentence; otherwise aunque + subjuntivo"' in prompt
 
 
 def test_batch_grammar_model_accepts_prompt_schema_shape():
@@ -47,3 +47,15 @@ def test_sentence_based_prompt_preserves_user_sentence():
     assert "Do NOT replace it with a new invented example" in prompt
     assert "I came across an interesting article yesterday." in prompt
     assert '"example": "I came across an interesting article yesterday."' in prompt
+
+
+def test_batch_grammar_prompt_keeps_sentence_field_audio_ready_for_target_sentence_rows():
+    prompt = build_batch_grammar_prompt(
+        "should have / ought to have + past participle | We should have / ought to have driven – it would have been quicker.",
+        "English",
+        "",
+    )
+
+    assert "grammar target | source sentence" in prompt
+    assert "put ONLY the source sentence" in prompt
+    assert "use the left side as the structure/pattern clue" in prompt

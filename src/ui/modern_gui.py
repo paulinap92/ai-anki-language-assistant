@@ -135,8 +135,13 @@ class ModernVocabularyGui:
         self._conversation_question: str | None = None
         self._conversation_history: list[tuple[str, str]] = []
         self._latest_suggestions: list[str] = []
+        self._suggestion_items: list[dict[str, str]] = []
         self._suggestion_vars: list[ctk.BooleanVar] = []
+        self._suggestion_entry_vars: list[ctk.StringVar] = []
         self._flashcard_queue: list[str] = []
+        self._conversation_queue_log_var = ctk.StringVar(
+            value="Select AI suggestions, edit them if needed, then send them to Batch / Queue. Nothing is added to Anki from this panel."
+        )
 
         # Batch / Queue mode state.
         self._batch_items: list[dict[str, object]] = []
@@ -529,7 +534,7 @@ class ModernVocabularyGui:
         ).grid(row=0, column=0, sticky="w", padx=18, pady=(18, 8))
         ctk.CTkLabel(
             left,
-            text="Load material, review/clean the extracted text, create editable candidate drafts, cherry-pick final candidates, then send them to Batch / Queue. Nothing is added to Anki here.",
+            text="Load, paste, or screenshot material, review/clean the extracted text, create editable candidate drafts, cherry-pick final candidates, then send them to Batch / Queue. Nothing is added to Anki here.",
             wraplength=280,
             justify="left",
             text_color=("gray35", "gray75"),
@@ -560,8 +565,14 @@ class ModernVocabularyGui:
             row=1, column=0, sticky="ew", padx=(0, 5)
         )
         ctk.CTkButton(file_buttons, text="Load images", command=self._ocr_load_images).grid(
-            row=1, column=1, sticky="ew", padx=(5, 0)
+            row=1, column=1, sticky="ew", padx=(5, 0), pady=(0, 6)
         )
+        ctk.CTkButton(
+            file_buttons,
+            text="Paste text / screenshot",
+            height=36,
+            command=self._open_paste_material_dialog,
+        ).grid(row=2, column=0, columnspan=2, sticky="ew")
 
         self._ocr_run_button = ctk.CTkButton(
             left,
@@ -575,7 +586,7 @@ class ModernVocabularyGui:
             command=self._clean_ocr_preview_text,
         ).grid(row=6, column=0, sticky="ew", padx=18, pady=(0, 10))
 
-        ctk.CTkLabel(left, text="Find candidates without AI").grid(
+        ctk.CTkLabel(left, text="Find from text without AI").grid(
             row=7, column=0, sticky="w", padx=18, pady=(4, 4)
         )
         ctk.CTkLabel(
@@ -601,12 +612,12 @@ class ModernVocabularyGui:
             command=self._look_for_ocr_sentences,
         ).grid(row=0, column=1, sticky="ew", padx=(5, 0), pady=(0, 6))
 
-        ctk.CTkLabel(left, text="Optional AI assist").grid(
+        ctk.CTkLabel(left, text="Find from text with AI").grid(
             row=10, column=0, sticky="w", padx=18, pady=(2, 4)
         )
         ctk.CTkLabel(
             left,
-            text="Uses the Card AI provider selected at the top. Skip this for free/local workflow.",
+            text="AI finds candidate drafts from the reviewed source text. Uses the Card AI provider selected at the top.",
             wraplength=280,
             justify="left",
             text_color=("gray35", "gray75"),
@@ -624,58 +635,8 @@ class ModernVocabularyGui:
             command=self._extract_ocr_candidates_with_ai,
         ).grid(row=13, column=0, sticky="ew", padx=18, pady=(0, 12))
 
-        ctk.CTkLabel(left, text="Manual candidate builder").grid(
-            row=14, column=0, sticky="w", padx=18, pady=(4, 4)
-        )
-        ctk.CTkComboBox(
-            left,
-            variable=self._ocr_manual_candidate_type_var,
-            values=["vocabulary", "grammar", "provided_example"],
-            state="readonly",
-        ).grid(row=15, column=0, sticky="ew", padx=18, pady=(0, 6))
-        ctk.CTkLabel(left, text="Target").grid(
-            row=16, column=0, sticky="w", padx=18, pady=(0, 2)
-        )
-        ctk.CTkEntry(
-            left,
-            textvariable=self._ocr_manual_target_var,
-            placeholder_text="word, phrase, grammar structure",
-        ).grid(row=17, column=0, sticky="ew", padx=18, pady=(0, 6))
-        ctk.CTkLabel(left, text="Example / context").grid(
-            row=18, column=0, sticky="w", padx=18, pady=(0, 2)
-        )
-        ctk.CTkEntry(
-            left,
-            textvariable=self._ocr_manual_example_var,
-            placeholder_text="optional sentence from the text",
-        ).grid(row=19, column=0, sticky="ew", padx=18, pady=(0, 8))
-
-        manual_buttons = ctk.CTkFrame(left, fg_color="transparent")
-        manual_buttons.grid(row=20, column=0, sticky="ew", padx=18, pady=(0, 6))
-        manual_buttons.grid_columnconfigure((0, 1), weight=1)
-        ctk.CTkButton(
-            manual_buttons,
-            text="Use selection as target",
-            command=self._ocr_use_selection_as_target,
-        ).grid(row=0, column=0, sticky="ew", padx=(0, 5), pady=(0, 6))
-        ctk.CTkButton(
-            manual_buttons,
-            text="Use selection as example",
-            command=self._ocr_use_selection_as_example,
-        ).grid(row=0, column=1, sticky="ew", padx=(5, 0), pady=(0, 6))
-        ctk.CTkButton(
-            manual_buttons,
-            text="Add candidate",
-            command=self._ocr_add_manual_candidate,
-        ).grid(row=1, column=0, sticky="ew", padx=(0, 5))
-        ctk.CTkButton(
-            manual_buttons,
-            text="Clear fields",
-            command=self._ocr_clear_manual_candidate_fields,
-        ).grid(row=1, column=1, sticky="ew", padx=(5, 0))
-
         ctk.CTkButton(left, text="Clear import", command=self._clear_ocr_import).grid(
-            row=21, column=0, sticky="ew", padx=18, pady=(4, 10)
+            row=14, column=0, sticky="ew", padx=18, pady=(4, 10)
         )
 
         ctk.CTkLabel(
@@ -684,7 +645,7 @@ class ModernVocabularyGui:
             wraplength=280,
             justify="left",
             text_color=("gray35", "gray75"),
-        ).grid(row=22, column=0, sticky="w", padx=18, pady=(0, 18))
+        ).grid(row=15, column=0, sticky="w", padx=18, pady=(0, 18))
 
         text_panel = ctk.CTkFrame(layout, corner_radius=18)
         text_panel.grid(row=0, column=1, sticky="nsew", padx=(0, 12))
@@ -692,7 +653,7 @@ class ModernVocabularyGui:
         text_panel.grid_rowconfigure(1, weight=1)
         ctk.CTkLabel(
             text_panel,
-            text="Extracted text / manual selection",
+            text="Reviewed source text",
             font=ctk.CTkFont(size=20, weight="bold"),
         ).grid(row=0, column=0, sticky="w", padx=18, pady=(18, 8))
         self._ocr_textbox = ctk.CTkTextbox(text_panel, wrap="word", font=ctk.CTkFont(size=13))
@@ -700,12 +661,11 @@ class ModernVocabularyGui:
         self._ocr_textbox.insert(
             "1.0",
             "Flow:\n"
-            "1. Load PDF/image/TXT/HTML, or paste text here.\n"
-            "2. Extract readable text.\n"
-            "3. Click Look for words / phrases or Look for sentences.\n"
-            "4. Cherry-pick on the right. Type = word/grammar/sentence; source only says where it came from.\n"
-            "5. Send selected candidates to Batch / Queue.\n\n"
-            "Nothing is added to Anki from this tab.",
+            "1. Paste text/screenshot or load a file, then review and clean the source text here.\n"
+            "2. Find from text without AI or Find from text with AI.\n"
+            "3. Edit/remove candidate drafts and cherry-pick the useful rows.\n"
+            "4. Add selected drafts to Batch / Queue.\n\n"
+            "Manual additions are available only as + Add missing candidate.",
         )
 
         candidates_panel = ctk.CTkFrame(layout, corner_radius=18)
@@ -741,7 +701,7 @@ class ModernVocabularyGui:
         ).grid(row=0, column=2, sticky="ew", padx=5, pady=(0, 6))
         ctk.CTkButton(
             candidate_actions,
-            text="Clear basket",
+            text="Clear drafts",
             command=self._clear_ocr_candidates,
         ).grid(row=0, column=3, sticky="ew", padx=(5, 0), pady=(0, 6))
         ctk.CTkButton(
@@ -761,10 +721,16 @@ class ModernVocabularyGui:
         ).grid(row=1, column=2, sticky="ew", padx=5, pady=(0, 6))
         ctk.CTkButton(
             candidate_actions,
-            text="Send selected to Batch / Queue",
+            text="Add selected to Batch / Queue",
             height=40,
             command=self._send_ocr_candidates_to_batch,
-        ).grid(row=2, column=0, columnspan=4, sticky="ew")
+        ).grid(row=2, column=0, columnspan=3, sticky="ew", padx=(0, 5))
+        ctk.CTkButton(
+            candidate_actions,
+            text="+ Add missing candidate",
+            height=40,
+            command=self._open_missing_ocr_candidate_dialog,
+        ).grid(row=2, column=3, sticky="ew", padx=(5, 0))
 
         ctk.CTkLabel(
             candidates_panel,
@@ -906,29 +872,34 @@ class ModernVocabularyGui:
         vocab_panel = ctk.CTkFrame(layout, corner_radius=18)
         vocab_panel.grid(row=1, column=1, sticky="nsew")
         vocab_panel.grid_columnconfigure(0, weight=1)
-        vocab_panel.grid_rowconfigure(1, weight=1)
-        vocab_panel.grid_rowconfigure(5, weight=1)
+        vocab_panel.grid_rowconfigure(2, weight=1)
+        vocab_panel.grid_rowconfigure(8, weight=1)
 
-        ctk.CTkLabel(vocab_panel, text="Suggested expressions", font=ctk.CTkFont(size=20, weight="bold")).grid(
-            row=0, column=0, sticky="w", padx=18, pady=(18, 8)
+        ctk.CTkLabel(vocab_panel, text="AI suggestions", font=ctk.CTkFont(size=20, weight="bold")).grid(
+            row=0, column=0, sticky="w", padx=18, pady=(18, 4)
         )
-        self._suggestions_frame = ctk.CTkScrollableFrame(vocab_panel, height=170, corner_radius=14)
-        self._suggestions_frame.grid(row=1, column=0, sticky="nsew", padx=18, pady=(0, 10))
+        ctk.CTkLabel(
+            vocab_panel,
+            text="Checkbox → edit/remove → Add selected to Batch / Queue. No direct Anki write here.",
+            text_color=("gray35", "gray75"),
+        ).grid(row=1, column=0, sticky="w", padx=18, pady=(0, 8))
+        self._suggestions_frame = ctk.CTkScrollableFrame(vocab_panel, height=145, corner_radius=14)
+        self._suggestions_frame.grid(row=2, column=0, sticky="nsew", padx=18, pady=(0, 10))
         self._render_suggestions([])
 
         buttons = ctk.CTkFrame(vocab_panel, fg_color="transparent")
-        buttons.grid(row=2, column=0, sticky="ew", padx=18, pady=(0, 10))
+        buttons.grid(row=3, column=0, sticky="ew", padx=18, pady=(0, 10))
         buttons.grid_columnconfigure((0, 1), weight=1)
-        ctk.CTkButton(buttons, text="Add selected", command=self._add_selected_suggestions_to_queue).grid(
+        ctk.CTkButton(buttons, text="Stage selected", command=self._add_selected_suggestions_to_queue).grid(
             row=0, column=0, sticky="ew", padx=(0, 6)
         )
-        ctk.CTkButton(buttons, text="Add all", command=self._add_all_suggestions_to_queue).grid(
+        ctk.CTkButton(buttons, text="Stage all", command=self._add_all_suggestions_to_queue).grid(
             row=0, column=1, sticky="ew", padx=(6, 0)
         )
 
-        ctk.CTkLabel(vocab_panel, text="Custom word or phrase").grid(row=3, column=0, sticky="w", padx=18, pady=(2, 4))
+        ctk.CTkLabel(vocab_panel, text="Custom word or phrase").grid(row=4, column=0, sticky="w", padx=18, pady=(2, 4))
         custom = ctk.CTkFrame(vocab_panel, fg_color="transparent")
-        custom.grid(row=4, column=0, sticky="ew", padx=18, pady=(0, 12))
+        custom.grid(row=5, column=0, sticky="ew", padx=18, pady=(0, 12))
         custom.grid_columnconfigure(0, weight=1)
         self._custom_phrase_var = ctk.StringVar()
         ctk.CTkEntry(custom, textvariable=self._custom_phrase_var, height=36).grid(
@@ -936,23 +907,30 @@ class ModernVocabularyGui:
         )
         ctk.CTkButton(custom, text="Add", width=70, command=self._add_custom_phrase_to_queue).grid(row=0, column=1)
 
-        ctk.CTkLabel(vocab_panel, text="Flashcard queue", font=ctk.CTkFont(size=16, weight="bold")).grid(
-            row=5, column=0, sticky="sw", padx=18, pady=(0, 6)
+        ctk.CTkLabel(vocab_panel, text="Staged for Batch / Queue", font=ctk.CTkFont(size=16, weight="bold")).grid(
+            row=6, column=0, sticky="sw", padx=18, pady=(0, 4)
         )
-        self._queue_text = ctk.CTkTextbox(vocab_panel, wrap="word", height=130, font=ctk.CTkFont(size=13))
-        self._queue_text.grid(row=6, column=0, sticky="nsew", padx=18, pady=(0, 10))
+        ctk.CTkLabel(
+            vocab_panel,
+            textvariable=self._conversation_queue_log_var,
+            text_color=("gray35", "gray75"),
+            wraplength=430,
+            justify="left",
+        ).grid(row=7, column=0, sticky="ew", padx=18, pady=(0, 6))
+        self._queue_text = ctk.CTkTextbox(vocab_panel, wrap="word", height=165, font=ctk.CTkFont(size=13))
+        self._queue_text.grid(row=8, column=0, sticky="nsew", padx=18, pady=(0, 10))
         self._refresh_queue_text()
 
         queue_buttons = ctk.CTkFrame(vocab_panel, fg_color="transparent")
-        queue_buttons.grid(row=7, column=0, sticky="ew", padx=18, pady=(0, 18))
+        queue_buttons.grid(row=9, column=0, sticky="ew", padx=18, pady=(0, 18))
         queue_buttons.grid_columnconfigure((0, 1), weight=1)
-        ctk.CTkButton(queue_buttons, text="Clear queue", command=self._clear_queue).grid(
+        ctk.CTkButton(queue_buttons, text="Clear staged", command=self._clear_queue).grid(
             row=0, column=0, sticky="ew", padx=(0, 6)
         )
         ctk.CTkButton(
             queue_buttons,
-            text="Generate queue + add to Anki",
-            command=self._generate_queue_and_add_to_anki,
+            text="Add staged to Batch / Queue",
+            command=self._send_conversation_queue_to_batch,
         ).grid(row=0, column=1, sticky="ew", padx=(6, 0))
 
     def _build_batch_tab(self, parent: ctk.CTkFrame) -> None:
@@ -1405,6 +1383,194 @@ class ModernVocabularyGui:
         action = "Run Mistral extraction" if "Mistral" in self._ocr_method_var.get() else "Extract text locally"
         self._ocr_status_var.set(f"Selected: {names}. Click {action}.")
 
+    def _open_paste_material_dialog(self) -> None:
+        """Paste raw text or a clipboard screenshot into the Import Material flow.
+
+        Text is written directly to Reviewed source text. Clipboard images are
+        saved into .import_cache and then passed through the currently selected
+        extraction method, so the rest of the Import Material flow stays the
+        same: review text -> find candidates -> cherry-pick -> Batch / Queue.
+        """
+        dialog = tk.Toplevel(self._root)
+        dialog.title("Paste text or screenshot")
+        dialog.geometry("780x560")
+        dialog.transient(self._root)
+        dialog.grid_columnconfigure(0, weight=1)
+        dialog.grid_rowconfigure(2, weight=1)
+
+        staged_paths: list[Path] = []
+        info_var = tk.StringVar(
+            value="Paste text, paste a screenshot from the clipboard, or open a file."
+        )
+
+        tk.Label(
+            dialog,
+            text="Paste or import material",
+            font=("TkDefaultFont", 12, "bold"),
+            anchor="w",
+        ).grid(row=0, column=0, sticky="w", padx=12, pady=(12, 4))
+        tk.Label(
+            dialog,
+            textvariable=info_var,
+            anchor="w",
+            justify="left",
+        ).grid(row=1, column=0, sticky="ew", padx=12, pady=(0, 6))
+
+        material_box = tk.Text(dialog, height=14, wrap="word")
+        material_box.grid(row=2, column=0, sticky="nsew", padx=12, pady=(0, 8))
+        material_box.insert(
+            "1.0",
+            "Paste plain text here, or click 'Paste text from clipboard'.\n"
+            "For screenshots, copy a screenshot first, then click 'Paste screenshot from clipboard'.",
+        )
+        material_box.tag_add("hint", "1.0", "end")
+        material_box.tag_configure("hint", foreground="gray")
+
+        def clear_hint_if_needed() -> None:
+            if material_box.tag_ranges("hint"):
+                material_box.delete("1.0", "end")
+                material_box.tag_remove("hint", "1.0", "end")
+
+        material_box.bind("<FocusIn>", lambda _event: clear_hint_if_needed())
+        material_box.bind("<Key>", lambda _event: clear_hint_if_needed())
+
+        def paste_text_from_clipboard() -> None:
+            try:
+                value = self._root.clipboard_get()
+            except tk.TclError:
+                messagebox.showwarning("Paste material", "Clipboard does not contain plain text.")
+                return
+            value = clean_ocr_text(value)
+            if not value.strip():
+                messagebox.showwarning("Paste material", "Clipboard text is empty.")
+                return
+            staged_paths.clear()
+            material_box.delete("1.0", "end")
+            material_box.tag_remove("hint", "1.0", "end")
+            material_box.insert("1.0", value)
+            info_var.set(f"Text pasted: {len(value.split())} word(s). Click Use this material.")
+
+        def save_clipboard_image_to_cache() -> list[Path]:
+            try:
+                from PIL import ImageGrab  # type: ignore[import-not-found]
+            except ImportError as exc:
+                raise OcrExtractionError(
+                    "Clipboard screenshot import needs Pillow. Install it with: pip install pillow"
+                ) from exc
+
+            try:
+                clipboard_value = ImageGrab.grabclipboard()
+            except Exception as exc:
+                raise OcrExtractionError(f"Could not read an image from clipboard: {exc}") from exc
+
+            if clipboard_value is None:
+                raise OcrExtractionError(
+                    "Clipboard does not contain a screenshot/image. Copy a screenshot first."
+                )
+
+            if isinstance(clipboard_value, list):
+                paths = [Path(value) for value in clipboard_value]
+                supported = [
+                    path for path in paths
+                    if path.suffix.casefold() in {".png", ".jpg", ".jpeg", ".webp", ".bmp", ".tif", ".tiff", ".pdf"}
+                ]
+                if not supported:
+                    raise OcrExtractionError("Clipboard contains files, but not supported image/PDF files.")
+                return supported
+
+            if not hasattr(clipboard_value, "save"):
+                raise OcrExtractionError("Clipboard item is not a supported image.")
+
+            cache_dir = Path(".import_cache")
+            cache_dir.mkdir(exist_ok=True)
+            image_path = cache_dir / f"clipboard_screenshot_{datetime.now().strftime('%Y%m%d_%H%M%S')}.png"
+            image = clipboard_value
+            try:
+                if getattr(image, "mode", "RGB") not in {"RGB", "RGBA"}:
+                    image = image.convert("RGB")
+                image.save(image_path)
+            except Exception as exc:
+                raise OcrExtractionError(f"Could not save clipboard screenshot: {exc}") from exc
+            return [image_path]
+
+        def paste_screenshot_from_clipboard() -> None:
+            try:
+                paths = save_clipboard_image_to_cache()
+            except OcrExtractionError as exc:
+                messagebox.showwarning("Paste screenshot", str(exc))
+                return
+            staged_paths[:] = paths
+            material_box.delete("1.0", "end")
+            material_box.tag_remove("hint", "1.0", "end")
+            names = ", ".join(path.name for path in staged_paths[:3])
+            if len(staged_paths) > 3:
+                names += f" + {len(staged_paths) - 3} more"
+            action = "Run Mistral extraction" if "Mistral" in self._ocr_method_var.get() else "Extract text locally"
+            info_var.set(f"Screenshot/file staged: {names}. Click Use this material to {action.lower()}.")
+
+        def open_file_for_material() -> None:
+            filenames = filedialog.askopenfilenames(
+                title="Open material file",
+                filetypes=[
+                    ("Supported files", "*.txt *.md *.html *.htm *.pdf *.png *.jpg *.jpeg *.webp *.bmp *.tif *.tiff"),
+                    ("All files", "*.*"),
+                ],
+            )
+            if not filenames:
+                return
+            staged_paths[:] = [Path(filename) for filename in filenames]
+            material_box.delete("1.0", "end")
+            material_box.tag_remove("hint", "1.0", "end")
+            names = ", ".join(path.name for path in staged_paths[:3])
+            if len(staged_paths) > 3:
+                names += f" + {len(staged_paths) - 3} more"
+            info_var.set(f"File(s) staged: {names}. Click Use this material to extract text.")
+
+        def clear_material() -> None:
+            staged_paths.clear()
+            material_box.delete("1.0", "end")
+            material_box.tag_remove("hint", "1.0", "end")
+            info_var.set("Cleared. Paste text or stage a screenshot/file.")
+
+        def use_material() -> None:
+            text_value = material_box.get("1.0", "end").strip()
+            if material_box.tag_ranges("hint"):
+                text_value = ""
+            text_value = clean_ocr_text(text_value)
+            if text_value.strip():
+                self._ocr_source_paths = []
+                self._set_ocr_text(text_value)
+                label, reason = self._ocr_quality_label(text_value)
+                self._ocr_status_var.set(
+                    f"Pasted {len(text_value.split())} word(s). OCR quality: {label} — {reason}. "
+                    "Review text, then find candidates."
+                )
+                self._ocr_candidate_status_var.set("Reviewed source text updated. Find candidates next.")
+                self._record_activity("Import material pasted as text")
+                dialog.destroy()
+                return
+
+            if staged_paths:
+                self._ocr_source_paths = list(staged_paths)
+                names = ", ".join(path.name for path in self._ocr_source_paths[:3])
+                if len(self._ocr_source_paths) > 3:
+                    names += f" + {len(self._ocr_source_paths) - 3} more"
+                self._ocr_status_var.set(f"Staged from paste/import: {names}. Extracting text...")
+                dialog.destroy()
+                self._root.after(50, self._run_ocr_import_pipeline)
+                return
+
+            messagebox.showwarning("Paste material", "Paste text or stage a screenshot/file first.")
+
+        button_row = tk.Frame(dialog)
+        button_row.grid(row=3, column=0, sticky="ew", padx=12, pady=(0, 12))
+        tk.Button(button_row, text="Paste text from clipboard", command=paste_text_from_clipboard).pack(side="left")
+        tk.Button(button_row, text="Paste screenshot from clipboard", command=paste_screenshot_from_clipboard).pack(side="left", padx=(8, 0))
+        tk.Button(button_row, text="Open image/PDF/TXT", command=open_file_for_material).pack(side="left", padx=(8, 0))
+        tk.Button(button_row, text="Clear", command=clear_material).pack(side="left", padx=(8, 0))
+        tk.Button(button_row, text="Use this material", command=use_material).pack(side="right")
+        tk.Button(button_row, text="Cancel", command=dialog.destroy).pack(side="right", padx=(0, 8))
+
     def _ocr_load_txt(self) -> None:
         filename = filedialog.askopenfilename(
             title="Load TXT / HTML / markdown text",
@@ -1502,6 +1668,11 @@ class ModernVocabularyGui:
         )
 
     def _set_ocr_candidate_items(self, items: list[dict[str, str]]) -> None:
+        # AI extraction can return the same grammar point twice: once as a
+        # grammar target/rule and once as a provided example. Keep one editable
+        # grammar draft and attach the real example sentence to it instead of
+        # showing duplicate candidates.
+        items = self._merge_ocr_grammar_candidate_items(items)
         self._ocr_candidate_items = items
         self._ocr_candidate_vars = [ctk.BooleanVar(value=True) for _ in items]
         self._render_ocr_candidate_cards()
@@ -1525,6 +1696,182 @@ class ModernVocabularyGui:
             "sentence": sentence,
             "source": source,
         }
+
+    @staticmethod
+    def _ocr_normalized_match_text(value: str) -> str:
+        """Normalize candidate text for fuzzy grammar merge checks."""
+        normalized = clean_ocr_text(str(value or "")).casefold()
+        normalized = normalized.replace("’", "'").replace("`", "'")
+        normalized = re.sub(r"[^a-z0-9áéíóúüñ'/-]+", " ", normalized)
+        return re.sub(r"\s+", " ", normalized).strip()
+
+    @classmethod
+    def _ocr_grammar_fragments_for_merge(cls, target: str) -> list[str]:
+        """Return useful fragments from a grammar target for merge matching.
+
+        Examples:
+        - "should have / ought to have + past participle" ->
+          ["should have", "ought to have"]
+        - "be supposed / meant to + infinitive" ->
+          ["be supposed", "meant to"]
+        """
+        normalized = cls._ocr_normalized_match_text(target)
+        normalized = re.sub(r"^target\s*[:\-]\s*", "", normalized)
+        normalized = re.split(r"\s+\+\s+|\s+to talk about\s+", normalized, maxsplit=1)[0].strip()
+        if not normalized:
+            return []
+
+        pieces = [piece.strip(" -/") for piece in re.split(r"\s*/\s*", normalized) if piece.strip(" -/")]
+        fragments: list[str] = []
+        for piece in pieces or [normalized]:
+            # Remove lesson labels but keep the actual modal/structure words.
+            piece = re.sub(r"\b(past participle|infinitive|base form|verb phrase)\b", "", piece).strip()
+            piece = re.sub(r"\s+", " ", piece).strip()
+            if len(piece) >= 5:
+                fragments.append(piece)
+
+        # Also keep the pre-slashed pattern as a weak fallback when it is clean.
+        if "/" not in normalized and len(normalized) >= 5:
+            fragments.append(normalized)
+
+        result: list[str] = []
+        seen: set[str] = set()
+        for fragment in fragments:
+            key = fragment.casefold()
+            if key not in seen:
+                result.append(fragment)
+                seen.add(key)
+        return result
+
+    @classmethod
+    def _ocr_grammar_target_matches_example(cls, grammar_target: str, example_target: str, example_sentence: str) -> bool:
+        fragments = cls._ocr_grammar_fragments_for_merge(grammar_target)
+        if not fragments:
+            return False
+        haystack = cls._ocr_normalized_match_text(f"{example_target} {example_sentence}")
+        if not haystack:
+            return False
+        matches = 0
+        for fragment in fragments:
+            fragment_norm = cls._ocr_normalized_match_text(fragment)
+            if not fragment_norm:
+                continue
+            # Direct match catches "should have", "ought to have", "permitted to", etc.
+            if fragment_norm in haystack:
+                matches += 1
+                continue
+            # Modal/passive grammar targets often use dictionary "be", while examples
+            # contain am/is/are/was/were. Match the meaningful tail as a fallback.
+            tail = re.sub(r"^be\s+", "", fragment_norm).strip()
+            if len(tail) >= 5 and tail in haystack:
+                matches += 1
+        # One strong fragment is enough for paired alternatives like
+        # "should have / ought to have" because OCR/AI examples may include only one.
+        return matches >= 1
+
+    @staticmethod
+    def _ocr_looks_like_rule_explanation(text: str) -> bool:
+        value = clean_ocr_text(str(text or "")).casefold()
+        if not value:
+            return False
+        rule_markers = (
+            "we use ",
+            "we can use ",
+            "is used to ",
+            "are used to ",
+            "to talk about ",
+            "to say that ",
+            "is stronger",
+            "the negative is",
+            "normally refers",
+            "the most common",
+            "completely different",
+        )
+        return any(marker in value for marker in rule_markers)
+
+    @classmethod
+    def _merge_ocr_grammar_candidate_items(cls, items: list[dict[str, str]]) -> list[dict[str, str]]:
+        """Convert duplicated grammar rule + example pairs into sentence-first drafts.
+
+        Grammar import should be sentence-first because every grammar Anki note
+        needs its own sentence/audio target. AI extraction can return both:
+        1. a rule-like Grammar target, for example ``should have + past participle``;
+        2. one or more Provided example rows that use that target.
+
+        Do not collapse multiple examples into one candidate. Instead, convert
+        every matching provided example into its own Grammar candidate with the
+        shared target and that exact source sentence. A rule-only candidate is
+        removed only when examples were found for it, so the UI avoids duplicate
+        rule cards while preserving one card per readable sentence.
+        """
+        if not items:
+            return []
+
+        merged: list[dict[str, str]] = [dict(item) for item in items]
+        remove_indexes: set[int] = set()
+        grammar_used_by_examples: set[int] = set()
+
+        grammar_indexes = [
+            idx for idx, item in enumerate(merged)
+            if cls._normalize_ocr_candidate_type(item.get("type", "")) == "grammar" and item.get("target", "").strip()
+        ]
+        if not grammar_indexes:
+            return merged
+
+        for idx, item in enumerate(merged):
+            if idx in remove_indexes:
+                continue
+            if cls._normalize_ocr_candidate_type(item.get("type", "")) != "provided_example":
+                continue
+
+            example_target = item.get("target", "").strip()
+            example_sentence = item.get("sentence", "").strip()
+            incoming_sentence = example_sentence or example_target
+            if not incoming_sentence:
+                continue
+
+            match_idx: int | None = None
+            for grammar_idx in grammar_indexes:
+                if grammar_idx == idx or grammar_idx in remove_indexes:
+                    continue
+                grammar_item = merged[grammar_idx]
+                if cls._ocr_grammar_target_matches_example(
+                    grammar_item.get("target", ""),
+                    example_target,
+                    example_sentence,
+                ):
+                    match_idx = grammar_idx
+                    break
+            if match_idx is None:
+                continue
+
+            grammar_item = merged[match_idx]
+            grammar_target = grammar_item.get("target", "").strip()
+            source_bits = [bit for bit in [grammar_item.get("source", ""), item.get("source", "")] if bit]
+            item["type"] = "grammar"
+            item["target"] = grammar_target
+            item["sentence"] = incoming_sentence
+            item["source"] = (
+                " + ".join(dict.fromkeys(source_bits)) + " + sentence grammar"
+                if source_bits
+                else "sentence grammar"
+            )
+            grammar_used_by_examples.add(match_idx)
+
+        for grammar_idx in grammar_used_by_examples:
+            grammar_item = merged[grammar_idx]
+            current_sentence = grammar_item.get("sentence", "").strip()
+            target = grammar_item.get("target", "").strip()
+            if (
+                not current_sentence
+                or cls._ocr_looks_like_rule_explanation(current_sentence)
+                or current_sentence.casefold() == target.casefold()
+            ):
+                remove_indexes.add(grammar_idx)
+
+        if not remove_indexes:
+            return merged
+        return [item for idx, item in enumerate(merged) if idx not in remove_indexes]
 
     def _render_ocr_candidate_cards(self) -> None:
         frame = getattr(self, "_ocr_candidates_frame", None)
@@ -1637,6 +1984,89 @@ class ModernVocabularyGui:
             ).grid(row=0, column=4, sticky="ew", padx=(4, 0))
 
 
+    def _open_missing_ocr_candidate_dialog(self) -> None:
+        """Small escape hatch for adding one candidate that the finders missed."""
+        selected_text = clean_ocr_text(self._ocr_get_selected_text()).replace("\n", " ").strip()
+        dialog = tk.Toplevel(self._root)
+        dialog.title("Add missing candidate")
+        dialog.geometry("720x430")
+        dialog.transient(self._root)
+        dialog.grid_columnconfigure(1, weight=1)
+        dialog.grid_rowconfigure(2, weight=1)
+
+        type_var = tk.StringVar(value=self._ocr_manual_candidate_type_var.get() or "vocabulary")
+        target_var = tk.StringVar(value=selected_text)
+        source_var = tk.StringVar(value="manual missing candidate")
+
+        tk.Label(dialog, text="Type", anchor="w").grid(row=0, column=0, sticky="w", padx=10, pady=8)
+        ttk.Combobox(
+            dialog,
+            textvariable=type_var,
+            values=["vocabulary", "grammar", "provided_example"],
+            state="readonly",
+        ).grid(row=0, column=1, sticky="ew", padx=10, pady=8)
+
+        tk.Label(dialog, text="Target / candidate", anchor="w").grid(row=1, column=0, sticky="w", padx=10, pady=8)
+        tk.Entry(dialog, textvariable=target_var).grid(row=1, column=1, sticky="ew", padx=10, pady=8)
+
+        tk.Label(dialog, text="Example / sentence", anchor="w").grid(row=2, column=0, sticky="nw", padx=10, pady=8)
+        sentence_box = tk.Text(dialog, height=8, wrap="word")
+        sentence_box.grid(row=2, column=1, sticky="nsew", padx=10, pady=8)
+
+        tk.Label(dialog, text="Source", anchor="w").grid(row=3, column=0, sticky="w", padx=10, pady=8)
+        tk.Entry(dialog, textvariable=source_var).grid(row=3, column=1, sticky="ew", padx=10, pady=8)
+
+        def fill_target_from_selection() -> None:
+            selected = clean_ocr_text(self._ocr_get_selected_text()).replace("\n", " ").strip()
+            if not selected:
+                messagebox.showwarning("Add missing candidate", "Highlight text in Reviewed source text first.")
+                return
+            target_var.set(selected)
+
+        def fill_example_from_selection() -> None:
+            selected = clean_ocr_text(self._ocr_get_selected_text()).replace("\n", " ").strip()
+            if not selected:
+                messagebox.showwarning("Add missing candidate", "Highlight an example in Reviewed source text first.")
+                return
+            sentence_box.delete("1.0", "end")
+            sentence_box.insert("1.0", selected)
+
+        def save() -> None:
+            kind = self._normalize_ocr_candidate_type(type_var.get())
+            target = clean_ocr_text(target_var.get()).replace("\n", " ").strip()
+            sentence = clean_ocr_text(sentence_box.get("1.0", "end")).replace("\n", " ").strip()
+            target, sentence = self._ocr_fields_for_candidate_type(kind, target, sentence)
+            if not target and not sentence:
+                messagebox.showwarning("Add missing candidate", "Target or example cannot be empty.")
+                return
+            if kind == "vocabulary" and not target:
+                messagebox.showwarning("Add missing candidate", "Vocabulary candidates need a target word or phrase.")
+                return
+            item = self._make_ocr_candidate_item(
+                kind,
+                target=target,
+                sentence=sentence,
+                source=source_var.get().strip() or "manual missing candidate",
+            )
+            if item is None:
+                messagebox.showwarning("Add missing candidate", "Candidate could not be saved.")
+                return
+            item["edited"] = "true"
+            self._ocr_candidate_items.append(item)
+            self._ocr_candidate_vars.append(ctk.BooleanVar(value=True))
+            self._render_ocr_candidate_cards()
+            self._update_ocr_candidate_status()
+            self._ocr_candidate_status_var.set("Missing candidate added. Cherry-pick uses this edited draft.")
+            dialog.destroy()
+
+        button_row = tk.Frame(dialog)
+        button_row.grid(row=4, column=0, columnspan=2, sticky="ew", padx=10, pady=12)
+        tk.Button(button_row, text="Use selection as target", command=fill_target_from_selection).pack(side="left")
+        tk.Button(button_row, text="Use selection as example", command=fill_example_from_selection).pack(side="left", padx=(8, 0))
+        tk.Button(button_row, text="Add missing candidate", command=save).pack(side="right")
+        tk.Button(button_row, text="Cancel", command=dialog.destroy).pack(side="right", padx=(0, 8))
+
+
     def _open_ocr_candidate_editor(self, index: int) -> None:
         """Edit a candidate draft before it becomes the final cherry-pick item."""
         if index < 0 or index >= len(self._ocr_candidate_items):
@@ -1717,7 +2147,7 @@ class ModernVocabularyGui:
             return
         selected = sum(1 for var in self._ocr_candidate_vars if var.get())
         self._ocr_candidate_status_var.set(
-            f"Candidate basket: {selected}/{total} selected. Cherry-pick, then send to Batch."
+            f"Candidate drafts: {selected}/{total} selected. Cherry-pick, then send to Batch."
         )
 
     def _select_all_ocr_candidates(self) -> None:
@@ -1833,7 +2263,7 @@ class ModernVocabularyGui:
         self._ocr_candidate_items = []
         self._ocr_candidate_vars = []
         self._render_ocr_candidate_cards()
-        self._ocr_candidate_status_var.set("Candidate basket cleared.")
+        self._ocr_candidate_status_var.set("Candidate drafts cleared.")
 
     def _ocr_get_selected_text(self) -> str:
         textbox = getattr(self, "_ocr_textbox", None)
@@ -1917,6 +2347,9 @@ class ModernVocabularyGui:
             self._ocr_candidate_vars.append(ctk.BooleanVar(value=True))
             seen.add(key)
             added += 1
+        if added:
+            self._ocr_candidate_items = self._merge_ocr_grammar_candidate_items(self._ocr_candidate_items)
+            self._ocr_candidate_vars = [ctk.BooleanVar(value=True) for _ in self._ocr_candidate_items]
         self._render_ocr_candidate_cards()
         self._update_ocr_candidate_status()
         return added
@@ -1926,15 +2359,18 @@ class ModernVocabularyGui:
         """Return a lightweight OCR quality estimate for local candidate extraction.
 
         This does not judge the lesson content. It only catches obvious OCR
-        garbage before the app creates dozens of useless candidate rows.
+        garbage before the app creates dozens of useless candidate rows. Short,
+        clean vocabulary lists are valid Import Material input and should not
+        be blocked just because they contain fewer than 20 words.
         """
         cleaned = clean_ocr_text(text or "")
-        tokens = re.findall(r"[A-Za-zÁÉÍÓÚÜÑáéíóúüñ']+", cleaned)
-        if len(tokens) < 20:
-            return "Poor", "very little readable text was extracted"
+        tokens = re.findall(r"[A-Za-zÁÉÍÓÚÜÑáéíóúüñ'’-]+", cleaned)
+        if len(tokens) < 3:
+            return "Poor", "too little readable text was extracted"
+
         suspicious = 0
         for token in tokens:
-            lower = token.casefold().strip("'")
+            lower = token.casefold().strip("'’-")
             has_vowel = bool(re.search(r"[aeiouáéíóúü]", lower))
             if len(lower) <= 1:
                 suspicious += 1
@@ -1944,11 +2380,30 @@ class ModernVocabularyGui:
                 suspicious += 1
         suspicious_ratio = suspicious / max(len(tokens), 1)
         sentence_like = len(re.findall(r"[.!?¿¡]", cleaned))
-        avg_len = sum(len(token) for token in tokens) / max(len(tokens), 1)
+        avg_len = sum(len(token.strip("'’-") or token) for token in tokens) / max(len(tokens), 1)
+
+        # OCR screenshots of vocabulary tables often become short word lists
+        # with no sentence punctuation. That is useful material, not poor OCR.
+        list_like_separators = len(re.findall(r"[,;•\t]|\n", cleaned))
+        short_clean_list = (
+            4 <= len(tokens) < 20
+            and suspicious_ratio <= 0.22
+            and avg_len >= 2.6
+            and sentence_like == 0
+        )
+        if short_clean_list:
+            if len(tokens) >= 8 or list_like_separators:
+                return "Good", "short clean word/phrase list looks readable"
+            return "Medium", "short clean list; review candidates manually"
+
+        if len(tokens) < 8:
+            return "Medium", "short text; review candidates manually"
         if suspicious_ratio > 0.35 or avg_len < 2.6:
             return "Poor", "many tokens look like OCR noise"
-        if suspicious_ratio > 0.22 or sentence_like < 2:
+        if suspicious_ratio > 0.22:
             return "Medium", "text may need manual review before candidate extraction"
+        if sentence_like < 2 and len(tokens) >= 20:
+            return "Medium", "word-list style text; review candidates manually"
         return "Good", "text looks readable enough for local cherry-pick"
 
     def _confirm_ocr_quality_for_candidates(self, text: str) -> bool:
@@ -2035,7 +2490,7 @@ class ModernVocabularyGui:
                 continue
 
             # Split obvious list/table separators. Avoid splitting regular prose too aggressively.
-            pieces = re.split(r"\t|;|•|\s{2,}", line)
+            pieces = re.split(r"\t|;|•|,|\s{2,}", line)
             expanded: list[str] = []
             for piece in pieces:
                 piece = piece.strip(" -–—|,;:()[]{}\t")
@@ -2054,6 +2509,23 @@ class ModernVocabularyGui:
                     continue
                 word_count = len(piece.split())
                 has_sentence_punctuation = bool(re.search(r"[.!?¿¡]$", piece))
+
+                # Common OCR case: a vocabulary table becomes one clean line
+                # such as "creepy fast-moving gripping haunting". Split that
+                # into individual word candidates instead of treating the whole
+                # line as one strange phrase or returning nothing useful.
+                tokens = re.findall(r"[A-Za-zÁÉÍÓÚÜÑáéíóúüñ'’-]+", piece)
+                clean_word_list = (
+                    2 <= len(tokens) <= 14
+                    and (len(tokens) >= 3 or any("-" in token or "–" in token or "—" in token for token in tokens))
+                    and len(tokens) == word_count
+                    and not has_sentence_punctuation
+                    and all(2 <= len(token.strip("'’-") or token) <= 28 for token in tokens)
+                )
+                if clean_word_list:
+                    candidates.extend(token.strip("'’-") for token in tokens if token.strip("'’-"))
+                    continue
+
                 if 1 <= word_count <= 8 and 2 <= len(piece) <= 90 and not has_sentence_punctuation:
                     candidates.append(piece)
 
@@ -2746,7 +3218,7 @@ class ModernVocabularyGui:
                 return widget.get("1.0", "end").strip()
             return str(widget.get()).strip()  # type: ignore[attr-defined]
 
-        def save() -> None:
+        def save(close_editor: bool = True) -> bool:
             updated_card = card.model_copy(
                 update={
                     "target_language": value("target_language") or card.target_language,
@@ -2763,9 +3235,12 @@ class ModernVocabularyGui:
             )
             item = self._batch_items[self._batch_index]
             item["card"] = self._card_to_batch_payload(updated_card)
+            item.pop("grammar_card", None)
             item["word"] = updated_card.word_or_phrase
             item["status"] = "ready"
+            item["edited_card"] = True
             self._batch_generated_card = updated_card
+            self._batch_generated_grammar = None
             self._batch_generated_provider_name = str(item.get("provider_name") or self._provider_var.get())
             self._batch_word_var.set(updated_card.word_or_phrase)
             warnings = self._quality_warnings_for_card(
@@ -2779,14 +3254,24 @@ class ModernVocabularyGui:
                 item.pop("quality_warnings", None)
             self._set_batch_preview(self._format_batch_card_preview(item, updated_card))
             self._autosave_batch_session(f"edited: {updated_card.word_or_phrase}")
-            self._batch_status_var.set(f"Edited and autosaved: {updated_card.word_or_phrase}")
+            self._batch_status_var.set(
+                f"Edited and autosaved. You can add this card now: {updated_card.word_or_phrase}"
+            )
             self._status_var.set(self._batch_status_var.get())
             self._record_activity(f"Edited: {updated_card.word_or_phrase}")
-            editor.destroy()
+            if close_editor:
+                editor.destroy()
+            return True
+
+        def save_and_add() -> None:
+            if save(close_editor=False):
+                editor.destroy()
+                self._add_current_batch_card()
 
         button_row = tk.Frame(editor)
         button_row.grid(row=row, column=0, columnspan=2, sticky="ew", padx=10, pady=12)
         tk.Button(button_row, text="Save changes", command=save).pack(side="left")
+        tk.Button(button_row, text="Save + add to Anki", command=save_and_add).pack(side="left", padx=(8, 0))
         tk.Button(button_row, text="Cancel", command=editor.destroy).pack(side="left", padx=(8, 0))
 
     def _open_batch_grammar_editor(self, card: GrammarAnalysis) -> None:
@@ -2832,7 +3317,7 @@ class ModernVocabularyGui:
                 return widget.get("1.0", "end").strip()
             return str(widget.get()).strip()  # type: ignore[attr-defined]
 
-        def save() -> None:
+        def save(close_editor: bool = True) -> bool:
             updated_card = card.model_copy(
                 update={
                     "target_language": value("target_language") or card.target_language,
@@ -2852,20 +3337,32 @@ class ModernVocabularyGui:
             item["word"] = updated_card.sentence
             item["status"] = "ready"
             item["resolved_mode"] = "Grammar"
+            item["batch_mode"] = "Grammar"
+            item["edited_card"] = True
             self._batch_generated_grammar = updated_card
             self._batch_generated_card = None
             self._batch_generated_provider_name = str(item.get("provider_name") or self._provider_var.get())
             self._batch_word_var.set(updated_card.sentence)
             self._set_batch_preview(self._format_batch_grammar_preview(item, updated_card))
             self._autosave_batch_session(f"edited grammar: {updated_card.sentence}")
-            self._batch_status_var.set(f"Edited grammar card and autosaved: {updated_card.sentence}")
+            self._batch_status_var.set(
+                f"Edited grammar card and autosaved. You can add it now: {updated_card.sentence}"
+            )
             self._status_var.set(self._batch_status_var.get())
             self._record_activity(f"Edited grammar: {updated_card.sentence}")
-            editor.destroy()
+            if close_editor:
+                editor.destroy()
+            return True
+
+        def save_and_add() -> None:
+            if save(close_editor=False):
+                editor.destroy()
+                self._add_current_batch_card()
 
         button_row = tk.Frame(editor)
         button_row.grid(row=row, column=0, columnspan=2, sticky="ew", padx=10, pady=12)
         tk.Button(button_row, text="Save changes", command=save).pack(side="left")
+        tk.Button(button_row, text="Save + add to Anki", command=save_and_add).pack(side="left", padx=(8, 0))
         tk.Button(button_row, text="Cancel", command=editor.destroy).pack(side="left", padx=(8, 0))
 
     def _update_batch_progress(self) -> None:
@@ -3916,7 +4413,15 @@ class ModernVocabularyGui:
         and only discover the duplicate during Add all. These candidates keep the
         precheck before provider API calls while staying conservative enough to
         avoid treating ordinary multi-word phrases as separate words.
+
+        Grammar rows are deliberately not split/prechecked here. A grammar row
+        can be a target plus example, e.g. ``supposing / suppose | Supposing ...``.
+        Checking the raw target against all decks creates confusing false stops.
+        Grammar duplicates are checked exactly on the generated grammar note
+        sentence when the card is written to Anki.
         """
+        if str(mode or "").strip() == "Grammar":
+            return []
         value = str(raw_value or "").strip()
         if not value:
             return []
@@ -3972,6 +4477,16 @@ class ModernVocabularyGui:
         if not word:
             return False
         mode = self._batch_mode_for_item(item, word)
+        if mode == "Grammar":
+            # Do not block grammar generation on raw target/example strings.
+            # For inputs like "supposing / suppose | Supposing ...", the raw
+            # left side is not the final Anki duplicate key. The final exact
+            # grammar duplicate check happens on add/update via the Sentence
+            # field of the grammar note type.
+            item["duplicate_prechecked"] = True
+            item["duplicate_precheck_scope"] = "grammar_exact_on_add"
+            item.pop("duplicate_lookup_value", None)
+            return False
         if existing_map is None:
             self._set_selected_deck()
             existing_map = self._anki_client.existing_note_map_broad(include_all_decks=True)
@@ -4082,10 +4597,11 @@ class ModernVocabularyGui:
             messagebox.showerror("No generated card", "Generate or select a generated vocabulary card first. Invalid items without a card cannot be approved; regenerate them after editing the input.")
             return
 
-        old_warnings = item.get("quality_warnings")
+        old_warnings_raw = item.get("quality_warnings")
+        old_warnings = old_warnings_raw if isinstance(old_warnings_raw, list) else []
         old_hard = [
             warning for warning in old_warnings
-            if isinstance(old_warnings, list) and isinstance(warning, str) and warning.startswith("HARD:")
+            if isinstance(warning, str) and warning.startswith("HARD:")
         ]
         warnings = self._sync_quality_warnings_for_item(item, card)
         hard = [warning for warning in warnings if warning.startswith("HARD:")]
@@ -7372,36 +7888,71 @@ class ModernVocabularyGui:
     def _render_suggestions(self, suggestions: list[str]) -> None:
         for widget in self._suggestions_frame.winfo_children():
             widget.destroy()
-        self._latest_suggestions = suggestions
+        self._latest_suggestions = [item.strip() for item in suggestions if item and item.strip()]
+        self._suggestion_items = [
+            {"expression": expression, "source": "ai suggestion"}
+            for expression in self._latest_suggestions
+        ]
         self._suggestion_vars = []
-        if not suggestions:
+        self._suggestion_entry_vars = []
+        if not self._suggestion_items:
             ctk.CTkLabel(
                 self._suggestions_frame,
-                text="No suggestions yet. Start or continue the conversation.",
+                text="No suggestions yet. AI suggestions will appear here after conversation feedback.",
                 text_color=("gray35", "gray75"),
                 wraplength=330,
+                justify="left",
             ).pack(anchor="w", padx=8, pady=8)
             return
-        for expression in suggestions:
-            var = ctk.BooleanVar(value=True)
-            self._suggestion_vars.append(var)
-            ctk.CTkCheckBox(
-                self._suggestions_frame,
-                text=expression,
-                variable=var,
-                wraplength=330,
-            ).pack(anchor="w", fill="x", padx=8, pady=5)
+
+        for index, item in enumerate(self._suggestion_items):
+            expression_var = ctk.StringVar(value=item.get("expression", ""))
+            selected_var = ctk.BooleanVar(value=True)
+            self._suggestion_entry_vars.append(expression_var)
+            self._suggestion_vars.append(selected_var)
+
+            row = ctk.CTkFrame(self._suggestions_frame, corner_radius=10)
+            row.pack(anchor="w", fill="x", padx=6, pady=5)
+            row.grid_columnconfigure(1, weight=1)
+            ctk.CTkCheckBox(row, text="", variable=selected_var, width=22).grid(
+                row=0, column=0, sticky="w", padx=(8, 4), pady=8
+            )
+            ctk.CTkEntry(row, textvariable=expression_var, height=32).grid(
+                row=0, column=1, sticky="ew", padx=(0, 6), pady=8
+            )
+            ctk.CTkButton(
+                row,
+                text="Remove",
+                width=72,
+                height=30,
+                command=lambda i=index: self._remove_suggestion_draft(i),
+            ).grid(row=0, column=2, sticky="e", padx=(0, 8), pady=8)
+
+    def _sync_suggestion_items_from_ui(self) -> None:
+        for item, entry_var in zip(self._suggestion_items, self._suggestion_entry_vars):
+            item["expression"] = clean_ocr_text(entry_var.get()).replace("\n", " ").strip()
+
+    def _remove_suggestion_draft(self, index: int) -> None:
+        self._sync_suggestion_items_from_ui()
+        if index < 0 or index >= len(self._suggestion_items):
+            return
+        del self._suggestion_items[index]
+        current = [item.get("expression", "") for item in self._suggestion_items]
+        self._render_suggestions(current)
+        self._status_var.set("Suggestion draft removed.")
 
     def _add_selected_suggestions_to_queue(self) -> None:
+        self._sync_suggestion_items_from_ui()
         selected = [
-            expression
-            for expression, var in zip(self._latest_suggestions, self._suggestion_vars)
+            item.get("expression", "")
+            for item, var in zip(self._suggestion_items, self._suggestion_vars)
             if var.get()
         ]
         self._add_phrases_to_queue(selected)
 
     def _add_all_suggestions_to_queue(self) -> None:
-        self._add_phrases_to_queue(self._latest_suggestions)
+        self._sync_suggestion_items_from_ui()
+        self._add_phrases_to_queue([item.get("expression", "") for item in self._suggestion_items])
 
     def _add_custom_phrase_to_queue(self) -> None:
         phrase = self._custom_phrase_var.get().strip()
@@ -7420,13 +7971,17 @@ class ModernVocabularyGui:
                 existing_lower.add(cleaned.lower())
                 added += 1
         self._refresh_queue_text()
-        self._status_var.set(f"Added {added} expression(s) to the flashcard queue.")
+        total = len(self._flashcard_queue)
+        self._conversation_queue_log_var.set(
+            f"Staged {added} new expression(s). Total staged: {total}. Next step: Add staged to Batch / Queue."
+        )
+        self._status_var.set(f"Staged {added} expression(s) for Batch / Queue. Nothing added to Anki yet.")
 
     def _refresh_queue_text(self) -> None:
         self._queue_text.configure(state="normal")
         self._queue_text.delete("1.0", "end")
         if not self._flashcard_queue:
-            self._queue_text.insert("1.0", "Queue is empty.")
+            self._queue_text.insert("1.0", "No staged expressions yet. Use Stage selected / Stage all above.")
         else:
             self._queue_text.insert(
                 "1.0",
@@ -7437,64 +7992,119 @@ class ModernVocabularyGui:
     def _clear_queue(self) -> None:
         self._flashcard_queue.clear()
         self._refresh_queue_text()
-        self._status_var.set("Flashcard queue cleared.")
+        self._conversation_queue_log_var.set(
+            "Staged expressions cleared. Nothing was added to Anki."
+        )
+        self._status_var.set("Conversation staged expressions cleared.")
 
-    def _generate_queue_and_add_to_anki(self) -> None:
+    def _send_conversation_queue_to_batch(self) -> None:
+        """Move staged conversation suggestions into the central Batch / Queue flow.
+
+        Conversation Practice should not silently generate cards or write to Anki.
+        It only prepares vocabulary candidates. The Batch / Queue tab remains the
+        single visible place where cards are generated, reviewed, duplicate-checked,
+        and finally added to the selected Anki deck.
+        """
         if not self._flashcard_queue:
-            messagebox.showerror("Empty queue", "Add at least one expression to the queue first.")
-            return
-        try:
-            deck = self._set_selected_deck()
-        except Exception as exc:
-            messagebox.showerror("Missing deck", str(exc))
+            messagebox.showerror("Nothing staged", "Stage at least one expression before sending it to Batch / Queue.")
             return
 
-        # Conversation suggestions should continue with the same language/model
-        # used in Conversation Practice, not the hidden global Card AI provider.
-        provider_name = self._conversation_provider_var.get()
-        target_language = self._conversation_language_var.get()
-        added = 0
-        failed: list[str] = []
+        deck_name = self._deck_var.get().strip() or self._anki_client.deck_name
+        conversation_provider = self._conversation_provider_var.get().strip()
+        if conversation_provider in self._ai_clients:
+            # Make the next Batch generation match the provider used in this
+            # conversation, and make that visible in the top bar.
+            self._provider_var.set(conversation_provider)
+        provider_name = self._provider_var.get().strip()
+        target_language = self._conversation_language_var.get().strip() or self._language_var.get().strip()
+        if target_language:
+            self._language_var.set(target_language)
+        explanation_language = self._explanation_language_var.get().strip()
+        topic = self._topic_var.get().strip()
 
-        for phrase in list(self._flashcard_queue):
-            self._status_var.set(f"Generating and adding: {phrase}")
-            self._root.update_idletasks()
-            try:
-                card = self._conversation_ai_client().generate_card(
-                    phrase, target_language, self._explanation_language_var.get()
-                )
-                if not card.is_valid:
-                    detail = card.validation_error or "Invalid word or phrase."
-                    if card.suggested_correction:
-                        detail += f" Suggested correction: {card.suggested_correction}"
-                    raise ValueError(detail)
-                try:
-                    self._anki_client.add_card(card, provider_name=provider_name)
-                except DuplicateNoteError:
-                    replace = messagebox.askyesno(
-                        "Card already exists",
-                        f"A card for '{phrase}' already exists. Replace it?",
-                    )
-                    if not replace:
-                        raise ValueError("Existing card was not changed.")
-                    self._anki_client.update_card(card, provider_name=provider_name)
-                added += 1
-            except Exception as exc:
-                failed.append(f"{phrase}: {exc}")
+        existing = {str(item.get("word", "")).strip().casefold() for item in self._batch_items}
+        new_items: list[dict[str, object]] = []
+        skipped_duplicates: list[str] = []
+        for phrase in self._flashcard_queue:
+            cleaned = clean_ocr_text(phrase).replace("\n", " ").strip()
+            if not cleaned:
+                continue
+            key = cleaned.casefold()
+            if key in existing:
+                skipped_duplicates.append(cleaned)
+                continue
+            new_items.append(
+                {
+                    "word": cleaned,
+                    "status": "pending",
+                    "topic": topic,
+                    "batch_mode": "Vocabulary",
+                    "target_language": target_language,
+                    "explanation_language": explanation_language,
+                    "source": "conversation_practice/suggested_expression",
+                    "provider_name": provider_name,
+                }
+            )
+            existing.add(key)
 
-        if failed:
-            self._status_var.set(f"Added {added} card(s), {len(failed)} failed.")
-            messagebox.showwarning("Finished with errors", "\n\n".join(failed[:5]))
+        if not new_items:
+            self._conversation_queue_log_var.set(
+                f"Nothing new sent. {len(skipped_duplicates)} duplicate staged expression(s) were already in Batch / Queue."
+            )
+            messagebox.showinfo("Batch / Queue", "All staged expressions are already in Batch / Queue.")
+            return
+
+        append_mode = bool(self._batch_items)
+        self._batch_items.extend(new_items)
+        if not append_mode:
+            self._batch_index = 0
         else:
-            self._status_var.set(f"✓ Added {added} card(s) to Anki deck: {deck}")
-            self._record_activity(f"✓ {added} queued card(s) added")
-            self._clear_queue()
+            self._batch_index = len(self._batch_items) - len(new_items)
+        self._batch_generated_card = None
+        self._batch_generated_provider_name = None
+        self._batch_generated_grammar = None
+        self._batch_mode_var.set("Vocabulary")
+        self._batch_topic_var.set(topic)
+        self._show_current_batch_item(generate=False)
+        self._batch_status_var.set(
+            f"Conversation Practice sent {len(new_items)} item(s). Review/generate them here, then add to Anki deck: {deck_name}."
+        )
+        self._autosave_batch_session("conversation suggestions sent to batch")
+
+        sent_preview = ", ".join(item["word"] for item in new_items[:4])
+        if len(new_items) > 4:
+            sent_preview += f", +{len(new_items) - 4} more"
+        duplicate_note = f" Skipped duplicates: {len(skipped_duplicates)}." if skipped_duplicates else ""
+        log_message = (
+            f"Sent {len(new_items)} expression(s) to Batch / Queue. Nothing added to Anki yet. "
+            f"Deck for final Anki add: {deck_name}. Provider: {provider_name}. Items: {sent_preview}.{duplicate_note}"
+        )
+        self._conversation_queue_log_var.set(log_message)
+        self._status_var.set(log_message)
+        self._append_chat("QUEUE LOG", log_message)
+        self._record_activity(f"Conversation → Batch: {len(new_items)}")
+        self._flashcard_queue.clear()
+        self._refresh_queue_text()
+        try:
+            self._tabs.set("Batch / Queue")
+        except Exception:
+            pass
+        messagebox.showinfo(
+            "Sent to Batch / Queue",
+            f"Sent {len(new_items)} expression(s) to Batch / Queue.\n\n"
+            f"Nothing has been added to Anki yet.\n"
+            f"Final Anki deck later: {deck_name}\n"
+            f"Card AI provider for generation: {provider_name}\n\n"
+            f"Review them in Batch / Queue, then generate/add from there.",
+        )
 
     def _reset_conversation(self) -> None:
         self._conversation_history.clear()
         self._conversation_question = None
         self._latest_suggestions = []
+        self._suggestion_items = []
         self._suggestion_vars = []
+        self._suggestion_entry_vars = []
         self._clear_chat()
         self._chat_text.configure(state="normal")
         self._chat_text.insert("1.0", "Choose a topic and click Start topic. Then continue the conversation here.\n")

@@ -12,3 +12,7 @@
 | `PROVIDER_COST_COMPARISON.md` | Practical pricing comparison for Gemini, OpenAI, and Claude, plus usage dashboard links. |
 | `DEVELOPMENT_NOTES.md` | Testing, smoke checks, and change workflow. |
 | `VIDEO_SCRIPT_PROMPT_ENGINEERING.md` | Development-story video outline. |
+
+## Future roadmap
+
+- `FUTURE_PLANS.md` — roadmap for Import Material, OCR quality, Suggested Expressions, LLMOps, and later RAG/agent work.
