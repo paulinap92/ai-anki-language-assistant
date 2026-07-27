@@ -3,12 +3,14 @@
 from __future__ import annotations
 
 from pathlib import Path
+import time
 
 from src.speech.cache import AudioCache
 from datetime import datetime
 
 from src.speech.models import TtsDiagnostic, TtsRequest, TtsResult
 from src.speech.tts.base import TextToSpeechProvider
+from src.observability import get_llmops_tracer
 
 
 class SpeechService:
@@ -115,9 +117,24 @@ class SpeechService:
         clean_text = " ".join(text.split())
         if not clean_text:
             raise ValueError("Cannot generate audio from empty text.")
+        start = time.perf_counter()
+        provider_label = provider_name or "unknown"
+        model_label = model or "default"
         try:
             provider = self._providers[provider_name]
         except KeyError as exc:
+            get_llmops_tracer().trace_event(
+                feature="tts_generation",
+                provider=provider_label,
+                model=model_label,
+                source="speech_service",
+                outcome="tts_error",
+                metadata={"language": language, "voice": voice, "text_len": len(clean_text)},
+                validation_passed=False,
+                red_flags_count=1,
+                issue_type="tts_provider_not_configured",
+                detail=f"Unknown TTS provider: {provider_name}",
+            )
             raise ValueError(f"Unknown TTS provider: {provider_name}") from exc
         request = TtsRequest(
             text=clean_text,
@@ -129,12 +146,58 @@ class SpeechService:
             provider.provider_name, request, provider.output_extension
         )
         cached = path.exists() and path.stat().st_size > 0
-        if not cached:
-            provider.synthesize(request, path)
-        return TtsResult(
+        cache_metadata = {
+            "language": language,
+            "voice": request.voice,
+            "text_len": len(clean_text),
+            "audio_file": path.name,
+            "cache_hit": cached,
+            "cache_dir": str(path.parent),
+        }
+        get_llmops_tracer().trace_event(
+            feature="audio_cache_outcome",
+            provider="system",
+            model="none",
+            source="speech_service",
+            outcome="cache_hit" if cached else "cache_miss",
+            metadata={**cache_metadata, "provider": provider.provider_name, "model": request.model},
+            validation_passed=True,
+            red_flags_count=0,
+        )
+        try:
+            if not cached:
+                provider.synthesize(request, path)
+        except Exception as exc:
+            latency_ms = int((time.perf_counter() - start) * 1000)
+            get_llmops_tracer().trace_event(
+                feature="tts_generation",
+                provider=provider.provider_name,
+                model=request.model,
+                source="speech_service",
+                outcome="tts_error",
+                metadata={**cache_metadata, "latency_ms": latency_ms},
+                validation_passed=False,
+                red_flags_count=1,
+                issue_type="tts_provider_error",
+                detail=str(exc),
+            )
+            raise
+        result = TtsResult(
             path=path,
             provider_name=provider.provider_name,
             model=request.model,
             voice=request.voice,
             cached=cached,
         )
+        latency_ms = int((time.perf_counter() - start) * 1000)
+        get_llmops_tracer().trace_event(
+            feature="tts_generation",
+            provider=provider.provider_name,
+            model=request.model,
+            source="speech_service",
+            outcome="cache_hit" if cached else "audio_generated",
+            metadata={**cache_metadata, "latency_ms": latency_ms, "audio_file_exists": path.exists()},
+            validation_passed=True,
+            red_flags_count=0,
+        )
+        return result

@@ -3248,9 +3248,68 @@ class ModernVocabularyGui:
             raw_text = generate_text(prompt)
             items = self._ocr_candidate_items_from_ai_response(raw_text, default_mode=mode, source=source)
         except Exception as exc:
+            self._record_llmops_event(
+                feature="import_candidate_generation",
+                outcome="error",
+                provider=provider_name,
+                model=model_name,
+                source="ocr_import",
+                metadata={
+                    "extraction_mode": mode,
+                    "source_scope": source,
+                    "text_len": len(text),
+                },
+                validation_passed=False,
+                red_flags_count=1,
+                issue_type="import_candidate_generation_error",
+                detail=str(exc),
+            )
             self._ocr_candidate_status_var.set("Candidate extraction failed.")
             messagebox.showerror("Import Material", f"Candidate extraction failed: {exc}")
             return
+        type_counts: dict[str, int] = {}
+        source_type_counts: dict[str, int] = {}
+        for candidate_item in items:
+            candidate_type = str(candidate_item.get("type") or "unknown")
+            type_counts[candidate_type] = type_counts.get(candidate_type, 0) + 1
+            source_type = str(candidate_item.get("source_type") or "")
+            if source_type:
+                source_type_counts[source_type] = source_type_counts.get(source_type, 0) + 1
+        self._record_llmops_event(
+            feature="import_candidate_generation",
+            outcome="candidate_generated" if items else "no_candidates",
+            provider=provider_name,
+            model=model_name,
+            source="ocr_import",
+            metadata={
+                "extraction_mode": mode,
+                "source_scope": source,
+                "text_len": len(text),
+                "candidate_count": len(items),
+                "candidate_type_counts": type_counts,
+            },
+            validation_passed=bool(items),
+            red_flags_count=0 if items else 1,
+            issue_type="" if items else "no_candidates_found",
+        )
+        if mode in {"Smart grammar import", "Mixed", "Grammar"} or source_type_counts:
+            self._record_llmops_event(
+                feature="smart_grammar_import",
+                outcome="candidate_generated" if items else "no_candidates",
+                provider=provider_name,
+                model=model_name,
+                source="ocr_import",
+                metadata={
+                    "extraction_mode": mode,
+                    "source_scope": source,
+                    "grammar_candidates": type_counts.get("grammar", 0),
+                    "provided_example_candidates": type_counts.get("provided_example", 0),
+                    "source_type_counts": source_type_counts,
+                },
+                validation_passed=bool(items),
+                red_flags_count=0 if items else 1,
+                issue_type="" if items else "no_candidates_found",
+            )
         if not items:
             self._ocr_candidate_status_var.set("No candidates found. Edit OCR text or try another extraction mode.")
             self._set_ocr_candidate_items([])
@@ -4562,6 +4621,14 @@ class ModernVocabularyGui:
             self._status_var.set(self._batch_status_var.get())
             self._update_batch_progress()
             self._autosave_batch_session(f"generated provided example: {card.word_or_phrase}")
+            self._record_batch_item_generation_event(
+                item,
+                outcome="generated",
+                provider=provider_name,
+                model=model_name,
+                validation_passed=True,
+                red_flags_count=len(quality_warnings),
+            )
             return
 
         if resolved_mode == "Grammar":
@@ -4621,6 +4688,16 @@ class ModernVocabularyGui:
             self._status_var.set(self._batch_status_var.get())
             self._update_batch_progress()
             self._autosave_batch_session(f"generated grammar: {word}")
+            self._record_batch_item_generation_event(
+                item,
+                outcome="generated",
+                provider=provider_name,
+                model=model_name,
+                validation_passed=not bool(focus_warnings),
+                red_flags_count=len(focus_warnings),
+                issue_type="wrong_source_focus" if focus_warnings else "",
+                detail=", ".join(focus_warnings),
+            )
             return
 
         try:
@@ -4699,6 +4776,15 @@ class ModernVocabularyGui:
         self._status_var.set(self._batch_status_var.get())
         self._update_batch_progress()
         self._autosave_batch_session(f"generated: {word}")
+        self._record_batch_item_generation_event(
+            item,
+            outcome="generated" if not quality_warnings else "generated_with_warnings",
+            provider=provider_name,
+            model=model_name,
+            validation_passed=not bool(quality_warnings),
+            red_flags_count=len(quality_warnings),
+            issue_type="quality_warning" if quality_warnings else "",
+        )
 
     def _add_current_batch_card(self) -> None:
         if self._batch_generated_grammar is not None:
@@ -5764,6 +5850,7 @@ class ModernVocabularyGui:
             self._batch_status_var.set(f"Auto-generation finished. Autosave: {self._batch_autosave_path}")
             self._status_var.set(self._batch_status_var.get())
             self._record_activity("Auto-generation finished")
+            self._record_batch_generation_summary_event("auto-generation finished")
             return
 
         self._batch_index = next_index
@@ -7568,6 +7655,155 @@ class ModernVocabularyGui:
             # Observability must never break review/export flows.
             LOGGER.debug("Could not record LLMOps outcome", exc_info=True)
 
+    def _record_llmops_event(
+        self,
+        *,
+        feature: str,
+        outcome: str,
+        provider: str = "system",
+        model: str = "none",
+        source: str = "ui",
+        metadata: dict[str, object] | None = None,
+        inputs: dict[str, object] | None = None,
+        outputs: dict[str, object] | None = None,
+        validation_passed: bool | None = None,
+        red_flags_count: int | None = None,
+        issue_type: str = "",
+        detail: str = "",
+    ) -> None:
+        """Record a non-LLM observability event without breaking the UI."""
+        try:
+            get_llmops_tracer().trace_event(
+                feature=feature,
+                outcome=outcome,
+                provider=provider,
+                model=model,
+                source=source,
+                metadata=metadata or {},
+                inputs=inputs or {},
+                outputs=outputs or {"outcome": outcome},
+                validation_passed=validation_passed,
+                red_flags_count=red_flags_count,
+                issue_type=issue_type,
+                detail=detail,
+            )
+            self._refresh_llmops_log()
+        except Exception:
+            LOGGER.debug("Could not record LLMOps event", exc_info=True)
+
+    @staticmethod
+    def _normalise_sentence_for_alignment(value: object) -> str:
+        return re.sub(r"\s+", " ", str(value or "").strip()).casefold()
+
+    def _record_audio_alignment_event(
+        self,
+        *,
+        card_type: str,
+        visible_sentence: str,
+        audio_sentence: str,
+        source: str,
+        provider: str = "system",
+        model: str = "none",
+        metadata: dict[str, object] | None = None,
+    ) -> bool:
+        visible = self._normalise_sentence_for_alignment(visible_sentence)
+        audio = self._normalise_sentence_for_alignment(audio_sentence)
+        alignment_passed = bool(audio) and (not visible or visible == audio or visible in audio or audio in visible)
+        issue_type = "" if alignment_passed else "audio_sentence_mismatch"
+        self._record_llmops_event(
+            feature="audio_sentence_selection",
+            outcome="selected" if audio else "missing_audio_sentence",
+            provider=provider,
+            model=model,
+            source=source,
+            metadata={
+                "card_type": card_type,
+                "visible_sentence_present": bool(visible_sentence.strip()),
+                "audio_sentence_present": bool(audio_sentence.strip()),
+                "audio_sentence_len": len(audio_sentence.strip()),
+                **(metadata or {}),
+            },
+            validation_passed=bool(audio),
+            red_flags_count=0 if audio else 1,
+            issue_type="" if audio else "missing_audio_sentence",
+        )
+        self._record_llmops_event(
+            feature="audio_sentence_alignment_check",
+            outcome="passed" if alignment_passed else "blocked",
+            provider="system",
+            model="none",
+            source=source,
+            metadata={
+                "card_type": card_type,
+                "alignment_passed": alignment_passed,
+                "visible_sentence_present": bool(visible_sentence.strip()),
+                "audio_sentence_present": bool(audio_sentence.strip()),
+                "visible_sentence_len": len(visible_sentence.strip()),
+                "audio_sentence_len": len(audio_sentence.strip()),
+                **(metadata or {}),
+            },
+            validation_passed=alignment_passed,
+            red_flags_count=0 if alignment_passed else 1,
+            issue_type=issue_type,
+        )
+        return alignment_passed
+
+    def _record_batch_item_generation_event(
+        self,
+        item: dict[str, object],
+        *,
+        outcome: str,
+        provider: str,
+        model: str,
+        validation_passed: bool | None = None,
+        red_flags_count: int | None = None,
+        issue_type: str = "",
+        detail: str = "",
+    ) -> None:
+        self._record_llmops_event(
+            feature="batch_item_generation",
+            outcome=outcome,
+            provider=provider,
+            model=model,
+            source="batch_queue",
+            metadata={
+                "batch_index": self._batch_index + 1,
+                "batch_size": len(self._batch_items),
+                "batch_mode": str(item.get("batch_mode") or ""),
+                "resolved_mode": str(item.get("resolved_mode") or ""),
+                "status": str(item.get("status") or ""),
+                "item_preview": str(item.get("word") or "")[:120],
+            },
+            validation_passed=validation_passed,
+            red_flags_count=red_flags_count,
+            issue_type=issue_type,
+            detail=detail,
+        )
+
+    def _record_batch_generation_summary_event(self, label: str = "batch summary") -> None:
+        counts: dict[str, int] = {}
+        for item in self._batch_items:
+            status = str(item.get("status") or "pending")
+            counts[status] = counts.get(status, 0) + 1
+        self._record_llmops_event(
+            feature="batch_generation_summary",
+            outcome="completed",
+            provider="system",
+            model="none",
+            source="batch_queue",
+            metadata={
+                "label": label,
+                "batch_size": len(self._batch_items),
+                "status_counts": counts,
+                "ready_count": counts.get("ready", 0),
+                "added_count": counts.get("added", 0) + counts.get("added_to_anki", 0),
+                "failed_count": counts.get("error", 0) + counts.get("add_failed", 0) + counts.get("provider_failed", 0),
+                "invalid_count": counts.get("invalid", 0),
+            },
+            validation_passed=True,
+            red_flags_count=0,
+        )
+
     def _current_ai_client(self) -> VocabularyAiClient:
         return self._ai_clients[self._provider_var.get()]
 
@@ -7721,6 +7957,24 @@ class ModernVocabularyGui:
                 )
                 try:
                     media_name = self._anki_client.store_media_file(self._generated_audio.path)
+                    self._record_llmops_event(
+                        feature="audio_attach_to_anki",
+                        outcome="media_stored",
+                        provider="system",
+                        model="none",
+                        source="single_flashcard",
+                        metadata={
+                            "card_type": "vocabulary",
+                            "word_or_phrase": self._generated_card.word_or_phrase,
+                            "audio_file": self._generated_audio.path.name,
+                            "anki_media_file": media_name,
+                            "tts_provider": self._generated_audio.provider_name,
+                            "tts_model": self._generated_audio.model,
+                            "cache_hit": self._generated_audio.cached,
+                        },
+                        validation_passed=True,
+                        red_flags_count=0,
+                    )
                 except Exception as media_exc:
                     LOGGER.exception(
                         "Could not store generated audio in Anki media: path=%s word=%s",
@@ -7911,12 +8165,31 @@ class ModernVocabularyGui:
             return
         self._tts_provider_var.set(provider_name)
         self._sync_tts_defaults()
+        audio_sentence = self._generated_card.example or ""
+        if not self._record_audio_alignment_event(
+            card_type="vocabulary",
+            visible_sentence=audio_sentence,
+            audio_sentence=audio_sentence,
+            source="single_flashcard_audio",
+            provider=provider_name,
+            model=self._tts_model_var.get(),
+            metadata={
+                "word_or_phrase": self._generated_card.word_or_phrase,
+                "target_language": self._generated_card.target_language,
+                "voice": self._selected_tts_voice(),
+            },
+        ):
+            message = "Audio generation blocked: visible example and audio sentence do not match."
+            self._status_var.set(message)
+            self._record_activity("Audio alignment blocked")
+            messagebox.showerror("Audio alignment", message)
+            return
         self._status_var.set(f"Generating example audio with {provider_name}...")
         self._root.update_idletasks()
         try:
             self._generated_audio = self._speech_service.generate(
                 provider_name,
-                self._generated_card.example,
+                audio_sentence,
                 self._generated_card.target_language,
                 self._tts_model_var.get(),
                 self._selected_tts_voice(),
@@ -8339,7 +8612,9 @@ class ModernVocabularyGui:
                 blocked.append(f"{note.get('word', '—')}: {status}")
                 continue
             prepared = dict(note)
+            source_text_check, source_field = self._speech_source_text_for_note(note)
             prepared["_source_text"] = source_text
+            prepared["_source_field"] = source_field
             prepared["_target_audio_field"] = target_field
             prepared["_write_mode"] = self._speech_write_mode_var.get()
             selected.append(prepared)
@@ -8495,6 +8770,7 @@ class ModernVocabularyGui:
                 current_status = self._speech_audio_status_by_note_id.get(note_id, "pending_audio")
                 audio_field = str(note.get("_target_audio_field") or note.get("audio_field") or "").strip()
                 source_text = str(note.get("_source_text") or note.get("example") or note.get("word") or "").strip()
+                source_field = str(note.get("_source_field") or "auto")
                 write_mode = str(note.get("_write_mode") or "Use dedicated audio field")
                 if current_status in {"audio_ready", "updated_in_anki", "has_audio"}:
                     skipped_done += 1
@@ -8510,6 +8786,42 @@ class ModernVocabularyGui:
                     )
                     publish_progress(
                         f"Skipping not-ready note {index}/{len(notes)} · Updated {completed} · Skipped {skipped_done} · Failed {errors}"
+                    )
+                    continue
+
+                fields = note.get("fields") if isinstance(note.get("fields"), dict) else {}
+                visible_sentence = ""
+                if "grammar" in str(note.get("model") or "").casefold():
+                    for visible_field in ("Sentence", "Word", "Front"):
+                        if visible_field in fields:
+                            visible_value = self._plain_text(str(fields.get(visible_field, "")))
+                            if visible_value and self._looks_like_complete_sentence(visible_value):
+                                visible_sentence = visible_value
+                                break
+                if not visible_sentence:
+                    visible_sentence = source_text
+                if not self._record_audio_alignment_event(
+                    card_type="existing_card_audio",
+                    visible_sentence=visible_sentence,
+                    audio_sentence=source_text,
+                    source="speech_audio_batch",
+                    provider=provider_name,
+                    model=model_name,
+                    metadata={
+                        "note_id": note_id,
+                        "word_preview": str(note.get("word") or "")[:120],
+                        "model_name": str(note.get("model") or ""),
+                        "source_field": source_field,
+                        "target_audio_field": audio_field,
+                        "write_mode": write_mode,
+                        "voice": voice_value,
+                    },
+                ):
+                    skipped_done += 1
+                    self._speech_audio_status_by_note_id[note_id] = "audio_alignment_blocked"
+                    self._speech_audio_error_by_note_id[note_id] = "Visible sentence and selected audio sentence do not match."
+                    publish_progress(
+                        f"Audio alignment blocked {index}/{len(notes)} · Updated {completed} · Skipped {skipped_done} · Failed {errors}"
                     )
                     continue
 
@@ -8543,6 +8855,27 @@ class ModernVocabularyGui:
                         voice_value,
                     )
                     media_name = self._anki_client.store_media_file(result.path)
+                    self._record_llmops_event(
+                        feature="audio_attach_to_anki",
+                        outcome="attached_to_anki",
+                        provider="system",
+                        model="none",
+                        source="speech_audio_batch",
+                        metadata={
+                            "note_id": note_id,
+                            "card_type": "existing_card_audio",
+                            "word_preview": str(note.get("word") or "")[:120],
+                            "audio_file": result.path.name,
+                            "anki_media_file": media_name,
+                            "tts_provider": result.provider_name,
+                            "tts_model": result.model,
+                            "cache_hit": result.cached,
+                            "target_audio_field": audio_field,
+                            "write_mode": write_mode,
+                        },
+                        validation_passed=True,
+                        red_flags_count=0,
+                    )
                     if write_mode == "Append [sound] to existing field":
                         self._anki_client.append_audio_to_note(note_id, media_name, audio_field)
                     else:
@@ -8718,6 +9051,13 @@ class ModernVocabularyGui:
                 f"✓ Updated grammar card in {deck}: {self._generated_grammar.sentence}"
             )
             self._record_activity("↻ Grammar card updated")
+            self._record_llmops_outcome(
+                outcome="updated_existing_note",
+                item=self._generated_grammar.sentence,
+                card_type="grammar",
+                source="grammar_tab",
+                validation_passed=True,
+            )
             self._grammar_sentence_var.set("")
             self._generated_grammar = None
             self._generated_grammar_provider_name = None
@@ -8729,6 +9069,13 @@ class ModernVocabularyGui:
 
         self._status_var.set(f"✓ Added grammar card to Anki deck {deck}: {self._generated_grammar.sentence}")
         self._record_activity("✓ Grammar card added")
+        self._record_llmops_outcome(
+            outcome="added_to_anki",
+            item=self._generated_grammar.sentence,
+            card_type="grammar",
+            source="grammar_tab",
+            validation_passed=True,
+        )
         self._grammar_sentence_var.set("")
         self._generated_grammar = None
         self._generated_grammar_provider_name = None
