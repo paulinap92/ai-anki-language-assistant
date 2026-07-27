@@ -1431,3 +1431,9 @@ See `RELEASE_NOTES_v10_6_5_QUALITY_WARNING_NONE_HOTFIX.md`.
 - Keeps the grammar target and attaches the real example sentence to it.
 - Reduces confusing duplicates in Candidate drafts / cherry-pick.
 
+
+### v10.6.8 Grammar Batch Preview + Exercise OCR Roadmap
+
+- Fixed Grammar Batch preview labels so pending grammar items show `GRAMMAR TARGET` and `SENTENCE TO READ` instead of `WORD / PHRASE`.
+- Avoids using long textbook rule explanations as audio sentences.
+- Added a future roadmap section for OCR grammar exercises: gap-fill / multiple-choice exercise drafts reviewed before becoming audio-ready Grammar cards.

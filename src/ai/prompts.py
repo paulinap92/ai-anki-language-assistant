@@ -352,7 +352,7 @@ def build_batch_grammar_prompt(
     This is different from sentence analysis: the input may be a grammar
     construction such as ``aunque + subjuntivo`` or a discourse connector such
     as ``por consiguiente``. The output reuses ``GrammarAnalysis`` because the
-    Anki grammar template is sentence/structure-first.
+    Anki grammar template is sentence/structure-first and audio-ready.
     """
     topic_rules = _topic_rules(topic_context)
     return f"""
@@ -370,7 +370,7 @@ exam-writing expression, or a complete example sentence.
 Requirements:
 - If the input uses the review format "grammar target | source sentence", put ONLY the source sentence, the part after "|", in the "sentence" field, and use the left side as the structure/pattern clue.
 - If the input is only a sentence, preserve that sentence exactly in the "sentence" field.
-- If the input is only a grammar pattern with no sentence, preserve that pattern in the "sentence" field and create a natural context example separately.
+- If the input is only a grammar pattern with no source sentence, create ONE natural example sentence for the "sentence" field and put the pattern itself in "structure".
 - Identify the useful grammar structure or writing function.
 - Explain the meaning/use in simple {target_language}.
 - Keep it practical for learners, not a long academic lesson.
@@ -385,7 +385,7 @@ Return ONLY valid JSON. Do not use markdown or comments outside JSON.
 Return this exact JSON structure:
 
 {{
-  "sentence": "source sentence only if the input contains target | sentence; otherwise {grammar_item}",
+  "sentence": "source sentence if the input contains target | sentence; otherwise a natural example sentence using the grammar item",
   "target_language": "{target_language}",
   "meaning": "string",
   "structure": "string",

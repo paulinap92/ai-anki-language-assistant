@@ -105,6 +105,59 @@ Planned improvements:
 - add better previews before sending grammar candidates to Batch;
 - keep examples and targets together through the whole flow.
 
+
+---
+
+## 4A. Grammar Exercise OCR Mode — future feature
+
+Textbook exercise screenshots should not be treated like plain vocabulary lists.
+They need a dedicated workflow because they often contain gaps, answer options,
+and short sentences that should eventually become audio-ready grammar cards.
+
+Planned workflow:
+
+```text
+OCR screenshot / pasted exercise
+        ↓
+Reviewed source text
+        ↓
+Find grammar exercises
+        ↓
+Exercise drafts
+        ↓
+user fills answer OR AI solves with review
+        ↓
+one completed sentence = one Grammar card = one audio sentence
+        ↓
+Batch / Queue
+```
+
+Planned draft fields:
+
+- exercise type: fill gap / multiple choice / transformation;
+- grammar topic, for example modals, obligation, permission, necessity;
+- raw sentence with blank;
+- answer options, if present;
+- selected/correct answer;
+- completed sentence to read aloud;
+- optional short explanation or rule note.
+
+MVP idea:
+
+- detect lines with blanks such as `___`, `(not)`, alternatives, or numbered
+  exercise rows;
+- create editable exercise drafts rather than final cards;
+- let the user type the answer manually;
+- optional **Solve with AI** button, but always with review;
+- send only completed, reviewed sentences to Batch / Queue.
+
+Important rule:
+
+```text
+Do not add raw gap-fill exercises directly to Anki.
+Convert them into completed sentence-first Grammar cards after review.
+```
+
 ---
 
 ## 5. Speech / STT Diagnostics
@@ -231,6 +284,7 @@ This should be treated as a later portfolio upgrade, after the current desktop a
 | Version | Focus |
 |---|---|
 | v10.6.2 | Documentation roadmap and future plan cleanup |
+| v10.6.8 | Grammar Batch preview labels + Exercise OCR future plan |
 | v10.7 | Import Material polish + OCR quality gate v2 |
 | v10.8 | Suggested Expressions v2 + better candidate labels |
 | v10.9 | STT diagnostics and Whisper truncation checks |

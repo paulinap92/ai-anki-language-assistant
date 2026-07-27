@@ -12,12 +12,12 @@ def test_batch_grammar_prompt_contains_structure_and_topic_variety_rules():
     assert "aunque + subjuntivo" in prompt
     assert "Target language: Spanish" in prompt
     assert "Do not overuse one noun such as \"ensayo\"" in prompt
-    assert '"sentence": "source sentence only if the input contains target | sentence; otherwise aunque + subjuntivo"' in prompt
+    assert "otherwise a natural example sentence using the grammar item" in prompt
 
 
 def test_batch_grammar_model_accepts_prompt_schema_shape():
     card = GrammarAnalysis(
-        sentence="aunque + subjuntivo",
+        sentence="Aunque sea difícil, enviaré la reclamación formal.",
         target_language="Spanish",
         meaning="Expresa una concesión o condición no confirmada.",
         structure="aunque + subjuntivo",
@@ -28,7 +28,7 @@ def test_batch_grammar_model_accepts_prompt_schema_shape():
         common_mistakes=["aunque es difícil -> aunque sea difícil cuando es hipotético"],
     )
 
-    assert card.sentence == "aunque + subjuntivo"
+    assert card.sentence == "Aunque sea difícil, enviaré la reclamación formal."
     assert card.structure == "aunque + subjuntivo"
 
 from src.ai.prompts import SENTENCE_BASED_CARD_PROMPT_VERSION, build_sentence_based_card_prompt

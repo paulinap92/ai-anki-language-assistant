@@ -2938,33 +2938,61 @@ class ModernVocabularyGui:
             candidate_type = self._normalize_ocr_candidate_type(candidate.get("type", "vocabulary"))
             target = candidate.get("target", "").strip()
             sentence = candidate.get("sentence", "").strip()
+            item_extra: dict[str, object] = {}
             if candidate_type == "provided_example":
                 word = f"{target} | {sentence}" if target and sentence else (sentence or target)
                 batch_mode = "Provided examples"
+                if target:
+                    item_extra["provided_target"] = target
+                if sentence:
+                    item_extra["provided_sentence"] = sentence
             elif candidate_type == "grammar":
-                # Preserve explicit AI/manual grammar targets. If there is no target,
-                # send the example sentence alone so Batch can infer the grammar focus.
-                word = f"{target} | {sentence}" if target and sentence else (target or sentence)
                 batch_mode = "Grammar"
+                target_is_sentence = self._looks_like_complete_sentence(target)
+                sentence_is_rule = self._ocr_looks_like_rule_explanation(sentence)
+
+                if target and sentence and not sentence_is_rule and not target_is_sentence:
+                    # Best case: explicit grammar pattern + one real sentence.
+                    word = f"{target} | {sentence}"
+                    item_extra["grammar_target"] = target
+                    item_extra["provided_sentence"] = sentence
+                elif target and sentence and target_is_sentence:
+                    # The AI/local finder sometimes stores a sentence in target and
+                    # a fuller example in sentence. For grammar, prefer the readable
+                    # sentence as the audio target and let the model infer structure.
+                    word = sentence
+                    item_extra["provided_sentence"] = sentence
+                elif target and sentence_is_rule:
+                    # Do not send a long textbook rule as the audio sentence. Keep it
+                    # only as source context and generate a natural example later.
+                    word = target
+                    item_extra["grammar_target"] = target
+                    item_extra["source_rule"] = sentence
+                else:
+                    word = target or sentence
+                    if target and not target_is_sentence:
+                        item_extra["grammar_target"] = target
+                    if sentence and self._looks_like_complete_sentence(sentence):
+                        item_extra["provided_sentence"] = sentence
             else:
                 word = target or sentence
                 batch_mode = "Vocabulary"
             word = word.strip()
             if not word:
                 continue
-            items.append(
-                {
-                    "word": word,
-                    "status": "pending",
-                    "topic": topic,
-                    "batch_mode": batch_mode,
-                    "target_language": target_language,
-                    "explanation_language": explanation_language,
-                    "source": f"ocr_import/{candidate.get('source', 'candidate')}",
-                    "candidate_source": candidate.get("source", ""),
-                    "edited": bool(candidate.get("edited")),
-                }
-            )
+            batch_item = {
+                "word": word,
+                "status": "pending",
+                "topic": topic,
+                "batch_mode": batch_mode,
+                "target_language": target_language,
+                "explanation_language": explanation_language,
+                "source": f"ocr_import/{candidate.get('source', 'candidate')}",
+                "candidate_source": candidate.get("source", ""),
+                "edited": bool(candidate.get("edited")),
+            }
+            batch_item.update(item_extra)
+            items.append(batch_item)
         if not items:
             messagebox.showwarning("Import Material", "No selected usable candidates were found.")
             return
@@ -3049,6 +3077,8 @@ class ModernVocabularyGui:
                 word=str(item.get("word", "")),
                 status=str(item.get("status", "pending")),
                 detail=self._friendly_batch_item_detail(item),
+                mode=mode,
+                item=item,
             )
         # Important: showing/selecting an item must never call an AI provider.
         # Generation is allowed only through explicit buttons such as
@@ -3429,19 +3459,54 @@ class ModernVocabularyGui:
         status: str,
         detail: str = "",
         actions: str = "",
+        mode: str = "",
+        item: dict[str, object] | None = None,
     ) -> None:
-        """Show a stable card-like Batch preview for non-ready states."""
+        """Show a stable card-like Batch preview for non-ready states.
+
+        Grammar items must not be rendered with the vocabulary label
+        "WORD / PHRASE". Import Material often sends grammar rows as
+        "target | sentence"; the preview should expose those two parts so the
+        user can see what will become the audio sentence.
+        """
+        effective_mode = (mode or str((item or {}).get("resolved_mode") or (item or {}).get("batch_mode") or "")).strip()
         blocks = [
             "╭────────────────────────────────────────╮",
             f"  {title}",
             "╰────────────────────────────────────────╯",
             "",
-            f"WORD / PHRASE",
-            f"{word or '—'}",
-            "",
-            "STATUS",
-            status,
         ]
+
+        if effective_mode == "Grammar":
+            raw_target, raw_sentence = self._split_batch_grammar_item(word)
+            grammar_target = str((item or {}).get("grammar_target") or raw_target).strip()
+            sentence_to_read = str((item or {}).get("provided_sentence") or raw_sentence).strip()
+            source_rule = str((item or {}).get("source_rule") or "").strip()
+            blocks.extend([
+                "GRAMMAR TARGET",
+                grammar_target or "—",
+                "",
+                "SENTENCE TO READ",
+                sentence_to_read or "AI will generate a natural example sentence.",
+            ])
+            if source_rule:
+                blocks.extend(["", "SOURCE RULE / NOTE", source_rule])
+        elif effective_mode == "Provided examples":
+            target, sentence = self._parse_provided_example_item(word)
+            blocks.extend([
+                "TARGET ITEM",
+                target or "—",
+                "",
+                "PROVIDED SENTENCE",
+                sentence or word or "—",
+            ])
+        else:
+            blocks.extend([
+                "WORD / PHRASE",
+                f"{word or '—'}",
+            ])
+
+        blocks.extend(["", "STATUS", status])
         if detail:
             blocks.extend(["", "DETAILS", detail])
         if actions:
@@ -4284,6 +4349,40 @@ class ModernVocabularyGui:
                 left, right = text.split(separator, 1)
                 return left.strip(), right.strip()
         return "", text
+
+    @staticmethod
+    def _looks_like_complete_sentence(value: str) -> bool:
+        """Conservative check for real learner sentences, not grammar patterns."""
+        text = clean_ocr_text(str(value or "")).strip()
+        if not text or len(text.split()) < 2:
+            return False
+        if text.rstrip("\'\" )]").endswith((".", "!", "?")):
+            return True
+        # OCR often drops final punctuation. This catches obvious sentence starts
+        # without treating compact grammar labels such as "should + infinitive"
+        # as sentences.
+        return bool(re.match(r"^(I|You|He|She|It|We|They|There|This|That|These|Those|The|A|An)\b", text)) and not any(
+            marker in text for marker in (" + ", " / ", "+")
+        )
+
+    @classmethod
+    def _split_batch_grammar_item(cls, value: str) -> tuple[str, str]:
+        """Return (grammar_target, sentence_to_read) from a Batch grammar row.
+
+        Batch grammar rows may be either:
+        - "target | sentence" from Import Material, or
+        - a plain sentence, or
+        - a plain grammar pattern.
+        """
+        text = clean_ocr_text(str(value or "")).replace("\n", " ").strip()
+        if not text:
+            return "", ""
+        target, sentence = cls._parse_provided_example_item(text)
+        if target and sentence:
+            return target, sentence
+        if cls._looks_like_complete_sentence(text):
+            return "", text
+        return text, ""
 
     def _quality_expected_input_for_item(self, item: dict[str, object], card: VocabularyCard) -> str:
         """Return the expected lexical item for quality validation.
