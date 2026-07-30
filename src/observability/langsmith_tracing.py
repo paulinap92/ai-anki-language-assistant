@@ -81,19 +81,6 @@ FEATURE_DEFAULTS: dict[str, dict[str, str]] = {
     "conversation_start": {"prompt_version": "conversation_start_prompt_v1", "source": "conversation_practice"},
     "conversation_feedback": {"prompt_version": "conversation_feedback_prompt_v2", "source": "conversation_practice"},
     "llmops_test_trace": {"prompt_version": "manual_test", "source": "llmops_tab"},
-    "import_candidate_generation": {"prompt_version": "ocr_candidate_extraction_v1", "source": "import_material"},
-    "smart_grammar_import": {"prompt_version": "smart_grammar_import_v1", "source": "import_material"},
-    "batch_item_generation": {"prompt_version": "not_applicable", "source": "batch_queue"},
-    "batch_generation_summary": {"prompt_version": "not_applicable", "source": "batch_queue"},
-    "card_review_outcome": {"prompt_version": "not_applicable", "source": "human_review"},
-    "anki_add_outcome": {"prompt_version": "not_applicable", "source": "anki_connect"},
-    "anki_update_outcome": {"prompt_version": "not_applicable", "source": "anki_connect"},
-    "duplicate_detection": {"prompt_version": "not_applicable", "source": "anki_connect"},
-    "audio_sentence_selection": {"prompt_version": "not_applicable", "source": "audio_pipeline"},
-    "audio_sentence_alignment_check": {"prompt_version": "not_applicable", "source": "audio_pipeline"},
-    "tts_generation": {"prompt_version": "not_applicable", "source": "speech_service"},
-    "audio_cache_outcome": {"prompt_version": "not_applicable", "source": "speech_service"},
-    "audio_attach_to_anki": {"prompt_version": "not_applicable", "source": "anki_connect"},
     "anki_outcome": {"prompt_version": "not_applicable", "source": "anki_connect"},
 }
 
@@ -250,124 +237,6 @@ class LlmOpsTracer:
             )
         )
 
-    def trace_event(
-        self,
-        *,
-        feature: str,
-        outcome: str = "event",
-        provider: str = "system",
-        model: str = "none",
-        source: str | None = None,
-        prompt_version: str | None = None,
-        inputs: dict[str, Any] | None = None,
-        outputs: dict[str, Any] | None = None,
-        metadata: dict[str, Any] | None = None,
-        validation_passed: bool | None = None,
-        red_flags_count: int | None = None,
-        issue_type: str = "",
-        detail: str = "",
-    ) -> None:
-        """Record a non-LLM observability event locally and, when enabled, in LangSmith.
-
-        This is used for human review decisions, Anki outcomes, import summaries
-        and audio pipeline checks. These events do not call a model, but they are
-        quality signals and belong in the same LangSmith project as model calls.
-        """
-        defaults = self.feature_defaults(feature)
-        effective_metadata: dict[str, Any] = {
-            **defaults,
-            **(metadata or {}),
-            "outcome": outcome,
-        }
-        if source:
-            effective_metadata["source"] = source
-        if prompt_version:
-            effective_metadata["prompt_version"] = prompt_version
-        if validation_passed is not None:
-            effective_metadata["validation_passed"] = validation_passed
-        if red_flags_count is not None:
-            effective_metadata["red_flags_count"] = red_flags_count
-        if issue_type:
-            effective_metadata["issue_type"] = issue_type
-
-        safe_metadata = self._base_metadata(feature, provider, model, effective_metadata)
-        safe_inputs = self.sanitize_value(inputs or {})
-        safe_outputs = self.sanitize_value(outputs or {"outcome": outcome})
-        traceable = self._load_traceable() if self.enabled else None
-        can_send = bool(self.enabled and traceable and self.api_key_configured)
-        start = time.perf_counter()
-        sent = False
-        status = "ok"
-        event_detail = detail
-
-        if can_send:
-            try:
-                try:
-
-                    @traceable(  # type: ignore[misc]
-                        name=feature,
-                        run_type="chain",
-                        metadata=safe_metadata,
-                        tags=[
-                            "ai-anki",
-                            str(feature),
-                            str(provider),
-                            str(safe_metadata.get("source", "unknown")),
-                            str(outcome),
-                        ],
-                    )
-                    def _langsmith_event(payload: dict[str, Any]) -> dict[str, Any]:
-                        return {
-                            "inputs": payload,
-                            "outputs": safe_outputs,
-                            "metadata": safe_metadata,
-                        }
-
-                except TypeError:
-
-                    @traceable(name=feature)  # type: ignore[misc]
-                    def _langsmith_event(payload: dict[str, Any]) -> dict[str, Any]:
-                        return {
-                            "inputs": payload,
-                            "outputs": safe_outputs,
-                            "metadata": safe_metadata,
-                        }
-
-                _langsmith_event(safe_inputs)
-                self._wait_for_tracers()
-                sent = True
-                event_detail = detail or f"Sent to LangSmith project: {self.project_name}"
-            except Exception as exc:
-                status = "ok_not_sent"
-                event_detail = f"LangSmith event send failed: {exc}"
-        else:
-            event_detail = detail or (self.last_error if self.enabled else "LangSmith disabled; local event only.")
-
-        latency_ms = int((time.perf_counter() - start) * 1000)
-        self._record_event(
-            feature=feature,
-            provider=provider,
-            model=model,
-            status=status,
-            latency_ms=latency_ms,
-            sent_to_langsmith=sent,
-            detail=self._quality_detail(
-                QualitySnapshot(
-                    validation_passed=validation_passed,
-                    red_flags_count=red_flags_count,
-                    issue_type=issue_type,
-                    outcome=outcome,
-                ),
-                event_detail,
-            ),
-            prompt_version=str(safe_metadata.get("prompt_version") or "unknown"),
-            source=str(safe_metadata.get("source") or "unknown"),
-            validation_passed=validation_passed,
-            red_flags_count=red_flags_count,
-            issue_type=issue_type,
-            outcome=outcome,
-        )
-
     def record_outcome(
         self,
         *,
@@ -384,23 +253,12 @@ class LlmOpsTracer:
         issue_type: str = "",
         detail: str = "",
     ) -> None:
-        """Record a user review / Anki outcome locally and in LangSmith.
+        """Record a non-LLM user/outcome event in the local LLMOps log.
 
-        These events close the loop from AI generation to human decision: add,
-        skip, duplicate, update or failed export.
+        This is intentionally local-only. It connects generated-card traces with
+        human review outcomes such as added_to_anki, updated_existing_note or
+        skipped, without requiring an external service.
         """
-        if feature == "anki_outcome":
-            if outcome == "added_to_anki":
-                feature = "anki_add_outcome"
-            elif outcome == "updated_existing_note":
-                feature = "anki_update_outcome"
-            elif "duplicate" in outcome:
-                feature = "duplicate_detection"
-            elif outcome in {"skipped", "review_cancelled", "validation_override"}:
-                feature = "card_review_outcome"
-            elif outcome == "add_failed":
-                feature = "anki_add_outcome"
-
         bits = [f"outcome={outcome}"]
         if item:
             bits.append(f"item={item}")
@@ -408,24 +266,20 @@ class LlmOpsTracer:
             bits.append(f"card_type={card_type}")
         if detail:
             bits.append(detail)
-
-        self.trace_event(
+        self._record_event(
             feature=feature,
-            outcome=outcome,
             provider=provider,
             model=model,
-            source=source,
+            status="ok",
+            latency_ms=0,
+            sent_to_langsmith=False,
+            detail=" | ".join(bits),
             prompt_version=prompt_version,
-            inputs={"item": item, "card_type": card_type},
-            outputs={"outcome": outcome},
-            metadata={
-                "item_preview": item[:120] if item else "",
-                "card_type": card_type,
-            },
+            source=source,
             validation_passed=validation_passed,
             red_flags_count=red_flags_count,
             issue_type=issue_type,
-            detail=" | ".join(bits),
+            outcome=outcome,
         )
 
     def sanitize_value(self, value: Any) -> Any:

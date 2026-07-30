@@ -551,6 +551,7 @@ Your task:
 - Do NOT generate full flashcards.
 - Extract useful candidates that can be reviewed before sending to Batch.
 - Preserve useful source sentences exactly when they are natural and readable.
+- For table-like material, preserve row relationships such as Expression | Example | Use. Do not mix cells from different rows.
 - Skip OCR garbage, page numbers, exercise labels, random headers, and duplicate items.
 - Prefer useful words, phrases, collocations, grammar chunks, highlighted/bold items, and textbook example sentences.
 - Keep at most {max_candidates} candidates.
@@ -563,7 +564,8 @@ Candidate types:
 Mode-specific rules:
 - If mode is Vocabulary, return mostly vocabulary candidates with target only.
 - If mode is Provided examples, return provided_example candidates in target + sentence form.
-- If mode is Grammar, return grammar candidates with a clear target whenever possible, e.g. verb pattern, tense pattern, connector, prefix, or structure. Preserve the source sentence as sentence/provided_example. If you cannot identify the target, return the sentence with type grammar and an empty target; do not label it as provided_example.
+- If mode is Grammar, return grammar candidates with a clear target whenever possible, e.g. verb pattern, tense pattern, connector, prefix, or structure. Preserve the source sentence as sentence. If you cannot identify the target, return the sentence with type grammar and an empty target; do not label it as provided_example.
+- If mode is Smart grammar import, every returned candidate MUST use type="grammar". Do not return provided_example in this mode.
 - If mode is Smart grammar import or Mixed, first classify each useful fragment, then choose the card strategy:
   1. structure_sentence: source has a clear grammar structure plus a readable example sentence. Return type="grammar", target=the structure, sentence=the exact source sentence, source_type="structure_sentence", strategy="preserve_source_sentence".
   2. rule: source is a grammar rule/explanation without a good example sentence. Return type="grammar", target=a concrete structure, sentence=ONE natural generated example sentence that uses the structure, source_type="rule", strategy="generated_example_from_rule", source_rule=the short source rule. Never put the rule itself in sentence. Rule-like text includes lines such as "have with this meaning is a stative verb", "we use have to to express obligation", "have is also a stative verb", or "have as an auxiliary verb". For these, INVENT a short natural example sentence.
@@ -579,6 +581,8 @@ For provided_example:
 
 For grammar candidates:
 - target must be the grammar focus/pattern/source target, not the whole sentence.
+- If the source has slash-separated alternatives such as "Actually / Incidentally" or "As regards / Regarding", do not silently drop alternatives. Preserve the full alternative group as target, or create one candidate per alternative.
+- For discourse-marker tables with Expression / Example / Use columns, target = Expression, sentence = Example, source_rule/reason = Use.
 - Preserve the exact source focus from headings, highlighted items, structure boxes, word-form transformations, or exercise prompts.
 - If the source focus is a concrete structure or transformation, e.g. "used to + base verb", "Can I + base verb", "un hippi -> hippies", target must contain that structure/transformation, not a broad topic such as "repeated actions in the past".
 - sentence should be the exact source example if available; this sentence becomes the audio/readable sentence later.
@@ -589,13 +593,13 @@ For grammar candidates:
 - If only a useful sentence is found and no grammar target is clear, return type="grammar", target="", sentence="...".
 - Add source_type and strategy for grammar candidates whenever possible so the UI can show why the card was created.
 
-Return ONLY valid JSON, no markdown, no comments.
+Return ONLY valid JSON, no markdown, no comments. Never output schema fragments as standalone candidate text.
 
 Return this exact structure:
 {{
   "candidates": [
     {{
-      "type": "provided_example",
+      "type": "vocabulary | provided_example | grammar",
       "target": "string",
       "sentence": "string",
       "reason": "short reason",

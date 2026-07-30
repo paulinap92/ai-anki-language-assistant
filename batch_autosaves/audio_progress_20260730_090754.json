@@ -1,0 +1,22 @@
+{
+  "kind": "existing_card_audio_progress",
+  "provider": "ElevenLabs",
+  "model": "eleven_flash_v2_5",
+  "voice_label": "American male 2",
+  "voice_value": "6xPz2opT0y5qtoRh1U1Y",
+  "saved_at": "2026-07-30T09:08:00",
+  "notes": [
+    {
+      "note_id": 1783923797156,
+      "word": "We've arranged for a taxi to come",
+      "example": "We've arranged for a taxi to come at 6.30.",
+      "language": "English",
+      "audio_field": "Audio",
+      "source_text": "We've arranged for a taxi to come at 6.30.",
+      "write_mode": "Use dedicated audio field",
+      "status": "updated_in_anki",
+      "audio_path": ".audio_cache\\anki_tts_2495b7c634567989387a.mp3",
+      "error": ""
+    }
+  ]
+}

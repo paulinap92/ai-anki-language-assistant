@@ -219,7 +219,11 @@ class AnkiClient:
             "deckName": self._deck_name,
             "modelName": GRAMMAR_MODEL_NAME,
             "fields": GrammarFieldBuilder.build_fields(card),
-            "options": {"allowDuplicate": False},
+            # Grammar cards are sentence-first. We do an exact Sentence-field
+            # duplicate precheck below, then allow Anki to add the note so
+            # repeated grammar structures with different sentences are not
+            # falsely blocked by Anki duplicate heuristics.
+            "options": {"allowDuplicate": True},
             "tags": [
                 "ai_grammar",
                 "ai_grammar_light_card",
@@ -435,6 +439,7 @@ class AnkiClient:
         search_query: str = "",
         missing_audio_only: bool = False,
         words: list[str] | None = None,
+        include_all_decks: bool = False,
     ) -> list[dict[str, Any]]:
         """Return note summaries from the active deck for existing-card workflows.
 
@@ -442,8 +447,10 @@ class AnkiClient:
         type. Older user-created notes can still be scanned, tagged, and checked
         for missing audio when they expose recognisable word/example/audio fields.
         """
-        deck = self._escape_search_value(self._deck_name)
-        query_parts = [f'deck:"{deck}"']
+        query_parts: list[str] = []
+        if not include_all_decks:
+            deck = self._escape_search_value(self._deck_name)
+            query_parts.append(f'deck:"{deck}"')
         if search_query.strip():
             query_parts.append(search_query.strip())
         query = " ".join(query_parts)

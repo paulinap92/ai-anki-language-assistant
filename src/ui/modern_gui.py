@@ -81,8 +81,13 @@ class ModernVocabularyGui:
         default_target_language: str,
         speech_service: SpeechService | None = None,
         stt_service: LocalWhisperSttService | None = None,
+        window_title: str = "AI Anki Language Assistant",
+        show_public_header: bool = True,
     ) -> None:
         self._root = root
+        self._window_title = window_title
+        self._show_public_header = show_public_header
+        self._top_settings_grid_row = 1
         self._ai_clients = ai_clients
         self._anki_client = anki_client
         self._speech_service = speech_service
@@ -99,6 +104,7 @@ class ModernVocabularyGui:
         self._speech_deck_var = ctk.StringVar(value=anki_client.deck_name)
         self._speech_language_var = ctk.StringVar(value=default_target_language)
         self._status_var = ctk.StringVar(value="Ready. Open Anki and choose a deck.")
+        self._ocr_ai_running = False
 
         self._word_var = ctk.StringVar()
         self._generated_card: VocabularyCard | None = None
@@ -187,6 +193,7 @@ class ModernVocabularyGui:
         self._ocr_status_var = ctk.StringVar(value="Load a PDF, image, TXT/HTML, or paste text to start.")
         self._ocr_mode_var = ctk.StringVar(value="Provided examples")
         self._ocr_method_var = ctk.StringVar(value="Local extraction (free)")
+        self._ocr_ai_provider_var = ctk.StringVar(value=next(iter(ai_clients)))
         self._ocr_manual_candidate_type_var = ctk.StringVar(value="vocabulary")
         self._ocr_manual_target_var = ctk.StringVar(value="")
         self._ocr_manual_example_var = ctk.StringVar(value="")
@@ -200,6 +207,7 @@ class ModernVocabularyGui:
         self._existing_cards: list[dict[str, object]] = []
         self._existing_card_vars: list[ctk.BooleanVar] = []
         self._existing_search_var = ctk.StringVar(value="")
+        self._existing_scope_var = ctk.StringVar(value="Selected deck only")
         self._existing_tag_var = ctk.StringVar(value="")
         self._existing_flag_var = ctk.StringVar(value="Any flag")
         self._existing_leech_var = ctk.BooleanVar(value=False)
@@ -230,10 +238,28 @@ class ModernVocabularyGui:
         self._build_widgets()
         self._load_decks()
 
+    @staticmethod
+    def _resource_path(relative_path: str) -> Path:
+        """Resolve assets from source or a PyInstaller bundle."""
+        if hasattr(sys, "_MEIPASS"):
+            return Path(sys._MEIPASS) / relative_path
+        return Path(__file__).resolve().parents[2] / relative_path
+
+    def _apply_window_icon(self) -> None:
+        """Best-effort app icon; failure must never block local testing."""
+        icon_path = self._resource_path("assets/app_icon.ico")
+        if not icon_path.exists():
+            return
+        try:
+            self._root.iconbitmap(str(icon_path))
+        except Exception:
+            LOGGER.debug("Could not set app icon", exc_info=True)
+
     def _configure_window(self) -> None:
         ctk.set_appearance_mode("dark")
         ctk.set_default_color_theme("blue")
-        self._root.title("AI Anki Language Assistant")
+        self._root.title(self._window_title)
+        self._apply_window_icon()
         self._root.geometry("1120x780")
         self._root.minsize(980, 680)
         self._root.grid_columnconfigure(0, weight=1)
@@ -244,27 +270,30 @@ class ModernVocabularyGui:
         main = ctk.CTkFrame(self._root, corner_radius=0)
         main.grid(row=0, column=0, sticky="nsew")
         main.grid_columnconfigure(0, weight=1)
-        main.grid_rowconfigure(2, weight=1)
+        tabs_row = 2 if self._show_public_header else 1
+        footer_row = tabs_row + 1
+        main.grid_rowconfigure(tabs_row, weight=1)
 
-        header = ctk.CTkFrame(main, fg_color="transparent")
-        header.grid(row=0, column=0, sticky="ew", padx=24, pady=(20, 8))
-        ctk.CTkLabel(
-            header,
-            text="AI Anki Language Assistant",
-            font=ctk.CTkFont(size=28, weight="bold"),
-        ).pack(anchor="w")
-        ctk.CTkLabel(
-            header,
-            text="Practice conversations, review AI suggestions, and save selected expressions to Anki.",
-            font=ctk.CTkFont(size=14),
-            text_color=("gray35", "gray75"),
-        ).pack(anchor="w", pady=(4, 0))
+        if self._show_public_header:
+            header = ctk.CTkFrame(main, fg_color="transparent")
+            header.grid(row=0, column=0, sticky="ew", padx=24, pady=(20, 8))
+            ctk.CTkLabel(
+                header,
+                text="AI Anki Language Assistant",
+                font=ctk.CTkFont(size=28, weight="bold"),
+            ).pack(anchor="w")
+            ctk.CTkLabel(
+                header,
+                text="Practice conversations, review AI suggestions, and save selected expressions to Anki.",
+                font=ctk.CTkFont(size=14),
+                text_color=("gray35", "gray75"),
+            ).pack(anchor="w", pady=(4, 0))
 
-        self._build_top_settings(main)
+        self._build_top_settings(main, row=1 if self._show_public_header else 0)
 
         tabs = ctk.CTkTabview(main, command=self._on_tab_changed)
         self._tabs = tabs
-        tabs.grid(row=2, column=0, sticky="nsew", padx=24, pady=12)
+        tabs.grid(row=tabs_row, column=0, sticky="nsew", padx=24, pady=12)
         # Workflow order: create cards first, then audio/fixes, then practice tools.
         tab_order = [
             "Single flashcard",
@@ -294,7 +323,7 @@ class ModernVocabularyGui:
         self._on_tab_changed()
 
         footer = ctk.CTkFrame(main, fg_color="transparent")
-        footer.grid(row=3, column=0, sticky="ew", padx=24, pady=(0, 16))
+        footer.grid(row=footer_row, column=0, sticky="ew", padx=24, pady=(0, 16))
         footer.grid_columnconfigure(0, weight=1)
         ctk.CTkLabel(footer, textvariable=self._status_var, anchor="w").grid(
             row=0, column=0, sticky="ew"
@@ -306,10 +335,11 @@ class ModernVocabularyGui:
             text_color=("gray40", "gray70"),
         ).grid(row=0, column=1, sticky="e", padx=(16, 0))
 
-    def _build_top_settings(self, parent: ctk.CTkFrame) -> None:
+    def _build_top_settings(self, parent: ctk.CTkFrame, row: int = 1) -> None:
         settings = ctk.CTkFrame(parent, corner_radius=18)
         self._top_settings = settings
-        settings.grid(row=1, column=0, sticky="ew", padx=24, pady=(8, 4))
+        self._top_settings_grid_row = row
+        settings.grid(row=row, column=0, sticky="ew", padx=24, pady=(8, 4))
         settings.grid_columnconfigure((1, 3, 5), weight=1)
 
         ctk.CTkLabel(settings, text="Card AI provider").grid(row=0, column=0, padx=(16, 8), pady=14, sticky="w")
@@ -544,7 +574,7 @@ class ModernVocabularyGui:
         if current_tab in {"Speech / Audio", "Conversation Practice", "LLMOps / LangSmith"}:
             top_settings.grid_remove()
         else:
-            top_settings.grid(row=1, column=0, sticky="ew", padx=24, pady=(8, 4))
+            top_settings.grid(row=getattr(self, "_top_settings_grid_row", 1), column=0, sticky="ew", padx=24, pady=(8, 4))
 
         # Avoid stale global messages from a previous workflow, for example
         # Conversation status still visible in Speech / Audio.
@@ -1019,15 +1049,30 @@ class ModernVocabularyGui:
             values=OCR_EXTRACTION_MODES,
             state="readonly",
         ).grid(row=13, column=0, sticky="ew", padx=18, pady=(0, 6))
-        ctk.CTkButton(
+        ctk.CTkLabel(
+            left,
+            text="Candidate AI provider",
+            font=ctk.CTkFont(size=11, weight="bold"),
+            text_color=("gray35", "gray75"),
+        ).grid(row=14, column=0, sticky="w", padx=18, pady=(0, 2))
+        ctk.CTkComboBox(
+            left,
+            variable=self._ocr_ai_provider_var,
+            values=list(self._ai_clients.keys()),
+            state="readonly",
+        ).grid(row=15, column=0, sticky="ew", padx=18, pady=(0, 6))
+        self._ocr_ai_button = ctk.CTkButton(
             left,
             text="Find candidates with selected strategy",
             height=36,
             command=self._extract_ocr_candidates_with_ai,
-        ).grid(row=14, column=0, sticky="ew", padx=18, pady=(0, 12))
-
+        )
+        self._ocr_ai_button.grid(row=16, column=0, sticky="ew", padx=18, pady=(0, 8))
+        ctk.CTkButton(left, text="Clear candidates", command=self._clear_ocr_candidates).grid(
+            row=17, column=0, sticky="ew", padx=18, pady=(0, 6)
+        )
         ctk.CTkButton(left, text="Clear import", command=self._clear_ocr_import).grid(
-            row=15, column=0, sticky="ew", padx=18, pady=(4, 10)
+            row=18, column=0, sticky="ew", padx=18, pady=(4, 10)
         )
 
         ctk.CTkLabel(
@@ -1036,7 +1081,7 @@ class ModernVocabularyGui:
             wraplength=280,
             justify="left",
             text_color=("gray35", "gray75"),
-        ).grid(row=16, column=0, sticky="w", padx=18, pady=(0, 18))
+        ).grid(row=19, column=0, sticky="w", padx=18, pady=(0, 18))
 
         text_panel = ctk.CTkFrame(layout, corner_radius=18)
         text_panel.grid(row=0, column=1, sticky="nsew", padx=(0, 12))
@@ -2092,6 +2137,10 @@ class ModernVocabularyGui:
         kind = self._normalize_ocr_candidate_type(candidate_type)
         target = clean_ocr_text(str(target or "")).replace("\n", " ").strip()
         sentence = clean_ocr_text(str(sentence or "")).replace("\n", " ").strip()
+        if self._looks_like_json_fragment(target):
+            target = ""
+        if self._looks_like_json_fragment(sentence):
+            sentence = ""
         if not target and not sentence:
             return None
         return {
@@ -2749,13 +2798,42 @@ class ModernVocabularyGui:
             return ""
 
     @staticmethod
+    def _is_grammar_import_mode(mode: str) -> bool:
+        value = (mode or "").strip().casefold()
+        return value in {"grammar", "smart grammar import"}
+
+    @staticmethod
     def _normalize_ocr_candidate_type(candidate_type: str, default_mode: str = "Vocabulary") -> str:
-        value = (candidate_type or default_mode or "vocabulary").strip().casefold().replace("_", " ")
-        if value in {"provided", "provided example", "provided examples", "sentence", "source sentence", "example"}:
+        raw = (candidate_type or default_mode or "vocabulary").strip().casefold().replace("_", " ")
+        default_raw = (default_mode or "").strip().casefold().replace("_", " ")
+        if raw in {"smart grammar import", "smart grammar", "grammar import"}:
+            return "grammar"
+        if raw in {"provided", "provided example", "provided examples", "sentence", "source sentence", "example"}:
+            # Smart Grammar and Grammar modes must never silently downgrade to
+            # Provided example. A sentence-only grammar candidate is still a
+            # grammar candidate; Batch will infer the focus later.
+            if default_raw in {"grammar", "smart grammar import", "smart grammar", "grammar import"}:
+                return "grammar"
             return "provided_example"
-        if value in {"grammar", "grammar target", "grammar from sentence", "structure", "pattern", "verb pattern", "tense pattern"}:
+        if raw in {"grammar", "grammar target", "grammar from sentence", "structure", "pattern", "verb pattern", "tense pattern"}:
             return "grammar"
         return "vocabulary"
+
+    @staticmethod
+    def _looks_like_json_fragment(value: str) -> bool:
+        text = str(value or "").strip()
+        if not text:
+            return False
+        lowered = text.strip().casefold().strip(',')
+        if lowered in {"{", "}", "[", "]", "type", "target", "sentence", "source_type", "strategy", "candidates"}:
+            return True
+        if re.fullmatch(r'"?(type|target|sentence|source_type|strategy|reason|candidates|source_rule)"?\s*:\s*"?[^"{}\[\]]*"?,?', lowered):
+            return True
+        if re.match(r'^"?(type|source_type|strategy|target|sentence|reason|source_rule)"?\s*:', lowered):
+            return True
+        if lowered.startswith('{') or lowered.endswith('}'):
+            return True
+        return False
 
     @staticmethod
     def _format_ocr_candidate_row(candidate_type: str, target: str = "", sentence: str = "") -> str:
@@ -3205,9 +3283,24 @@ class ModernVocabularyGui:
         )
 
     def _clean_ocr_preview_text(self) -> None:
-        text = clean_ocr_text(self._get_ocr_text())
+        original = self._get_ocr_text()
+        if not original.strip():
+            self._ocr_status_var.set("No extracted text to clean.")
+            self._ocr_candidate_status_var.set("No extracted text to clean.")
+            return
+        text = clean_ocr_text(original)
+        text = re.sub(r"!\[[^\]]*\]\([^)]*\)", "", text)
+        text = re.sub(r"<img\b[^>]*>", "", text, flags=re.IGNORECASE)
+        text = re.sub(r"[ \t]+", " ", text)
+        text = re.sub(r"\n{3,}", "\n\n", text).strip()
         self._set_ocr_text(text)
-        self._ocr_status_var.set(f"Cleaned extracted text: {len(text.split())} word(s).")
+        removed_chars = max(0, len(original) - len(text))
+        if text == original.strip():
+            message = f"Text already looks clean: {len(text.split())} word(s)."
+        else:
+            message = f"Cleaned extracted text: {len(text.split())} word(s), removed {removed_chars} character(s)/artifact(s)."
+        self._ocr_status_var.set(message)
+        self._ocr_candidate_status_var.set(message)
 
     def _extract_ocr_candidates_with_ai(self) -> None:
         self._extract_ocr_candidates_with_ai_from_text(self._get_ocr_text(), source="all text")
@@ -3220,6 +3313,9 @@ class ModernVocabularyGui:
         self._extract_ocr_candidates_with_ai_from_text(selected, source="selection")
 
     def _extract_ocr_candidates_with_ai_from_text(self, text: str, source: str) -> None:
+        if self._ocr_ai_running:
+            self._ocr_candidate_status_var.set("Candidate extraction is already running. Wait for it to finish.")
+            return
         text = text or ""
         if not text.strip():
             messagebox.showwarning("Import Material", "There is no extracted text to analyze.")
@@ -3228,95 +3324,55 @@ class ModernVocabularyGui:
             text = text[:24000]
             self._ocr_status_var.set("Text was long; sending first 24,000 characters to AI for this MVP.")
         mode = self._ocr_mode_var.get().strip() or "Provided examples"
-        provider_name = self._provider_var.get()
-        model_name = self._current_ai_model_name()
+        provider_name = (self._ocr_ai_provider_var.get().strip() or self._provider_var.get()).strip()
+        if provider_name not in self._ai_clients:
+            provider_name = self._provider_var.get()
+        previous_provider = self._provider_var.get()
+        model_name = self._current_ai_model_name(provider_name)
         self._ocr_candidate_status_var.set(f"Extracting candidates from {source} with {provider_name} {model_name}...")
-        self._root.update_idletasks()
-        prompt = build_ocr_candidate_extraction_prompt(
-            extracted_text=text,
-            target_language=self._language_var.get(),
-            explanation_language=self._explanation_language_var.get(),
-            extraction_mode=mode,
-            topic_context=self._batch_topic_var.get(),
-        )
-        client = self._current_ai_client()
-        generate_text = getattr(client, "_generate_text", None)
-        if generate_text is None:
-            messagebox.showerror("Import Material", f"{provider_name} client does not expose text generation.")
-            return
+        self._ocr_ai_running = True
+        ai_button = getattr(self, "_ocr_ai_button", None)
         try:
+            if ai_button is not None:
+                ai_button.configure(state="disabled", text="Extracting...")
+            self._root.update_idletasks()
+            prompt = build_ocr_candidate_extraction_prompt(
+                extracted_text=text,
+                target_language=self._language_var.get(),
+                explanation_language=self._explanation_language_var.get(),
+                extraction_mode=mode,
+                topic_context=self._batch_topic_var.get(),
+            )
+            client = self._ai_clients[provider_name]
+            generate_text = getattr(client, "_generate_text", None)
+            if generate_text is None:
+                messagebox.showerror("Import Material", f"{provider_name} client does not expose text generation.")
+                return
             raw_text = generate_text(prompt)
             items = self._ocr_candidate_items_from_ai_response(raw_text, default_mode=mode, source=source)
         except Exception as exc:
-            self._record_llmops_event(
-                feature="import_candidate_generation",
-                outcome="error",
-                provider=provider_name,
-                model=model_name,
-                source="ocr_import",
-                metadata={
-                    "extraction_mode": mode,
-                    "source_scope": source,
-                    "text_len": len(text),
-                },
-                validation_passed=False,
-                red_flags_count=1,
-                issue_type="import_candidate_generation_error",
-                detail=str(exc),
-            )
+            LOGGER.exception("Candidate extraction failed")
             self._ocr_candidate_status_var.set("Candidate extraction failed.")
             messagebox.showerror("Import Material", f"Candidate extraction failed: {exc}")
             return
-        type_counts: dict[str, int] = {}
-        source_type_counts: dict[str, int] = {}
-        for candidate_item in items:
-            candidate_type = str(candidate_item.get("type") or "unknown")
-            type_counts[candidate_type] = type_counts.get(candidate_type, 0) + 1
-            source_type = str(candidate_item.get("source_type") or "")
-            if source_type:
-                source_type_counts[source_type] = source_type_counts.get(source_type, 0) + 1
-        self._record_llmops_event(
-            feature="import_candidate_generation",
-            outcome="candidate_generated" if items else "no_candidates",
-            provider=provider_name,
-            model=model_name,
-            source="ocr_import",
-            metadata={
-                "extraction_mode": mode,
-                "source_scope": source,
-                "text_len": len(text),
-                "candidate_count": len(items),
-                "candidate_type_counts": type_counts,
-            },
-            validation_passed=bool(items),
-            red_flags_count=0 if items else 1,
-            issue_type="" if items else "no_candidates_found",
-        )
-        if mode in {"Smart grammar import", "Mixed", "Grammar"} or source_type_counts:
-            self._record_llmops_event(
-                feature="smart_grammar_import",
-                outcome="candidate_generated" if items else "no_candidates",
-                provider=provider_name,
-                model=model_name,
-                source="ocr_import",
-                metadata={
-                    "extraction_mode": mode,
-                    "source_scope": source,
-                    "grammar_candidates": type_counts.get("grammar", 0),
-                    "provided_example_candidates": type_counts.get("provided_example", 0),
-                    "source_type_counts": source_type_counts,
-                },
-                validation_passed=bool(items),
-                red_flags_count=0 if items else 1,
-                issue_type="" if items else "no_candidates_found",
-            )
+        finally:
+            self._provider_var.set(previous_provider)
+            self._ocr_ai_running = False
+            if ai_button is not None:
+                ai_button.configure(state="normal", text="Find candidates with selected strategy")
         if not items:
             self._ocr_candidate_status_var.set("No candidates found. Edit OCR text or try another extraction mode.")
             self._set_ocr_candidate_items([])
             return
+        total = len(items)
+        max_render = 80
+        if total > max_render:
+            items = items[:max_render]
+            self._ocr_status_var.set(f"AI returned {total} candidates; rendering first {max_render}. Split the source text into smaller chunks.")
+        # AI extraction replaces previous AI output instead of appending silently.
         self._set_ocr_candidate_items(items)
         self._ocr_candidate_status_var.set(
-            f"AI found {len(items)} candidate draft(s). Review detected type/strategy before Batch."
+            f"AI found {total} candidate draft(s); showing {len(items)}. Review detected type/strategy before Batch."
         )
         self._record_activity(f"OCR candidates: {len(items)}")
 
@@ -3411,6 +3467,8 @@ class ModernVocabularyGui:
                     continue
                 raw_type = str(candidate.get("type") or default_mode or "vocabulary")
                 candidate_type = self._normalize_ocr_candidate_type(raw_type, default_mode)
+                if self._is_grammar_import_mode(default_mode) and candidate_type == "provided_example":
+                    candidate_type = "grammar"
                 target = str(
                     candidate.get("target")
                     or candidate.get("word")
@@ -3434,6 +3492,12 @@ class ModernVocabularyGui:
                     or ""
                 ).strip()
 
+                if self._looks_like_json_fragment(target):
+                    target = ""
+                if self._looks_like_json_fragment(sentence):
+                    sentence = ""
+                if self._looks_like_json_fragment(source_rule):
+                    source_rule = ""
                 if not target and not sentence and not source_rule:
                     continue
 
@@ -3508,6 +3572,8 @@ class ModernVocabularyGui:
                     continue
                 raw_type = str(candidate.get("type") or default_mode or "vocabulary")
                 candidate_type = self._normalize_ocr_candidate_type(raw_type, default_mode)
+                if self._is_grammar_import_mode(default_mode) and candidate_type == "provided_example":
+                    candidate_type = "grammar"
                 target = str(
                     candidate.get("target")
                     or candidate.get("word")
@@ -3525,6 +3591,10 @@ class ModernVocabularyGui:
                     or ""
                 ).strip()
 
+                if self._looks_like_json_fragment(target):
+                    target = ""
+                if self._looks_like_json_fragment(sentence):
+                    sentence = ""
                 if not target and not sentence:
                     continue
                 rows.append(self._format_ocr_candidate_row(candidate_type, target, sentence))
@@ -3545,7 +3615,7 @@ class ModernVocabularyGui:
     def _parse_ocr_candidate_row(line: str, default_mode: str) -> tuple[str, str, str] | None:
         """Parse an editable OCR candidate row into (type, target, sentence)."""
         value = line.strip()
-        if not value:
+        if not value or ModernVocabularyGui._looks_like_json_fragment(value):
             return None
 
         candidate_names = {
@@ -3619,7 +3689,7 @@ class ModernVocabularyGui:
         if default_mode == "Provided examples":
             target, sentence = ModernVocabularyGui._parse_provided_example_item(value)
             return "provided_example", target, sentence
-        if default_mode == "Grammar":
+        if ModernVocabularyGui._is_grammar_import_mode(default_mode):
             return "grammar", value, ""
         return "vocabulary", value, ""
 
@@ -4621,14 +4691,6 @@ class ModernVocabularyGui:
             self._status_var.set(self._batch_status_var.get())
             self._update_batch_progress()
             self._autosave_batch_session(f"generated provided example: {card.word_or_phrase}")
-            self._record_batch_item_generation_event(
-                item,
-                outcome="generated",
-                provider=provider_name,
-                model=model_name,
-                validation_passed=True,
-                red_flags_count=len(quality_warnings),
-            )
             return
 
         if resolved_mode == "Grammar":
@@ -4688,16 +4750,6 @@ class ModernVocabularyGui:
             self._status_var.set(self._batch_status_var.get())
             self._update_batch_progress()
             self._autosave_batch_session(f"generated grammar: {word}")
-            self._record_batch_item_generation_event(
-                item,
-                outcome="generated",
-                provider=provider_name,
-                model=model_name,
-                validation_passed=not bool(focus_warnings),
-                red_flags_count=len(focus_warnings),
-                issue_type="wrong_source_focus" if focus_warnings else "",
-                detail=", ".join(focus_warnings),
-            )
             return
 
         try:
@@ -4776,15 +4828,6 @@ class ModernVocabularyGui:
         self._status_var.set(self._batch_status_var.get())
         self._update_batch_progress()
         self._autosave_batch_session(f"generated: {word}")
-        self._record_batch_item_generation_event(
-            item,
-            outcome="generated" if not quality_warnings else "generated_with_warnings",
-            provider=provider_name,
-            model=model_name,
-            validation_passed=not bool(quality_warnings),
-            red_flags_count=len(quality_warnings),
-            issue_type="quality_warning" if quality_warnings else "",
-        )
 
     def _add_current_batch_card(self) -> None:
         if self._batch_generated_grammar is not None:
@@ -5850,7 +5893,6 @@ class ModernVocabularyGui:
             self._batch_status_var.set(f"Auto-generation finished. Autosave: {self._batch_autosave_path}")
             self._status_var.set(self._batch_status_var.get())
             self._record_activity("Auto-generation finished")
-            self._record_batch_generation_summary_event("auto-generation finished")
             return
 
         self._batch_index = next_index
@@ -6627,11 +6669,9 @@ class ModernVocabularyGui:
         layout.grid_columnconfigure(1, weight=1)
         layout.grid_rowconfigure(0, weight=1)
 
-        left = ctk.CTkFrame(layout, corner_radius=18, width=390)
+        left = ctk.CTkScrollableFrame(layout, corner_radius=18, width=390)
         left.grid(row=0, column=0, sticky="nsw", padx=(0, 12))
-        left.grid_propagate(False)
         left.grid_columnconfigure(0, weight=1)
-        left.grid_rowconfigure(12, weight=1)
 
         ctk.CTkLabel(
             left,
@@ -6640,29 +6680,35 @@ class ModernVocabularyGui:
         ).grid(row=0, column=0, sticky="w", padx=18, pady=(18, 4))
         ctk.CTkLabel(
             left,
-            text="For flagged/leech/tagged cards and manual fixes. Missing audio backfill lives in Speech / Audio.",
+            text="Search, regenerate, edit, tag, or repair audio on existing Anki notes. Use All decks when you do not know where a card lives.",
             wraplength=335,
             justify="left",
             text_color=("gray35", "gray75"),
         ).grid(row=1, column=0, sticky="ew", padx=18, pady=(0, 10))
 
-        ctk.CTkLabel(left, text="Optional Anki filter").grid(
-            row=2, column=0, sticky="w", padx=18, pady=(4, 4)
-        )
+        ctk.CTkLabel(left, text="Optional Anki filter").grid(row=2, column=0, sticky="w", padx=18, pady=(4, 4))
         ctk.CTkEntry(
             left,
             textvariable=self._existing_search_var,
-            placeholder_text='Examples: tag:needs_fix, is:due, flag:1. Empty = selected deck.',
+            placeholder_text='Examples: tag:needs_fix, is:due, flag:1. Empty = selected deck/all decks.',
         ).grid(row=3, column=0, sticky="ew", padx=18, pady=(0, 8))
 
-        ctk.CTkLabel(left, text="Tag filter").grid(row=4, column=0, sticky="w", padx=18, pady=(4, 4))
+        ctk.CTkLabel(left, text="Search scope").grid(row=4, column=0, sticky="w", padx=18, pady=(4, 4))
+        ctk.CTkComboBox(
+            left,
+            variable=self._existing_scope_var,
+            values=["Selected deck only", "All decks"],
+            state="readonly",
+        ).grid(row=5, column=0, sticky="ew", padx=18, pady=(0, 8))
+
+        ctk.CTkLabel(left, text="Tag filter").grid(row=6, column=0, sticky="w", padx=18, pady=(4, 4))
         ctk.CTkEntry(
             left,
             textvariable=self._existing_tag_var,
             placeholder_text='e.g. topic_character or needs_example_fix',
-        ).grid(row=5, column=0, sticky="ew", padx=18, pady=(0, 8))
+        ).grid(row=7, column=0, sticky="ew", padx=18, pady=(0, 8))
 
-        ctk.CTkLabel(left, text="Flag filter").grid(row=6, column=0, sticky="w", padx=18, pady=(4, 4))
+        ctk.CTkLabel(left, text="Flag filter").grid(row=8, column=0, sticky="w", padx=18, pady=(4, 4))
         self._existing_flag_box = ctk.CTkComboBox(
             left,
             variable=self._existing_flag_var,
@@ -6676,14 +6722,14 @@ class ModernVocabularyGui:
             ],
             state="readonly",
         )
-        self._existing_flag_box.grid(row=7, column=0, sticky="ew", padx=18, pady=(0, 8))
+        self._existing_flag_box.grid(row=9, column=0, sticky="ew", padx=18, pady=(0, 8))
 
         ctk.CTkCheckBox(left, text="Only leech cards / tag:leech", variable=self._existing_leech_var).grid(
-            row=8, column=0, sticky="w", padx=18, pady=(0, 8)
+            row=10, column=0, sticky="w", padx=18, pady=(0, 8)
         )
 
         query_buttons = ctk.CTkFrame(left, fg_color="transparent")
-        query_buttons.grid(row=9, column=0, sticky="ew", padx=18, pady=(0, 8))
+        query_buttons.grid(row=11, column=0, sticky="ew", padx=18, pady=(0, 8))
         query_buttons.grid_columnconfigure((0, 1), weight=1)
         ctk.CTkButton(query_buttons, text="Find cards", command=self._find_existing_cards).grid(
             row=0, column=0, sticky="ew", padx=(0, 5)
@@ -6698,27 +6744,19 @@ class ModernVocabularyGui:
             row=1, column=1, sticky="ew", padx=(5, 0), pady=(8, 0)
         )
 
-        ctk.CTkLabel(left, text="Words list for dry topic tagging").grid(
-            row=10, column=0, sticky="w", padx=18, pady=(8, 4)
-        )
+        ctk.CTkLabel(left, text="Words list for finding cards").grid(row=12, column=0, sticky="w", padx=18, pady=(8, 4))
         self._existing_words_text = ctk.CTkTextbox(left, height=105, wrap="word")
-        self._existing_words_text.grid(row=11, column=0, sticky="nsew", padx=18, pady=(0, 8))
-        ctk.CTkButton(
-            left,
-            text="Find words from list",
-            command=self._find_existing_words_from_list,
-        ).grid(row=12, column=0, sticky="new", padx=18, pady=(0, 10))
+        self._existing_words_text.grid(row=13, column=0, sticky="nsew", padx=18, pady=(0, 8))
+        ctk.CTkButton(left, text="Find words from list", command=self._find_existing_words_from_list).grid(
+            row=14, column=0, sticky="ew", padx=18, pady=(0, 10)
+        )
 
-        ctk.CTkLabel(left, text="Topic tag").grid(
-            row=13, column=0, sticky="w", padx=18, pady=(8, 4)
-        )
-        self._existing_topic_box = ctk.CTkComboBox(
-            left, variable=self._existing_topic_var, values=TOPIC_PRESETS[1:]
-        )
-        self._existing_topic_box.grid(row=14, column=0, sticky="ew", padx=18, pady=(0, 10))
+        ctk.CTkLabel(left, text="Topic tag").grid(row=15, column=0, sticky="w", padx=18, pady=(8, 4))
+        self._existing_topic_box = ctk.CTkComboBox(left, variable=self._existing_topic_var, values=TOPIC_PRESETS[1:])
+        self._existing_topic_box.grid(row=16, column=0, sticky="ew", padx=18, pady=(0, 10))
 
         tag_buttons = ctk.CTkFrame(left, fg_color="transparent")
-        tag_buttons.grid(row=15, column=0, sticky="ew", padx=18, pady=(0, 8))
+        tag_buttons.grid(row=17, column=0, sticky="ew", padx=18, pady=(0, 8))
         tag_buttons.grid_columnconfigure((0, 1), weight=1)
         ctk.CTkButton(tag_buttons, text="Select all", command=lambda: self._set_existing_selection(True)).grid(
             row=0, column=0, sticky="ew", padx=(0, 5)
@@ -6727,21 +6765,18 @@ class ModernVocabularyGui:
             row=0, column=1, sticky="ew", padx=(5, 0)
         )
 
-        ctk.CTkButton(
-            left,
-            text="Apply topic tag to selected",
-            command=self._apply_topic_to_existing_selected,
-        ).grid(row=16, column=0, sticky="ew", padx=18, pady=(0, 8))
-        ctk.CTkButton(
-            left,
-            text="Fix selected card",
-            command=self._fix_selected_existing_card,
-        ).grid(row=17, column=0, sticky="ew", padx=18, pady=(0, 8))
-        ctk.CTkButton(
-            left,
-            text="Fix selected audio",
-            command=self._fix_audio_selected_existing_card,
-        ).grid(row=18, column=0, sticky="ew", padx=18, pady=(0, 18))
+        ctk.CTkButton(left, text="Apply topic tag to selected", command=self._apply_topic_to_existing_selected).grid(
+            row=18, column=0, sticky="ew", padx=18, pady=(0, 8)
+        )
+        ctk.CTkButton(left, text="Fix selected card", command=self._fix_selected_existing_card).grid(
+            row=19, column=0, sticky="ew", padx=18, pady=(0, 8)
+        )
+        ctk.CTkButton(left, text="Regenerate selected card", command=self._regenerate_selected_existing_card).grid(
+            row=20, column=0, sticky="ew", padx=18, pady=(0, 8)
+        )
+        ctk.CTkButton(left, text="Fix selected audio", command=self._fix_audio_selected_existing_card).grid(
+            row=21, column=0, sticky="ew", padx=18, pady=(0, 18)
+        )
 
         right = ctk.CTkFrame(layout, corner_radius=18)
         right.grid(row=0, column=1, sticky="nsew")
@@ -6752,56 +6787,41 @@ class ModernVocabularyGui:
         header = ctk.CTkFrame(right, fg_color="transparent")
         header.grid(row=0, column=0, sticky="ew", padx=18, pady=(18, 8))
         header.grid_columnconfigure(0, weight=1)
-        ctk.CTkLabel(header, text="Fix cards queue", font=ctk.CTkFont(size=20, weight="bold")).grid(
-            row=0, column=0, sticky="w"
-        )
+        ctk.CTkLabel(header, text="Fix cards queue", font=ctk.CTkFont(size=20, weight="bold")).grid(row=0, column=0, sticky="w")
         ctk.CTkLabel(header, textvariable=self._existing_progress_var).grid(row=0, column=1, sticky="e")
 
         self._existing_scroll = ctk.CTkScrollableFrame(right, corner_radius=18)
         self._existing_scroll.grid(row=1, column=0, sticky="nsew", padx=18, pady=(0, 10))
         self._existing_scroll.grid_columnconfigure(0, weight=1)
 
-        # Keep the real Fix Cards actions visible on the right side.
-        # In previous builds they were pushed below the left panel and the tab
-        # looked like a preview-only screen.
         action_row = ctk.CTkFrame(right, fg_color="transparent")
         action_row.grid(row=2, column=0, sticky="ew", padx=18, pady=(0, 10))
-        action_row.grid_columnconfigure((0, 1, 2, 3, 4), weight=1)
-        ctk.CTkButton(
-            action_row,
-            text="Edit selected card",
-            command=self._fix_selected_existing_card,
-        ).grid(row=0, column=0, sticky="ew", padx=(0, 5))
-        ctk.CTkButton(
-            action_row,
-            text="Fix audio",
-            command=self._fix_audio_selected_existing_card,
-        ).grid(row=0, column=1, sticky="ew", padx=5)
-        ctk.CTkButton(
-            action_row,
-            text="Apply topic tag",
-            command=self._apply_topic_to_existing_selected,
-        ).grid(row=0, column=2, sticky="ew", padx=5)
-        ctk.CTkButton(
-            action_row,
-            text="Select all",
-            command=lambda: self._set_existing_selection(True),
-        ).grid(row=0, column=3, sticky="ew", padx=5)
-        ctk.CTkButton(
-            action_row,
-            text="Clear",
-            command=lambda: self._set_existing_selection(False),
-        ).grid(row=0, column=4, sticky="ew", padx=(5, 0))
-
-        ctk.CTkLabel(right, text="Preview selected card", anchor="w").grid(
-            row=3, column=0, sticky="w", padx=18, pady=(0, 4)
+        action_row.grid_columnconfigure((0, 1, 2, 3, 4, 5), weight=1)
+        ctk.CTkButton(action_row, text="Edit selected card", command=self._fix_selected_existing_card).grid(
+            row=0, column=0, sticky="ew", padx=(0, 5)
         )
+        ctk.CTkButton(action_row, text="Regenerate", command=self._regenerate_selected_existing_card).grid(
+            row=0, column=1, sticky="ew", padx=5
+        )
+        ctk.CTkButton(action_row, text="Fix audio", command=self._fix_audio_selected_existing_card).grid(
+            row=0, column=2, sticky="ew", padx=5
+        )
+        ctk.CTkButton(action_row, text="Apply topic tag", command=self._apply_topic_to_existing_selected).grid(
+            row=0, column=3, sticky="ew", padx=5
+        )
+        ctk.CTkButton(action_row, text="Select all", command=lambda: self._set_existing_selection(True)).grid(
+            row=0, column=4, sticky="ew", padx=5
+        )
+        ctk.CTkButton(action_row, text="Clear", command=lambda: self._set_existing_selection(False)).grid(
+            row=0, column=5, sticky="ew", padx=(5, 0)
+        )
+
+        ctk.CTkLabel(right, text="Preview selected card", anchor="w").grid(row=3, column=0, sticky="w", padx=18, pady=(0, 4))
         self._existing_preview = ctk.CTkTextbox(right, wrap="word", height=180, font=ctk.CTkFont(size=14))
         self._existing_preview.grid(row=4, column=0, sticky="nsew", padx=18, pady=(0, 18))
         self._existing_preview.insert(
             "1.0",
-            "Load flagged/leech/tagged cards. Select exactly one card, then use Edit selected card "
-            "or Fix audio. Use Apply topic tag for bulk tagging selected cards."
+            "Load cards. Select exactly one card, then use Edit selected card, Regenerate, or Fix audio. Use Search scope = All decks if you do not know the deck."
         )
         self._existing_preview.configure(state="disabled")
 
@@ -6852,18 +6872,22 @@ class ModernVocabularyGui:
 
     def _load_existing_cards(self, words: list[str] | None = None) -> None:
         try:
-            self._set_selected_deck()
+            include_all_decks = self._existing_scope_var.get() == "All decks"
+            if not include_all_decks:
+                self._set_selected_deck()
             query = self._compose_existing_cards_query()
             self._existing_cards = self._anki_client.list_existing_notes(
                 search_query=query,
                 missing_audio_only=False,
                 words=words,
+                include_all_decks=include_all_decks,
             )
         except Exception as exc:
             LOGGER.exception("Existing-card search failed")
             messagebox.showerror("Anki error", str(exc))
             return
-        query_label = self._compose_existing_cards_query() or "selected deck"
+        scope_label = "all decks" if self._existing_scope_var.get() == "All decks" else "selected deck"
+        query_label = self._compose_existing_cards_query() or scope_label
         if words:
             found = {self._normalise_anki_value(str(note.get("word", ""))) for note in self._existing_cards}
             missing = [word for word in words if self._normalise_anki_value(word) not in found]
@@ -7269,7 +7293,26 @@ class ModernVocabularyGui:
         self._existing_progress_var.set(f"Opening editor for: {card.word_or_phrase}")
         self._open_existing_card_editor(note, card)
 
-    def _open_existing_card_editor(self, note: dict[str, object], card: VocabularyCard) -> None:
+    def _regenerate_selected_existing_card(self) -> None:
+        """Open the existing-card editor and immediately regenerate a preview."""
+        selected = self._selected_existing_cards()
+        if len(selected) != 1:
+            message = f"Regenerate needs exactly one selected card. Selected: {len(selected)}."
+            self._existing_progress_var.set(message)
+            messagebox.showwarning("Select one card", message)
+            return
+        note = selected[0]
+        try:
+            card = self._card_from_existing_note(note)
+        except Exception as exc:
+            self._existing_progress_var.set("Could not parse selected card for regeneration.")
+            messagebox.showerror("Card parse error", str(exc))
+            return
+        self._preview_existing_card(self._existing_cards.index(note))
+        self._existing_progress_var.set(f"Regenerating preview for: {card.word_or_phrase}")
+        self._open_existing_card_editor(note, card, auto_regenerate=True)
+
+    def _open_existing_card_editor(self, note: dict[str, object], card: VocabularyCard, auto_regenerate: bool = False) -> None:
         editor = tk.Toplevel(self._root)
         editor.title(f"Fix existing card: {card.word_or_phrase}")
         editor.geometry("760x760")
@@ -7423,6 +7466,8 @@ class ModernVocabularyGui:
         tk.Button(button_row, text="Save to Anki", command=save_to_anki).pack(side="left")
         tk.Button(button_row, text="Regenerate full preview", command=regenerate_full_preview).pack(side="left", padx=(8, 0))
         tk.Button(button_row, text="Cancel", command=editor.destroy).pack(side="left", padx=(8, 0))
+        if auto_regenerate:
+            editor.after(150, regenerate_full_preview)
 
     def _build_speech_tab(self, parent: ctk.CTkFrame) -> None:
         """Build the central TTS/audio backfill workflow."""
@@ -7655,160 +7700,12 @@ class ModernVocabularyGui:
             # Observability must never break review/export flows.
             LOGGER.debug("Could not record LLMOps outcome", exc_info=True)
 
-    def _record_llmops_event(
-        self,
-        *,
-        feature: str,
-        outcome: str,
-        provider: str = "system",
-        model: str = "none",
-        source: str = "ui",
-        metadata: dict[str, object] | None = None,
-        inputs: dict[str, object] | None = None,
-        outputs: dict[str, object] | None = None,
-        validation_passed: bool | None = None,
-        red_flags_count: int | None = None,
-        issue_type: str = "",
-        detail: str = "",
-    ) -> None:
-        """Record a non-LLM observability event without breaking the UI."""
-        try:
-            get_llmops_tracer().trace_event(
-                feature=feature,
-                outcome=outcome,
-                provider=provider,
-                model=model,
-                source=source,
-                metadata=metadata or {},
-                inputs=inputs or {},
-                outputs=outputs or {"outcome": outcome},
-                validation_passed=validation_passed,
-                red_flags_count=red_flags_count,
-                issue_type=issue_type,
-                detail=detail,
-            )
-            self._refresh_llmops_log()
-        except Exception:
-            LOGGER.debug("Could not record LLMOps event", exc_info=True)
-
-    @staticmethod
-    def _normalise_sentence_for_alignment(value: object) -> str:
-        return re.sub(r"\s+", " ", str(value or "").strip()).casefold()
-
-    def _record_audio_alignment_event(
-        self,
-        *,
-        card_type: str,
-        visible_sentence: str,
-        audio_sentence: str,
-        source: str,
-        provider: str = "system",
-        model: str = "none",
-        metadata: dict[str, object] | None = None,
-    ) -> bool:
-        visible = self._normalise_sentence_for_alignment(visible_sentence)
-        audio = self._normalise_sentence_for_alignment(audio_sentence)
-        alignment_passed = bool(audio) and (not visible or visible == audio or visible in audio or audio in visible)
-        issue_type = "" if alignment_passed else "audio_sentence_mismatch"
-        self._record_llmops_event(
-            feature="audio_sentence_selection",
-            outcome="selected" if audio else "missing_audio_sentence",
-            provider=provider,
-            model=model,
-            source=source,
-            metadata={
-                "card_type": card_type,
-                "visible_sentence_present": bool(visible_sentence.strip()),
-                "audio_sentence_present": bool(audio_sentence.strip()),
-                "audio_sentence_len": len(audio_sentence.strip()),
-                **(metadata or {}),
-            },
-            validation_passed=bool(audio),
-            red_flags_count=0 if audio else 1,
-            issue_type="" if audio else "missing_audio_sentence",
-        )
-        self._record_llmops_event(
-            feature="audio_sentence_alignment_check",
-            outcome="passed" if alignment_passed else "blocked",
-            provider="system",
-            model="none",
-            source=source,
-            metadata={
-                "card_type": card_type,
-                "alignment_passed": alignment_passed,
-                "visible_sentence_present": bool(visible_sentence.strip()),
-                "audio_sentence_present": bool(audio_sentence.strip()),
-                "visible_sentence_len": len(visible_sentence.strip()),
-                "audio_sentence_len": len(audio_sentence.strip()),
-                **(metadata or {}),
-            },
-            validation_passed=alignment_passed,
-            red_flags_count=0 if alignment_passed else 1,
-            issue_type=issue_type,
-        )
-        return alignment_passed
-
-    def _record_batch_item_generation_event(
-        self,
-        item: dict[str, object],
-        *,
-        outcome: str,
-        provider: str,
-        model: str,
-        validation_passed: bool | None = None,
-        red_flags_count: int | None = None,
-        issue_type: str = "",
-        detail: str = "",
-    ) -> None:
-        self._record_llmops_event(
-            feature="batch_item_generation",
-            outcome=outcome,
-            provider=provider,
-            model=model,
-            source="batch_queue",
-            metadata={
-                "batch_index": self._batch_index + 1,
-                "batch_size": len(self._batch_items),
-                "batch_mode": str(item.get("batch_mode") or ""),
-                "resolved_mode": str(item.get("resolved_mode") or ""),
-                "status": str(item.get("status") or ""),
-                "item_preview": str(item.get("word") or "")[:120],
-            },
-            validation_passed=validation_passed,
-            red_flags_count=red_flags_count,
-            issue_type=issue_type,
-            detail=detail,
-        )
-
-    def _record_batch_generation_summary_event(self, label: str = "batch summary") -> None:
-        counts: dict[str, int] = {}
-        for item in self._batch_items:
-            status = str(item.get("status") or "pending")
-            counts[status] = counts.get(status, 0) + 1
-        self._record_llmops_event(
-            feature="batch_generation_summary",
-            outcome="completed",
-            provider="system",
-            model="none",
-            source="batch_queue",
-            metadata={
-                "label": label,
-                "batch_size": len(self._batch_items),
-                "status_counts": counts,
-                "ready_count": counts.get("ready", 0),
-                "added_count": counts.get("added", 0) + counts.get("added_to_anki", 0),
-                "failed_count": counts.get("error", 0) + counts.get("add_failed", 0) + counts.get("provider_failed", 0),
-                "invalid_count": counts.get("invalid", 0),
-            },
-            validation_passed=True,
-            red_flags_count=0,
-        )
-
     def _current_ai_client(self) -> VocabularyAiClient:
         return self._ai_clients[self._provider_var.get()]
 
-    def _current_ai_model_name(self) -> str:
-        return str(getattr(self._current_ai_client(), "_model", ""))
+    def _current_ai_model_name(self, provider_name: str | None = None) -> str:
+        client = self._ai_clients.get(provider_name or self._provider_var.get()) or self._current_ai_client()
+        return str(getattr(client, "_model", ""))
 
     def _load_decks(self) -> None:
         try:
@@ -7957,24 +7854,6 @@ class ModernVocabularyGui:
                 )
                 try:
                     media_name = self._anki_client.store_media_file(self._generated_audio.path)
-                    self._record_llmops_event(
-                        feature="audio_attach_to_anki",
-                        outcome="media_stored",
-                        provider="system",
-                        model="none",
-                        source="single_flashcard",
-                        metadata={
-                            "card_type": "vocabulary",
-                            "word_or_phrase": self._generated_card.word_or_phrase,
-                            "audio_file": self._generated_audio.path.name,
-                            "anki_media_file": media_name,
-                            "tts_provider": self._generated_audio.provider_name,
-                            "tts_model": self._generated_audio.model,
-                            "cache_hit": self._generated_audio.cached,
-                        },
-                        validation_passed=True,
-                        red_flags_count=0,
-                    )
                 except Exception as media_exc:
                     LOGGER.exception(
                         "Could not store generated audio in Anki media: path=%s word=%s",
@@ -8165,31 +8044,12 @@ class ModernVocabularyGui:
             return
         self._tts_provider_var.set(provider_name)
         self._sync_tts_defaults()
-        audio_sentence = self._generated_card.example or ""
-        if not self._record_audio_alignment_event(
-            card_type="vocabulary",
-            visible_sentence=audio_sentence,
-            audio_sentence=audio_sentence,
-            source="single_flashcard_audio",
-            provider=provider_name,
-            model=self._tts_model_var.get(),
-            metadata={
-                "word_or_phrase": self._generated_card.word_or_phrase,
-                "target_language": self._generated_card.target_language,
-                "voice": self._selected_tts_voice(),
-            },
-        ):
-            message = "Audio generation blocked: visible example and audio sentence do not match."
-            self._status_var.set(message)
-            self._record_activity("Audio alignment blocked")
-            messagebox.showerror("Audio alignment", message)
-            return
         self._status_var.set(f"Generating example audio with {provider_name}...")
         self._root.update_idletasks()
         try:
             self._generated_audio = self._speech_service.generate(
                 provider_name,
-                audio_sentence,
+                self._generated_card.example,
                 self._generated_card.target_language,
                 self._tts_model_var.get(),
                 self._selected_tts_voice(),
@@ -8612,9 +8472,7 @@ class ModernVocabularyGui:
                 blocked.append(f"{note.get('word', '—')}: {status}")
                 continue
             prepared = dict(note)
-            source_text_check, source_field = self._speech_source_text_for_note(note)
             prepared["_source_text"] = source_text
-            prepared["_source_field"] = source_field
             prepared["_target_audio_field"] = target_field
             prepared["_write_mode"] = self._speech_write_mode_var.get()
             selected.append(prepared)
@@ -8770,7 +8628,6 @@ class ModernVocabularyGui:
                 current_status = self._speech_audio_status_by_note_id.get(note_id, "pending_audio")
                 audio_field = str(note.get("_target_audio_field") or note.get("audio_field") or "").strip()
                 source_text = str(note.get("_source_text") or note.get("example") or note.get("word") or "").strip()
-                source_field = str(note.get("_source_field") or "auto")
                 write_mode = str(note.get("_write_mode") or "Use dedicated audio field")
                 if current_status in {"audio_ready", "updated_in_anki", "has_audio"}:
                     skipped_done += 1
@@ -8786,42 +8643,6 @@ class ModernVocabularyGui:
                     )
                     publish_progress(
                         f"Skipping not-ready note {index}/{len(notes)} · Updated {completed} · Skipped {skipped_done} · Failed {errors}"
-                    )
-                    continue
-
-                fields = note.get("fields") if isinstance(note.get("fields"), dict) else {}
-                visible_sentence = ""
-                if "grammar" in str(note.get("model") or "").casefold():
-                    for visible_field in ("Sentence", "Word", "Front"):
-                        if visible_field in fields:
-                            visible_value = self._plain_text(str(fields.get(visible_field, "")))
-                            if visible_value and self._looks_like_complete_sentence(visible_value):
-                                visible_sentence = visible_value
-                                break
-                if not visible_sentence:
-                    visible_sentence = source_text
-                if not self._record_audio_alignment_event(
-                    card_type="existing_card_audio",
-                    visible_sentence=visible_sentence,
-                    audio_sentence=source_text,
-                    source="speech_audio_batch",
-                    provider=provider_name,
-                    model=model_name,
-                    metadata={
-                        "note_id": note_id,
-                        "word_preview": str(note.get("word") or "")[:120],
-                        "model_name": str(note.get("model") or ""),
-                        "source_field": source_field,
-                        "target_audio_field": audio_field,
-                        "write_mode": write_mode,
-                        "voice": voice_value,
-                    },
-                ):
-                    skipped_done += 1
-                    self._speech_audio_status_by_note_id[note_id] = "audio_alignment_blocked"
-                    self._speech_audio_error_by_note_id[note_id] = "Visible sentence and selected audio sentence do not match."
-                    publish_progress(
-                        f"Audio alignment blocked {index}/{len(notes)} · Updated {completed} · Skipped {skipped_done} · Failed {errors}"
                     )
                     continue
 
@@ -8855,27 +8676,6 @@ class ModernVocabularyGui:
                         voice_value,
                     )
                     media_name = self._anki_client.store_media_file(result.path)
-                    self._record_llmops_event(
-                        feature="audio_attach_to_anki",
-                        outcome="attached_to_anki",
-                        provider="system",
-                        model="none",
-                        source="speech_audio_batch",
-                        metadata={
-                            "note_id": note_id,
-                            "card_type": "existing_card_audio",
-                            "word_preview": str(note.get("word") or "")[:120],
-                            "audio_file": result.path.name,
-                            "anki_media_file": media_name,
-                            "tts_provider": result.provider_name,
-                            "tts_model": result.model,
-                            "cache_hit": result.cached,
-                            "target_audio_field": audio_field,
-                            "write_mode": write_mode,
-                        },
-                        validation_passed=True,
-                        red_flags_count=0,
-                    )
                     if write_mode == "Append [sound] to existing field":
                         self._anki_client.append_audio_to_note(note_id, media_name, audio_field)
                     else:
@@ -9051,13 +8851,6 @@ class ModernVocabularyGui:
                 f"✓ Updated grammar card in {deck}: {self._generated_grammar.sentence}"
             )
             self._record_activity("↻ Grammar card updated")
-            self._record_llmops_outcome(
-                outcome="updated_existing_note",
-                item=self._generated_grammar.sentence,
-                card_type="grammar",
-                source="grammar_tab",
-                validation_passed=True,
-            )
             self._grammar_sentence_var.set("")
             self._generated_grammar = None
             self._generated_grammar_provider_name = None
@@ -9069,13 +8862,6 @@ class ModernVocabularyGui:
 
         self._status_var.set(f"✓ Added grammar card to Anki deck {deck}: {self._generated_grammar.sentence}")
         self._record_activity("✓ Grammar card added")
-        self._record_llmops_outcome(
-            outcome="added_to_anki",
-            item=self._generated_grammar.sentence,
-            card_type="grammar",
-            source="grammar_tab",
-            validation_passed=True,
-        )
         self._grammar_sentence_var.set("")
         self._generated_grammar = None
         self._generated_grammar_provider_name = None
