@@ -1,0 +1,1012 @@
+{
+  "items": [
+    {
+      "word": "get + noun/pronoun (receive) | I got a message today asking me on a date!",
+      "status": "added_to_anki",
+      "topic": "",
+      "batch_mode": "Grammar",
+      "target_language": "English",
+      "explanation_language": "Polish",
+      "source": "ocr_import/AI all text",
+      "candidate_source": "AI all text",
+      "edited": false,
+      "source_type": "structure_sentence",
+      "strategy": "preserve_source_sentence",
+      "grammar_target": "get + noun/pronoun (receive)",
+      "provided_sentence": "I got a message today asking me on a date!",
+      "duplicate_prechecked": true,
+      "duplicate_precheck_scope": "grammar_exact_on_add",
+      "resolved_mode": "Grammar",
+      "grammar_card": {
+        "sentence": "I got a message today asking me on a date!",
+        "target_language": "English",
+        "meaning": "To receive something, such as a message, package, or information, or to have something delivered to you.",
+        "structure": "get + noun/pronoun (receive)",
+        "breakdown": [
+          "\"get\" is a very common and versatile verb.",
+          "In this pattern, \"get\" specifically means 'receive' or 'obtain'.",
+          "It is followed by the noun or pronoun referring to the item received.",
+          "This usage is often found in everyday, informal communication."
+        ],
+        "usage": "This structure is widely used in everyday conversation and informal writing to talk about receiving various things (messages, gifts, information, etc.). It sounds natural and common.",
+        "context_example": "I got a message today asking me on a date!",
+        "contrasts": [
+          "\"receive\": More formal and often used in official contexts (e.g., \"I received your application for the job.\").",
+          "\"obtain\": Implies a more active effort to acquire something, often more formal (e.g., \"She obtained a special permit.\")."
+        ],
+        "common_mistakes": [
+          "\"I *get* a text message yesterday.\" -> \"I *got* a text message yesterday.\" (Incorrect simple past tense)",
+          "\"Did you *got* my email?\" -> \"Did you *get* my email?\" (Incorrect past participle/simple past after auxiliary 'did')"
+        ],
+        "audio": ""
+      },
+      "provider_name": "Gemini"
+    },
+    {
+      "word": "get + object + noun (buy/fetch) | If you're going to the post office, could you get me some stamps?",
+      "status": "added_to_anki",
+      "topic": "",
+      "batch_mode": "Grammar",
+      "target_language": "English",
+      "explanation_language": "Polish",
+      "source": "ocr_import/AI all text",
+      "candidate_source": "AI all text",
+      "edited": false,
+      "source_type": "structure_sentence",
+      "strategy": "preserve_source_sentence",
+      "grammar_target": "get + object + noun (buy/fetch)",
+      "provided_sentence": "If you're going to the post office, could you get me some stamps?",
+      "duplicate_prechecked": true,
+      "duplicate_precheck_scope": "grammar_exact_on_add",
+      "resolved_mode": "Grammar",
+      "grammar_card": {
+        "sentence": "If you're going to the post office, could you get me some stamps?",
+        "target_language": "English",
+        "meaning": "To ask someone to buy, fetch, or obtain something for you.",
+        "structure": "get + object + noun (buy/fetch)",
+        "breakdown": [
+          "\"Get\" here means to procure or obtain something.",
+          "The first object ('me') is the person for whom the item is being obtained.",
+          "The noun ('some stamps') is the item being obtained.",
+          "This structure is commonly used for making polite requests or offers."
+        ],
+        "usage": "Use this structure when asking or offering to obtain a specific item (by buying, fetching, or retrieving it) for another person. It's very common in informal and semi-formal daily conversation.",
+        "context_example": "If you're going to the post office, could you get me some stamps?",
+        "contrasts": [
+          "\"Get me some stamps\" (obtain for someone) vs. \"Buy me some stamps\" (specifically purchase for someone). 'Get' is more general.",
+          "\"Get me some stamps\" (obtain) vs. \"I got a letter\" (received). The meaning of 'get' changes with context.",
+          "\"Get me some stamps\" vs. \"Get up!\" (physical action) – 'get' has many different meanings and phrasal verbs."
+        ],
+        "common_mistakes": [
+          "Incorrect object order: X \"Could you get stamps me?\" ✓ \"Could you get me some stamps?\"",
+          "Using 'get' when a more specific verb like 'purchase' or 'retrieve' might be preferred in very formal contexts: X \"Please get me the annual report.\" (Okay, but less formal) ✓ \"Please retrieve the annual report for me.\""
+        ],
+        "audio": ""
+      },
+      "provider_name": "Gemini"
+    },
+    {
+      "word": "get + noun (catch transport) | Let's not bother with a taxi – we can get the bus.",
+      "status": "added_to_anki",
+      "topic": "",
+      "batch_mode": "Grammar",
+      "target_language": "English",
+      "explanation_language": "Polish",
+      "source": "ocr_import/AI all text",
+      "candidate_source": "AI all text",
+      "edited": false,
+      "source_type": "structure_sentence",
+      "strategy": "preserve_source_sentence",
+      "grammar_target": "get + noun (catch transport)",
+      "provided_sentence": "Let's not bother with a taxi – we can get the bus.",
+      "duplicate_prechecked": true,
+      "duplicate_precheck_scope": "grammar_exact_on_add",
+      "resolved_mode": "Grammar",
+      "grammar_card": {
+        "sentence": "Let's not bother with a taxi – we can get the bus.",
+        "target_language": "English",
+        "meaning": "To use a form of public transport (like a bus, train, or plane) to travel.",
+        "structure": "get + noun (catch transport)",
+        "breakdown": [
+          "\"get\": The verb, meaning to obtain or use.",
+          "\"+ noun\": Refers to the specific mode of public transport (e.g., 'the bus', 'a train').",
+          "Used informally and commonly to express taking or catching public transport.",
+          "Often includes 'the' before the noun when referring to a specific service or type."
+        ],
+        "usage": "Use this structure to talk about traveling by public transport. It's a common and natural alternative to 'take' or 'catch'.",
+        "context_example": "Let's not bother with a taxi – we can get the bus.",
+        "contrasts": [
+          "\"take the bus\": A very common and often interchangeable alternative.",
+          "\"catch the bus\": Emphasizes arriving in time to board the bus before it leaves.",
+          "\"go by bus\": Focuses on the method of travel rather than the action of using the service."
+        ],
+        "common_mistakes": [
+          "Incorrect: \"I get on the bus to work every day.\" (While 'get on' is correct for boarding, 'I get the bus' covers the entire journey.) Correct: \"I get the bus to work every day.\"",
+          "Incorrect: \"Let's get bus.\" (Missing the definite article 'the' when referring to the specific public transport service.) Correct: \"Let's get the bus.\"",
+          "Incorrect: \"We can get in the train.\" (Use 'get on' for trains/buses.) Correct: \"We can get the train.\" or \"We can get on the train.\""
+        ],
+        "audio": ""
+      },
+      "provider_name": "Gemini"
+    },
+    {
+      "word": "get to + place (arrive) | When do you think we'll get to Paris?",
+      "status": "added_to_anki",
+      "topic": "",
+      "batch_mode": "Grammar",
+      "target_language": "English",
+      "explanation_language": "Polish",
+      "source": "ocr_import/AI all text",
+      "candidate_source": "AI all text",
+      "edited": false,
+      "source_type": "structure_sentence",
+      "strategy": "preserve_source_sentence",
+      "grammar_target": "get to + place (arrive)",
+      "provided_sentence": "When do you think we'll get to Paris?",
+      "duplicate_prechecked": true,
+      "duplicate_precheck_scope": "grammar_exact_on_add",
+      "resolved_mode": "Grammar",
+      "source_focus_warning": "natural_context_aligned_to_source_sentence",
+      "grammar_card": {
+        "sentence": "When do you think we'll get to Paris?",
+        "target_language": "English",
+        "meaning": "To arrive at a specific location, often after a journey or period of travel.",
+        "structure": "get to + place",
+        "breakdown": [
+          "`get to`: This phrasal verb means 'arrive'.",
+          "`+ place`: Refers to a specific destination (e.g., city, country, building).",
+          "It typically implies movement or a journey before arrival."
+        ],
+        "usage": "Used in everyday conversation to ask about or state the time of arrival at a destination, especially after traveling.",
+        "context_example": "When do you think we'll get to Paris?",
+        "contrasts": [
+          "`arrive at/in + place`: Similar meaning, but 'arrive' is often more formal. ('We will arrive in Paris at 3 PM.')",
+          "`reach + place`: Another synonym, but 'reach' does not use 'to' directly before the place. ('We will reach Paris by lunchtime.')"
+        ],
+        "common_mistakes": [
+          "X `get in Paris` / `get at Paris` -> ✓ `get to Paris` (Incorrect preposition; 'get to' is specific for arrival).",
+          "X `arrive to Paris` -> ✓ `arrive in Paris` (Incorrect preposition with 'arrive' for cities/countries; use 'in')."
+        ],
+        "audio": ""
+      },
+      "provider_name": "Gemini"
+    },
+    {
+      "word": "get + adjective (become) | It's getting dark.",
+      "status": "added_to_anki",
+      "topic": "",
+      "batch_mode": "Grammar",
+      "target_language": "English",
+      "explanation_language": "Polish",
+      "source": "ocr_import/AI all text",
+      "candidate_source": "AI all text",
+      "edited": false,
+      "source_type": "structure_sentence",
+      "strategy": "preserve_source_sentence",
+      "grammar_target": "get + adjective (become)",
+      "provided_sentence": "It's getting dark.",
+      "duplicate_prechecked": true,
+      "duplicate_precheck_scope": "grammar_exact_on_add",
+      "resolved_mode": "Grammar",
+      "source_focus_warning": "natural_context_aligned_to_source_sentence",
+      "grammar_card": {
+        "sentence": "It's getting dark.",
+        "target_language": "English",
+        "meaning": "To express that something or someone is changing from one condition or state to another; it means 'to become'.",
+        "structure": "get + adjective (become)",
+        "breakdown": [
+          "The verb 'get' in this pattern means 'to become' or 'to start to be'.",
+          "It is followed by an adjective that describes the new or changing state.",
+          "Often used in progressive tenses (e.g., 'getting') to show an ongoing transition.",
+          "Indicates a process of change rather than a static state."
+        ],
+        "usage": "Use this structure to talk about a change in a person's condition, the weather, the environment, or a situation.",
+        "context_example": "It's getting dark.",
+        "contrasts": [
+          "Contrast with 'be + adjective': 'It is dark' describes a current, stable state. 'It's getting dark' describes the process of becoming dark.",
+          "Contrast with 'become + adjective': 'Become' also means 'to change into', but 'get' is often more informal and common in everyday speech."
+        ],
+        "common_mistakes": [
+          "Mistake: 'The weather gets badly.' Correction: 'The weather gets bad.' (Always use an adjective, not an adverb, after 'get' in this pattern.)",
+          "Mistake: 'I get bore with this movie.' Correction: 'I get bored with this movie.' (Use the correct adjectival form, often a past participle, to describe feelings.)"
+        ],
+        "audio": ""
+      },
+      "provider_name": "Gemini"
+    },
+    {
+      "word": "get + adjective (become) | I seem to have got very forgetful recently.",
+      "status": "added_to_anki",
+      "topic": "",
+      "batch_mode": "Grammar",
+      "target_language": "English",
+      "explanation_language": "Polish",
+      "source": "ocr_import/AI all text",
+      "candidate_source": "AI all text",
+      "edited": false,
+      "source_type": "structure_sentence",
+      "strategy": "preserve_source_sentence",
+      "grammar_target": "get + adjective (become)",
+      "provided_sentence": "I seem to have got very forgetful recently.",
+      "duplicate_prechecked": true,
+      "duplicate_precheck_scope": "grammar_exact_on_add",
+      "resolved_mode": "Grammar",
+      "grammar_card": {
+        "sentence": "I seem to have got very forgetful recently.",
+        "target_language": "English",
+        "meaning": "To change into a particular state or condition; to become. It often implies a process or a gradual change.",
+        "structure": "get + adjective (become)",
+        "breakdown": [
+          "'Get' here functions as a linking verb, similar to 'become'.",
+          "It is followed directly by an adjective that describes the new state or condition of the subject.",
+          "This construction is very common in spoken and informal English to describe changes.",
+          "It can be used in various tenses, reflecting when the change happened or is happening (e.g., 'get cold', 'got angry', 'getting better')."
+        ],
+        "usage": "Use 'get + adjective' to describe when someone or something changes from one state to another. It implies a process of becoming.",
+        "context_example": "I seem to have got very forgetful recently.",
+        "contrasts": [
+          "\"become + adjective\": More formal than 'get + adjective'. Both mean 'to change into a state', but 'become' is often preferred in formal writing. (e.g., 'He became ill' vs. 'He got ill').",
+          "\"turn + adjective\": Often used for changes in color or when something transforms significantly. (e.g., 'The leaves turn red in autumn'; 'The milk turned sour').",
+          "\"grow + adjective\": Implies a gradual, often natural, increase or development, particularly with age or experience. (e.g., 'She's growing old'; 'He grew confident')."
+        ],
+        "common_mistakes": [
+          "Incorrect: \"He got sadly after hearing the news.\" Correct: \"He got sad after hearing the news.\" (Use an adjective, 'sad', not an adverb, 'sadly', after 'get' when it means 'become').",
+          "Incorrect: \"I'm getting more good at playing the guitar.\" Correct: \"I'm getting better at playing the guitar.\" (Use the correct comparative adjective, 'better', not 'more good').",
+          "Incorrect: \"It's getting very. We should leave soon.\" Correct: \"It's getting very late/dark/cold. We should leave soon.\" (An adjective is required after 'get' to specify the changed state)."
+        ],
+        "audio": ""
+      },
+      "provider_name": "Gemini"
+    },
+    {
+      "word": "get + comparative adjective (become) | The traffic gets worse in the city centre every day.",
+      "status": "added_to_anki",
+      "topic": "",
+      "batch_mode": "Grammar",
+      "target_language": "English",
+      "explanation_language": "Polish",
+      "source": "ocr_import/AI all text",
+      "candidate_source": "AI all text",
+      "edited": false,
+      "source_type": "structure_sentence",
+      "strategy": "preserve_source_sentence",
+      "grammar_target": "get + comparative adjective (become)",
+      "provided_sentence": "The traffic gets worse in the city centre every day.",
+      "duplicate_prechecked": true,
+      "duplicate_precheck_scope": "grammar_exact_on_add",
+      "resolved_mode": "Grammar",
+      "source_focus_warning": "natural_context_aligned_to_source_sentence",
+      "grammar_card": {
+        "sentence": "The traffic gets worse in the city centre every day.",
+        "target_language": "English",
+        "meaning": "To indicate a change in state, meaning 'to become' or 'to start to be' something more or less.",
+        "structure": "get + comparative adjective (become)",
+        "breakdown": [
+          "\"get\" acts as a linking verb here, signifying a transition or change.",
+          "A \"comparative adjective\" modifies a noun by comparing it to another (e.g., worse, better, colder, more difficult).",
+          "This structure is commonly used for gradual or ongoing changes."
+        ],
+        "usage": "Use this structure to talk about things that are changing or developing over time. It's often more informal than 'become'.",
+        "context_example": "The traffic gets worse in the city centre every day.",
+        "contrasts": [
+          "\"become + comparative adjective\": Often more formal. (e.g., 'The situation became more complicated.')",
+          "\"be + comparative adjective\": Describes a current state, not a change. (e.g., 'The traffic *is* worse today.')"
+        ],
+        "common_mistakes": [
+          "Mistake: \"The weather gets cold quickly.\" Correct: \"The weather gets *colder* quickly.\" (Use comparative adjective)",
+          "Mistake: \"My English is getting more better.\" Correct: \"My English is getting *better*.\" (Avoid double comparatives like 'more better')"
+        ],
+        "audio": ""
+      },
+      "provider_name": "Gemini"
+    },
+    {
+      "word": "get used to + -ing | I don't think my mother will ever get used to living on her own.",
+      "status": "added_to_anki",
+      "topic": "",
+      "batch_mode": "Grammar",
+      "target_language": "English",
+      "explanation_language": "Polish",
+      "source": "ocr_import/AI all text",
+      "candidate_source": "AI all text",
+      "edited": false,
+      "source_type": "structure_sentence",
+      "strategy": "preserve_source_sentence",
+      "grammar_target": "get used to + -ing",
+      "provided_sentence": "I don't think my mother will ever get used to living on her own.",
+      "duplicate_prechecked": true,
+      "duplicate_precheck_scope": "grammar_exact_on_add",
+      "resolved_mode": "Grammar",
+      "source_focus_warning": "natural_context_aligned_to_source_sentence",
+      "grammar_card": {
+        "sentence": "I don't think my mother will ever get used to living on her own.",
+        "target_language": "English",
+        "meaning": "To become accustomed or familiar with something new, different, or initially strange.",
+        "structure": "get used to + -ing",
+        "breakdown": [
+          "\"get used to\" expresses the process of becoming accustomed.",
+          "It is always followed by a gerund (the -ing form of a verb)."
+        ],
+        "usage": "Use this structure when talking about the process of adapting to a new situation, habit, or environment.",
+        "context_example": "I don't think my mother will ever get used to living on her own.",
+        "contrasts": [
+          "\"be used to + -ing\": Describes a state of already being accustomed (e.g., She is used to waking up early).",
+          "\"used to + base verb\": Describes a past habit or state that no longer exists (e.g., I used to live in a small town)."
+        ],
+        "common_mistakes": [
+          "Using a base verb instead of -ing after \"get used to\": Incorrect: I need to get used to live in the city. Correct: I need to get used to living in the city.",
+          "Confusing \"get used to\" with \"used to\" for future/present adaptation: Incorrect: I will used to speaking English. Correct: I will get used to speaking English."
+        ],
+        "audio": ""
+      },
+      "provider_name": "Gemini"
+    },
+    {
+      "word": "get + past participle (passive) | Did you know Dan got sacked last week?",
+      "status": "added_to_anki",
+      "topic": "",
+      "batch_mode": "Grammar",
+      "target_language": "English",
+      "explanation_language": "Polish",
+      "source": "ocr_import/AI all text",
+      "candidate_source": "AI all text",
+      "edited": false,
+      "source_type": "structure_sentence",
+      "strategy": "preserve_source_sentence",
+      "grammar_target": "get + past participle (passive)",
+      "provided_sentence": "Did you know Dan got sacked last week?",
+      "duplicate_prechecked": true,
+      "duplicate_precheck_scope": "grammar_exact_on_add",
+      "resolved_mode": "Grammar",
+      "source_focus_warning": "natural_context_aligned_to_source_sentence",
+      "grammar_card": {
+        "sentence": "Did you know Dan got sacked last week?",
+        "target_language": "English",
+        "meaning": "This structure forms an informal passive voice, often used to describe something that happens to the subject, especially when it's unexpected, negative, or when we want to emphasize the action's effect on the subject rather than the agent.",
+        "structure": "get + past participle (passive)",
+        "breakdown": [
+          "**get**: Functions as an auxiliary verb, similar to 'be' in the passive voice.",
+          "**past participle**: The third form of the main verb (e.g., 'sacked', 'fired', 'hurt', 'lost').",
+          "**passive**: The subject (Dan) receives the action (being sacked), rather than performing it.",
+          "**Informal**: More common in spoken English and informal writing."
+        ],
+        "usage": "Use 'get + past participle' to describe actions that occur to someone or something, particularly in informal conversations. It often carries a nuance of something 'happening to' the subject, sometimes implying surprise or misfortune.",
+        "context_example": "Did you know Dan got sacked last week?",
+        "contrasts": [
+          "**Be + past participle (formal passive)**: 'Dan *was sacked* last week.' (This is the standard, more formal passive voice, often used in official reports or neutral contexts.)",
+          "**Active voice**: 'The company *sacked* Dan last week.' (This emphasizes who performed the action.)"
+        ],
+        "common_mistakes": [
+          "**Incorrect verb form**: 'Did you know Dan *got sack* last week?' (Needs past participle) -> Correct: 'Did you know Dan *got sacked* last week?'",
+          "**Using for states, not actions**: 'I *got tired*.' (Here, 'got' functions as a linking verb meaning 'became', not part of a passive structure.) -> This card focuses on actions happening to the subject."
+        ],
+        "audio": ""
+      },
+      "provider_name": "Gemini"
+    },
+    {
+      "word": "get + past participle (passive) | My husband got caught on the motorway driving at 150 km/h.",
+      "status": "added_to_anki",
+      "topic": "",
+      "batch_mode": "Grammar",
+      "target_language": "English",
+      "explanation_language": "Polish",
+      "source": "ocr_import/AI all text",
+      "candidate_source": "AI all text",
+      "edited": false,
+      "source_type": "structure_sentence",
+      "strategy": "preserve_source_sentence",
+      "grammar_target": "get + past participle (passive)",
+      "provided_sentence": "My husband got caught on the motorway driving at 150 km/h.",
+      "duplicate_prechecked": true,
+      "duplicate_precheck_scope": "grammar_exact_on_add",
+      "resolved_mode": "Grammar",
+      "grammar_card": {
+        "sentence": "My husband got caught on the motorway driving at 150 km/h.",
+        "target_language": "English",
+        "meaning": "This structure uses 'get' instead of 'be' to form the passive voice, often to describe an action that happens to the subject, particularly when it's an event, unexpected, or something negative/undesirable.",
+        "structure": "get + past participle (passive)",
+        "breakdown": [
+          "\"get\" (or got/gets/getting) acts as an auxiliary verb.",
+          "\"caught\" is the past participle of 'catch'.",
+          "The subject ('My husband') is the recipient of the action (being caught).",
+          "Commonly used in informal speech to describe something that happens to someone or something."
+        ],
+        "usage": "Use 'get + past participle' to describe actions or events that occur to the subject, often emphasizing the process or the unexpected nature of the event. It's generally more informal than the 'be + past participle' passive.",
+        "context_example": "My husband got caught on the motorway driving at 150 km/h.",
+        "contrasts": [
+          "\"My husband was caught...\" (Be + past participle): More formal or neutral passive voice.",
+          "\"The police caught my husband...\" (Active voice): Focuses on the doer of the action."
+        ],
+        "common_mistakes": [
+          "Incorrect: \"He got catch in a lie.\" Correct: \"He got caught in a lie.\"",
+          "Incorrect: \"I need to get my car fix.\" Correct: \"I need to get my car fixed.\""
+        ],
+        "audio": ""
+      },
+      "provider_name": "Gemini"
+    },
+    {
+      "word": "get + object + past participle (causative) | I'm going to get my hair cut next week.",
+      "status": "added_to_anki",
+      "topic": "",
+      "batch_mode": "Grammar",
+      "target_language": "English",
+      "explanation_language": "Polish",
+      "source": "ocr_import/AI all text",
+      "candidate_source": "AI all text",
+      "edited": false,
+      "source_type": "structure_sentence",
+      "strategy": "preserve_source_sentence",
+      "grammar_target": "get + object + past participle (causative)",
+      "provided_sentence": "I'm going to get my hair cut next week.",
+      "duplicate_prechecked": true,
+      "duplicate_precheck_scope": "grammar_exact_on_add",
+      "resolved_mode": "Grammar",
+      "previous_error": "429 RESOURCE_EXHAUSTED. {'error': {'code': 429, 'message': 'You exceeded your current quota, please check your plan and billing details. For more information on this error, head to: https://ai.google.dev/gemini-api/docs/rate-limits. To monitor your current usage, head to: https://ai.dev/rate-limit. \\n* Quota exceeded for metric: generativelanguage.googleapis.com/generate_content_free_tier_requests, limit: 5, model: gemini-2.5-flash\\nPlease retry in 43.714611352s.', 'status': 'RESOURCE_EXHAUSTED', 'details': [{'@type': 'type.googleapis.com/google.rpc.Help', 'links': [{'description': 'Learn more about Gemini API quotas', 'url': 'https://ai.google.dev/gemini-api/docs/rate-limits'}]}, {'@type': 'type.googleapis.com/google.rpc.QuotaFailure', 'violations': [{'quotaMetric': 'generativelanguage.googleapis.com/generate_content_free_tier_requests', 'quotaId': 'GenerateRequestsPerMinutePerProjectPerModel-FreeTier', 'quotaDimensions': {'location': 'global', 'model': 'gemini-2.5-flash'}, 'quotaValue': '5'}]}, {'@type': 'type.googleapis.com/google.rpc.RetryInfo', 'retryDelay': '43s'}]}}",
+      "retry_provider": "OpenAI",
+      "grammar_card": {
+        "sentence": "I'm going to get my hair cut next week.",
+        "target_language": "English",
+        "meaning": "This structure means arranging for someone else to do something for you, especially a service.",
+        "structure": "get + object + past participle (causative)",
+        "breakdown": [
+          "'get' as a main verb to arrange or cause something",
+          "an object that receives the action",
+          "the past participle form of the verb to show the action done by someone else"
+        ],
+        "usage": "Use this structure to talk about actions you cause but do not do yourself, such as getting a haircut, a car fixed, or a room cleaned.",
+        "context_example": "I'm going to get my hair cut next week.",
+        "contrasts": [
+          "I cut my hair (you do the action yourself)",
+          "I'm getting my hair cut (present continuous with get for planned action)",
+          "have + object + past participle (also causative but slightly more formal)"
+        ],
+        "common_mistakes": [
+          "I'm going to get my hair cutting next week. (incorrect form: 'cutting' should be past participle 'cut')",
+          "I'm going to get cut my hair next week. (wrong word order; 'get' should be followed directly by object)"
+        ],
+        "audio": ""
+      },
+      "provider_name": "OpenAI"
+    },
+    {
+      "word": "get + object + past participle (causative) | I need to get my passport renewed.",
+      "status": "added_to_anki",
+      "topic": "",
+      "batch_mode": "Grammar",
+      "target_language": "English",
+      "explanation_language": "Polish",
+      "source": "ocr_import/AI all text",
+      "candidate_source": "AI all text",
+      "edited": false,
+      "source_type": "structure_sentence",
+      "strategy": "preserve_source_sentence",
+      "grammar_target": "get + object + past participle (causative)",
+      "provided_sentence": "I need to get my passport renewed.",
+      "duplicate_prechecked": true,
+      "duplicate_precheck_scope": "grammar_exact_on_add",
+      "resolved_mode": "Grammar",
+      "grammar_card": {
+        "sentence": "I need to get my passport renewed.",
+        "target_language": "English",
+        "meaning": "Used to describe causing or arranging for something to be done by someone else.",
+        "structure": "get + object + past participle (causative)",
+        "breakdown": [
+          "\"get\" is followed by an object (something or someone affected)",
+          "The past participle shows the action done to the object",
+          "This structure indicates the subject arranges or causes the action",
+          "Example: I get my car repaired every six months."
+        ],
+        "usage": "Used when you want someone else to do an action for you or on your behalf.",
+        "context_example": "I need to get my passport renewed.",
+        "contrasts": [
+          "\"have + object + past participle\" (e.g. I’ll have my hair cut tomorrow)",
+          "\"get + object + base verb + -ing\" (e.g. I got him working on the project)",
+          "Active voice with verb only (e.g. I renew my passport every 10 years)"
+        ],
+        "common_mistakes": [
+          "I need to get my passport renew (incorrect - should be 'renewed')",
+          "I want to get renewed my passport (incorrect word order - correct: 'get my passport renewed')"
+        ],
+        "audio": ""
+      },
+      "provider_name": "OpenAI"
+    },
+    {
+      "word": "get + object + to-infinitive (persuade) | Could you get Jane to finish the report?",
+      "status": "added_to_anki",
+      "topic": "",
+      "batch_mode": "Grammar",
+      "target_language": "English",
+      "explanation_language": "Polish",
+      "source": "ocr_import/AI all text",
+      "candidate_source": "AI all text",
+      "edited": false,
+      "source_type": "structure_sentence",
+      "strategy": "preserve_source_sentence",
+      "grammar_target": "get + object + to-infinitive (persuade)",
+      "provided_sentence": "Could you get Jane to finish the report?",
+      "duplicate_prechecked": true,
+      "duplicate_precheck_scope": "grammar_exact_on_add",
+      "resolved_mode": "Grammar",
+      "grammar_card": {
+        "sentence": "Could you get Jane to finish the report?",
+        "target_language": "English",
+        "meaning": "This structure is used to ask someone to persuade or cause another person to do something.",
+        "structure": "get + object + to-infinitive (persuade)",
+        "breakdown": [
+          "\"get\" is the main verb meaning 'persuade' or 'cause'.",
+          "\"Jane\" is the object, the person who is asked to do the action.",
+          "\"to finish\" is the to-infinitive showing the action Jane should do."
+        ],
+        "usage": "Use this pattern when you want to request or cause someone to persuade another person to do a particular action.",
+        "context_example": "Could you get Jane to finish the report?",
+        "contrasts": [
+          "get + object + to-infinitive vs. make + object + base verb (make Jane finish): 'Make' implies more force, 'get' is more about persuasion.",
+          "get + object + to-infinitive vs. ask + object + to-infinitive: 'Ask' is simply making a request, 'get' implies persuading.",
+          "get + object + to-infinitive vs. have + object + base verb: 'Have' suggests arranging or instructing someone to do something without necessarily persuading."
+        ],
+        "common_mistakes": [
+          "Could you get Jane finish the report? -> Correct: Could you get Jane to finish the report?",
+          "Could you get Jane finishing the report? -> Correct: Could you get Jane to finish the report?"
+        ],
+        "audio": ""
+      },
+      "provider_name": "OpenAI"
+    },
+    {
+      "word": "get + object + to-infinitive (persuade) | We need to get someone to fix the central heating.",
+      "status": "added_to_anki",
+      "topic": "",
+      "batch_mode": "Grammar",
+      "target_language": "English",
+      "explanation_language": "Polish",
+      "source": "ocr_import/AI all text",
+      "candidate_source": "AI all text",
+      "edited": false,
+      "source_type": "structure_sentence",
+      "strategy": "preserve_source_sentence",
+      "grammar_target": "get + object + to-infinitive (persuade)",
+      "provided_sentence": "We need to get someone to fix the central heating.",
+      "duplicate_prechecked": true,
+      "duplicate_precheck_scope": "grammar_exact_on_add",
+      "resolved_mode": "Grammar",
+      "grammar_card": {
+        "sentence": "We need to get someone to fix the central heating.",
+        "target_language": "English",
+        "meaning": "This pattern means persuading or arranging for someone to do something.",
+        "structure": "get + object + to-infinitive (persuade)",
+        "breakdown": [
+          "\"get\" is the main verb used to cause an action",
+          "\"someone\" is the object who will do the action",
+          "\"to fix\" is the to-infinitive showing the action the object will perform"
+        ],
+        "usage": "Use this structure to talk about convincing or persuading a person to do something on your behalf.",
+        "context_example": "We need to get someone to fix the central heating.",
+        "contrasts": [
+          "Use 'make + object + base verb' to indicate force rather than persuasion: She made him clean his room.",
+          "Use 'have + object + base verb' to indicate arranging for a service or task: I had the mechanic check my car.",
+          "Use 'help + object + (to) infinitive' to indicate assistance: She helped me to prepare the presentation."
+        ],
+        "common_mistakes": [
+          "We need to get someone fix the central heating. → Correct: get someone to fix",
+          "We need to get someone fixing the central heating. → Correct: get someone to fix"
+        ],
+        "audio": ""
+      },
+      "provider_name": "OpenAI"
+    },
+    {
+      "word": "get + noun/pronoun meanings | I got a letter yesterday.",
+      "status": "added_to_anki",
+      "topic": "",
+      "batch_mode": "Grammar",
+      "target_language": "English",
+      "explanation_language": "Polish",
+      "source": "ocr_import/AI all text",
+      "candidate_source": "AI all text",
+      "edited": false,
+      "source_type": "rule",
+      "strategy": "generated_example_from_rule",
+      "source_rule": "get + noun/ pronoun usually means 'receive', 'bring', 'fetch', 'obtain', 'buy', or 'catch'",
+      "grammar_target": "get + noun/pronoun meanings",
+      "provided_sentence": "I got a letter yesterday.",
+      "duplicate_prechecked": true,
+      "duplicate_precheck_scope": "grammar_exact_on_add",
+      "resolved_mode": "Grammar",
+      "source_focus_warning": "source_rule_kept_as_note_not_audio",
+      "grammar_card": {
+        "sentence": "I got a letter yesterday.",
+        "target_language": "English",
+        "meaning": "'Get + noun/pronoun' usually means to receive, obtain, or have something.",
+        "structure": "get + noun/pronoun meanings",
+        "breakdown": [
+          "'Get' is followed directly by a noun or pronoun.",
+          "It often means 'receive' or 'obtain' something.",
+          "The noun/pronoun is the thing that is received or obtained.",
+          "Example: 'I got a letter yesterday.' means 'I received a letter yesterday.'"
+        ],
+        "usage": "Use 'get' followed by a noun or pronoun to talk about receiving or obtaining things in everyday conversation.\n\nSource note: get + noun/ pronoun usually means 'receive', 'bring', 'fetch', 'obtain', 'buy', or 'catch'",
+        "context_example": "I got a letter yesterday.",
+        "contrasts": [
+          "'Get' vs 'receive': 'receive' is more formal than 'get'.",
+          "'Get' + noun (obtain) vs 'Get' + verb (get + to + verb) meaning 'become or arrive'.",
+          "'Get a letter' (receive) vs 'Have a letter' (own or possess)."
+        ],
+        "common_mistakes": [
+          "Incorrect: I got to letter yesterday. Correct: I got a letter yesterday.",
+          "Incorrect: I got letter yesterday. Correct: I got a letter yesterday."
+        ],
+        "audio": ""
+      },
+      "provider_name": "OpenAI"
+    },
+    {
+      "word": "get to + place (arrive) | How long does it take to get to the airport?",
+      "status": "added_to_anki",
+      "topic": "",
+      "batch_mode": "Grammar",
+      "target_language": "English",
+      "explanation_language": "Polish",
+      "source": "ocr_import/AI all text",
+      "candidate_source": "AI all text",
+      "edited": false,
+      "source_type": "rule",
+      "strategy": "generated_example_from_rule",
+      "source_rule": "with to + a place it means 'arrive at / in'",
+      "grammar_target": "get to + place (arrive)",
+      "provided_sentence": "How long does it take to get to the airport?",
+      "duplicate_prechecked": true,
+      "duplicate_precheck_scope": "grammar_exact_on_add",
+      "resolved_mode": "Grammar",
+      "source_focus_warning": "source_rule_kept_as_note_not_audio",
+      "grammar_card": {
+        "sentence": "How long does it take to get to the airport?",
+        "target_language": "English",
+        "meaning": "To 'get to + place' means to arrive at or reach a specific location.",
+        "structure": "get to + place (arrive)",
+        "breakdown": [
+          "'Get to' means to arrive at a destination.",
+          "Follow 'get to' with the place you arrive at.",
+          "Used to ask or talk about traveling or reaching places.",
+          "Example asks about the time needed to arrive at the airport."
+        ],
+        "usage": "Use 'get to + place' when you want to say or ask how someone arrives at or reaches a specific place.\n\nSource note: with to + a place it means 'arrive at / in'",
+        "context_example": "How long does it take to get to the airport?",
+        "contrasts": [
+          "'Go to' focuses on the action of traveling, not arrival.",
+          "'Arrive at' is more formal and used mostly in written English.",
+          "'Reach' emphasizes the end of the journey but is less common in casual speech."
+        ],
+        "common_mistakes": [
+          "Incorrect: How long does it take to get the airport? Correct: How long does it take to get to the airport?",
+          "Incorrect: I get to at home late. Correct: I get home late.",
+          "Incorrect: She gets to in school by bus. Correct: She gets to school by bus."
+        ],
+        "audio": ""
+      },
+      "provider_name": "OpenAI"
+    },
+    {
+      "word": "get + adjective (become) | It's getting late.",
+      "status": "added_to_anki",
+      "topic": "",
+      "batch_mode": "Grammar",
+      "target_language": "English",
+      "explanation_language": "Polish",
+      "source": "ocr_import/AI all text",
+      "candidate_source": "AI all text",
+      "edited": false,
+      "source_type": "rule",
+      "strategy": "generated_example_from_rule",
+      "source_rule": "We use get + adjective or comparative adjective to mean 'become'",
+      "grammar_target": "get + adjective (become)",
+      "provided_sentence": "It's getting late.",
+      "duplicate_prechecked": true,
+      "duplicate_precheck_scope": "grammar_exact_on_add",
+      "resolved_mode": "Grammar",
+      "source_focus_warning": "natural_context_aligned_to_source_sentence, source_rule_kept_as_note_not_audio",
+      "grammar_card": {
+        "sentence": "It's getting late.",
+        "target_language": "English",
+        "meaning": "We use 'get + adjective' to show that something is becoming the way the adjective describes.",
+        "structure": "get + adjective (become)",
+        "breakdown": [
+          "'get' is a verb meaning 'become' in this pattern",
+          "'late' is an adjective describing time",
+          "The structure shows a change in state or condition",
+          "Example: 'It's getting late' means 'It is becoming late'"
+        ],
+        "usage": "'Get + adjective' is used to talk about something gradually changing or becoming a certain way, often to describe states or feelings.\n\nSource note: We use get + adjective or comparative adjective to mean 'become'",
+        "context_example": "It's getting late.",
+        "contrasts": [
+          "'become + adjective' (more formal than 'get + adjective')",
+          "'turn + adjective' (often used for colors or physical changes)",
+          "'get + adjective' usually describes gradual change or state"
+        ],
+        "common_mistakes": [
+          "Using 'is get' instead of 'is getting' - correct: 'It's getting late.'",
+          "Using a noun instead of an adjective after 'get' - incorrect: 'It's getting a late.'",
+          "Omitting 'get' and using only adjective without verb - incorrect: 'It late.'"
+        ],
+        "audio": ""
+      },
+      "provider_name": "OpenAI"
+    },
+    {
+      "word": "be + adjective vs. get + adjective | It's dark. (state) vs. It's getting dark. (change)",
+      "status": "added_to_anki",
+      "topic": "",
+      "batch_mode": "Grammar",
+      "target_language": "English",
+      "explanation_language": "Polish",
+      "source": "ocr_import/AI all text",
+      "candidate_source": "AI all text",
+      "edited": false,
+      "source_type": "structure_sentence",
+      "strategy": "preserve_source_sentence",
+      "source_reason": "Comparison of state vs. change",
+      "grammar_target": "be + adjective vs. get + adjective",
+      "provided_sentence": "It's dark. (state) vs. It's getting dark. (change)",
+      "duplicate_prechecked": true,
+      "duplicate_precheck_scope": "grammar_exact_on_add",
+      "resolved_mode": "Grammar",
+      "source_focus_warning": "natural_context_aligned_to_source_sentence",
+      "grammar_card": {
+        "sentence": "It's dark. (state) vs. It's getting dark. (change)",
+        "target_language": "English",
+        "meaning": "Use 'be + adjective' to describe a current state or condition. Use 'get + adjective' to describe a change or becoming something.",
+        "structure": "be + adjective vs. get + adjective",
+        "breakdown": [
+          "'It's dark.' describes the current state of darkness.",
+          "'It's getting dark.' describes the process of becoming dark."
+        ],
+        "usage": "Use 'be + adjective' for situations or feelings that are stable. Use 'get + adjective' when something is changing or developing.",
+        "context_example": "It's dark. (state) vs. It's getting dark. (change)",
+        "contrasts": [
+          "'be + adjective' shows state (e.g., She is tired).",
+          "'get + adjective' shows change (e.g., She is getting tired).",
+          "'be + adjective' is often permanent or momentary condition; 'get + adjective' shows gradual or sudden change."
+        ],
+        "common_mistakes": [
+          "Using 'be' to describe a change: Incorrect - She is tired (meaning becoming tired); Correct - She is getting tired.",
+          "Omitting 'getting' when emphasizing change: Incorrect - It's darkening; Correct - It's getting dark.",
+          "Using 'get' for states without change: Incorrect - He is getting happy (if happiness is constant); Correct - He is happy."
+        ],
+        "audio": ""
+      },
+      "provider_name": "OpenAI"
+    },
+    {
+      "word": "be used to vs. get used to | I'm used to the climate in England now. I'm getting used to the climate in England.",
+      "status": "added_to_anki",
+      "topic": "",
+      "batch_mode": "Grammar",
+      "target_language": "English",
+      "explanation_language": "Polish",
+      "source": "ocr_import/AI all text",
+      "candidate_source": "AI all text",
+      "edited": false,
+      "source_type": "structure_sentence",
+      "strategy": "preserve_source_sentence",
+      "source_reason": "Comparison of state vs. process of becoming used to",
+      "grammar_target": "be used to vs. get used to",
+      "provided_sentence": "I'm used to the climate in England now. I'm getting used to the climate in England.",
+      "duplicate_prechecked": true,
+      "duplicate_precheck_scope": "grammar_exact_on_add",
+      "resolved_mode": "Grammar",
+      "grammar_card": {
+        "sentence": "I'm used to the climate in England now. I'm getting used to the climate in England.",
+        "target_language": "English",
+        "meaning": "These phrases show the difference between being comfortable with something now (be used to) and the process of becoming comfortable with it (get used to).",
+        "structure": "be used to vs. get used to",
+        "breakdown": [
+          "'Be used to' means you are already familiar or comfortable with something.",
+          "'Get used to' means you are in the process of becoming familiar or comfortable.",
+          "Both are followed by a noun, pronoun, or verb + -ing.",
+          "Example: \"I'm used to the noise.\" vs. \"I'm getting used to the noise.\""
+        ],
+        "usage": "Use 'be used to' when talking about a current state of comfort or habit. Use 'get used to' when describing the progress toward that state.",
+        "context_example": "I'm used to the climate in England now. I'm getting used to the climate in England.",
+        "contrasts": [
+          "'Be used to' is a state; 'used to' + base verb expresses past habits.",
+          "'Get used to' shows change over time; 'be used to' shows completion.",
+          "'Get used to' can be followed by nouns or gerunds, same as 'be used to'."
+        ],
+        "common_mistakes": [
+          "Incorrect: I'm used to get used to the climate. Correct: I'm getting used to the climate.",
+          "Incorrect: I get used to cold weather already. Correct: I am used to cold weather already."
+        ],
+        "audio": ""
+      },
+      "provider_name": "OpenAI"
+    },
+    {
+      "word": "get + past participle (informal passive) | My phone got stolen last night.",
+      "status": "added_to_anki",
+      "topic": "",
+      "batch_mode": "Grammar",
+      "target_language": "English",
+      "explanation_language": "Polish",
+      "source": "ocr_import/AI all text",
+      "candidate_source": "AI all text",
+      "edited": false,
+      "source_type": "rule",
+      "strategy": "generated_example_from_rule",
+      "source_rule": "We can use get + past participle instead of be to make a passive structure. This is more informal than using be and is often used to talk about bad or unexpected things that have happened.",
+      "grammar_target": "get + past participle (informal passive)",
+      "provided_sentence": "My phone got stolen last night.",
+      "duplicate_prechecked": true,
+      "duplicate_precheck_scope": "grammar_exact_on_add",
+      "resolved_mode": "Grammar",
+      "source_focus_warning": "source_rule_kept_as_note_not_audio",
+      "grammar_card": {
+        "sentence": "My phone got stolen last night.",
+        "target_language": "English",
+        "meaning": "This structure shows an informal way to create the passive voice, often used for bad or unexpected events.",
+        "structure": "get + past participle (informal passive)",
+        "breakdown": [
+          "Use 'get' instead of 'be' for the passive voice.",
+          "'Past participle' is the verb form used in passive constructions.",
+          "Common in spoken or informal English.",
+          "Usually describes negative or surprising situations."
+        ],
+        "usage": "We use 'get + past participle' as an informal passive to say that something happens to the subject, especially bad or unexpected things.\n\nSource note: We can use get + past participle instead of be to make a passive structure. This is more informal than using be and is often used to talk about bad or unexpected things that have happened.",
+        "context_example": "My phone got stolen last night.",
+        "contrasts": [
+          "'be + past participle' is the formal passive (My phone was stolen last night).",
+          "'Get' passive is less formal and often describes accidents or negative events.",
+          "Active voice would be: Someone stole my phone."
+        ],
+        "common_mistakes": [
+          "Using 'got' with the base verb instead of past participle: My phone got steal last night. → My phone got stolen last night.",
+          "Mixing tenses incorrectly: My phone gets stolen last night. → My phone got stolen last night."
+        ],
+        "audio": ""
+      },
+      "provider_name": "OpenAI"
+    },
+    {
+      "word": "get + object + past participle (causative) | I need to get my car repaired.",
+      "status": "added_to_anki",
+      "topic": "",
+      "batch_mode": "Grammar",
+      "target_language": "English",
+      "explanation_language": "Polish",
+      "source": "ocr_import/AI all text",
+      "candidate_source": "AI all text",
+      "edited": false,
+      "source_type": "rule",
+      "strategy": "generated_example_from_rule",
+      "source_rule": "In informal spoken English, we sometimes use get + object + past participle instead of have + object + past participle to say that you ask or pay another person to do something for you.",
+      "grammar_target": "get + object + past participle (causative)",
+      "provided_sentence": "I need to get my car repaired.",
+      "duplicate_prechecked": true,
+      "duplicate_precheck_scope": "grammar_exact_on_add",
+      "resolved_mode": "Grammar",
+      "source_focus_warning": "source_rule_kept_as_note_not_audio",
+      "grammar_card": {
+        "sentence": "I need to get my car repaired.",
+        "target_language": "English",
+        "meaning": "To arrange for someone else to repair something for you.",
+        "structure": "get + object + past participle (causative)",
+        "breakdown": [
+          "'get' is used to mean 'cause something to happen by someone else',",
+          "'object' is the thing you want changed or fixed,",
+          "'past participle' shows the action done to the object by another person"
+        ],
+        "usage": "Use this structure informally to say you will pay or arrange for someone else to do something for you.\n\nSource note: In informal spoken English, we sometimes use get + object + past participle instead of have + object + past participle to say that you ask or pay another person to do something for you.",
+        "context_example": "I need to get my car repaired.",
+        "contrasts": [
+          "have + object + past participle (more formal): I will have my car repaired.",
+          "get + object + base verb (active): I get the mechanic to repair my car.",
+          "get + adjective (resultative): The car got repaired quickly."
+        ],
+        "common_mistakes": [
+          "I need to get my car repairing. (Incorrect - should be repaired)",
+          "I get my car repair. (Incorrect - missing past participle 'repaired')"
+        ],
+        "audio": ""
+      },
+      "provider_name": "OpenAI"
+    },
+    {
+      "word": "get + object + to-infinitive (persuade/make) | Can you get him to help with this?",
+      "status": "added_to_anki",
+      "topic": "",
+      "batch_mode": "Grammar",
+      "target_language": "English",
+      "explanation_language": "Polish",
+      "source": "ocr_import/AI all text",
+      "candidate_source": "AI all text",
+      "edited": false,
+      "source_type": "rule",
+      "strategy": "generated_example_from_rule",
+      "source_rule": "We can use get + object + infinitive with to to mean 'make', 'tell', 'persuade' somebody (to) do something.",
+      "grammar_target": "get + object + to-infinitive (persuade/make)",
+      "provided_sentence": "Can you get him to help with this?",
+      "duplicate_prechecked": true,
+      "duplicate_precheck_scope": "grammar_exact_on_add",
+      "resolved_mode": "Grammar",
+      "source_focus_warning": "source_rule_kept_as_note_not_audio",
+      "grammar_card": {
+        "sentence": "Can you get him to help with this?",
+        "target_language": "English",
+        "meaning": "We use 'get + object + to-infinitive' to mean persuading or making someone do something.",
+        "structure": "get + object + to-infinitive (persuade/make)",
+        "breakdown": [
+          "'get' is the verb that starts the pattern",
+          "the 'object' is the person or thing influenced",
+          "'to-infinitive' (to + base verb) shows the action they are persuaded or made to do"
+        ],
+        "usage": "This structure is used when you want to express causing or convincing someone to do something. It is often used to talk about requests or persuasion.\n\nSource note: We can use get + object + infinitive with to to mean 'make', 'tell', 'persuade' somebody (to) do something.",
+        "context_example": "Can you get him to help with this?",
+        "contrasts": [
+          "'make + object + base verb' (without 'to') means forcing someone to do something",
+          "'have + object + base verb' means arranging for someone to do something",
+          "'let + object + base verb' means allowing someone to do something"
+        ],
+        "common_mistakes": [
+          "Using 'get + object + base verb' instead of 'get + object + to + verb' – correct: get him to help, not get him help",
+          "Forgetting 'to' before the infinitive verb – correct: get her to come, not get her come"
+        ],
+        "audio": ""
+      },
+      "provider_name": "OpenAI"
+    },
+    {
+      "word": "have + object + base verb (causative) | I'll have someone send you the details.",
+      "status": "added_to_anki",
+      "topic": "",
+      "batch_mode": "Grammar",
+      "target_language": "English",
+      "explanation_language": "Polish",
+      "source": "ocr_import/AI all text",
+      "candidate_source": "AI all text",
+      "edited": false,
+      "source_type": "structure_sentence",
+      "strategy": "preserve_source_sentence",
+      "source_reason": "Comparison with 'get + object + to-infinitive'",
+      "grammar_target": "have + object + base verb (causative)",
+      "provided_sentence": "I'll have someone send you the details.",
+      "duplicate_prechecked": true,
+      "duplicate_precheck_scope": "grammar_exact_on_add",
+      "resolved_mode": "Grammar",
+      "grammar_card": {
+        "sentence": "I'll have someone send you the details.",
+        "target_language": "English",
+        "meaning": "This structure is used to show that you cause or arrange for someone else to do something.",
+        "structure": "have + object + base verb (causative)",
+        "breakdown": [
+          "\"have\" shows causing or arranging an action",
+          "\"someone\" is the object who will do the action",
+          "\"send\" is the base verb (without 'to') showing the action caused"
+        ],
+        "usage": "Use this pattern to say you arrange for another person to do something for you.",
+        "context_example": "I'll have someone send you the details.",
+        "contrasts": [
+          "\"I'll get someone to send you the details.\" (same meaning, but uses 'get + object + to-infinitive')",
+          "\"Someone will send you the details.\" (simple future, no causative)",
+          "\"I'll send you the details myself.\" (you do the action, no causative)"
+        ],
+        "common_mistakes": [
+          "\"I'll have someone to send you the details.\" → incorrect: use base verb without 'to'",
+          "\"I'll have someone sends you the details.\" → incorrect: use base verb, not third person singular",
+          "\"I'll have someone sending you the details.\" → incorrect: use base verb, not continuous form"
+        ],
+        "audio": ""
+      },
+      "provider_name": "OpenAI"
+    }
+  ],
+  "index": 22,
+  "provider": "OpenAI",
+  "target_language": "English",
+  "explanation_language": "Polish",
+  "feedback_language": "Polish",
+  "batch_topic": "",
+  "batch_mode": "Grammar",
+  "deck": "gr English File Unit 3a Grammar get",
+  "autosaved_at": "2026-07-28T11:41:37"
+}

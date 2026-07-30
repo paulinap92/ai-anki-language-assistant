@@ -1,3 +1,11 @@
+
+## v11.5 — Multimodal Import Extraction
+
+- Added OpenAI/Gemini multimodal import methods for screenshot/book-photo/table extraction.
+- Added table-aware candidate extraction mapping Expression → target, Example → sentence/audio, Use → source note.
+- Added highlighted/marked item extraction rules for physical-book workflows.
+- Added `OPENAI_MULTIMODAL_MODEL` and `GEMINI_MULTIMODAL_MODEL` env options.
+
 # Changelog
 
 This file keeps version history out of the main README. Detailed notes live in `releases/`.

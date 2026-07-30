@@ -1,0 +1,418 @@
+{
+  "items": [
+    {
+      "word": "Si + pretérito pluscuamperfecto de subjuntivo + condicional compuesto | Si me hubieras dicho que necesitabas ayuda con la mudanza, te habríamos ayudado.",
+      "status": "added_to_anki",
+      "topic": "",
+      "batch_mode": "Grammar",
+      "target_language": "Spanish",
+      "explanation_language": "Polish",
+      "source": "ocr_import/AI all text",
+      "candidate_source": "AI all text",
+      "edited": false,
+      "source_type": "structure_sentence",
+      "strategy": "preserve_source_sentence",
+      "source_rule": "La estructura condicional Si + pretérito pluscuamperfecto de subjuntivo + condicional compuesto se usa para situaciones no reales en el pasado.",
+      "source_reason": "estructura condicional para situaciones hipotéticas en el pasado",
+      "grammar_target": "Si + pretérito pluscuamperfecto de subjuntivo + condicional compuesto",
+      "provided_sentence": "Si me hubieras dicho que necesitabas ayuda con la mudanza, te habríamos ayudado.",
+      "duplicate_prechecked": true,
+      "duplicate_precheck_scope": "grammar_exact_on_add",
+      "resolved_mode": "Grammar",
+      "source_focus_warning": "source_rule_kept_as_note_not_audio",
+      "grammar_card": {
+        "sentence": "Si me hubieras dicho que necesitabas ayuda con la mudanza, te habríamos ayudado.",
+        "target_language": "Spanish",
+        "meaning": "Se usa para expresar situaciones hipotéticas en el pasado que no ocurrieron y sus posibles resultados.",
+        "structure": "Si + pretérito pluscuamperfecto de subjuntivo + condicional compuesto",
+        "breakdown": [
+          "La primera parte con 'si' usa el pretérito pluscuamperfecto de subjuntivo (hubieras dicho).",
+          "La segunda parte usa el condicional compuesto (habríamos ayudado)."
+        ],
+        "usage": "Expresa condiciones irreales en el pasado, mostrando qué habría ocurrido si algo diferente hubiera pasado.\n\nSource note: La estructura condicional Si + pretérito pluscuamperfecto de subjuntivo + condicional compuesto se usa para situaciones no reales en el pasado.",
+        "context_example": "Si me hubieras dicho que necesitabas ayuda con la mudanza, te habríamos ayudado.",
+        "contrasts": [
+          "Si + presente de indicativo + futuro: para condiciones reales o posibles en el futuro.",
+          "Si + imperfecto de subjuntivo + condicional simple: para condiciones irreales en el presente.",
+          "Si + pretérito pluscuamperfecto de subjuntivo + condicional simple: incorrecto, el resultado debe ser condicional compuesto."
+        ],
+        "common_mistakes": [
+          "Usar indicativo en la cláusula con 'si' para hipótesis irreales del pasado: 'Si me dijiste' en lugar de 'Si me hubieras dicho'.",
+          "No usar condicional compuesto en la segunda parte: 'te ayudaríamos' en vez de 'te habríamos ayudado'."
+        ],
+        "audio": ""
+      },
+      "provider_name": "OpenAI"
+    },
+    {
+      "word": "Condicional simple del verbo poder + infinitivo compuesto | Podríamos haber pedido ayuda con la mudanza a Mario.",
+      "status": "added_to_anki",
+      "topic": "",
+      "batch_mode": "Grammar",
+      "target_language": "Spanish",
+      "explanation_language": "Polish",
+      "source": "ocr_import/AI all text",
+      "candidate_source": "AI all text",
+      "edited": false,
+      "source_type": "structure_sentence",
+      "strategy": "preserve_source_sentence",
+      "source_rule": "Condicional simple del verbo poder + infinitivo compuesto",
+      "source_reason": "estructura para expresar hipótesis pasadas con poder + infinitivo compuesto",
+      "grammar_target": "Condicional simple del verbo poder + infinitivo compuesto",
+      "provided_sentence": "Podríamos haber pedido ayuda con la mudanza a Mario.",
+      "duplicate_prechecked": true,
+      "duplicate_precheck_scope": "grammar_exact_on_add",
+      "resolved_mode": "Grammar",
+      "source_focus_warning": "source_rule_kept_as_note_not_audio",
+      "grammar_card": {
+        "sentence": "Podríamos haber pedido ayuda con la mudanza a Mario.",
+        "target_language": "Spanish",
+        "meaning": "Esta estructura se usa para expresar hipótesis o acciones posibles en el pasado que no ocurrieron.",
+        "structure": "Condicional simple del verbo poder + infinitivo compuesto",
+        "breakdown": [
+          "‘Podríamos’ es el condicional simple del verbo poder.",
+          "‘Haber pedido’ es el infinitivo compuesto que indica una acción pasada.",
+          "La combinación expresa una acción que se pudo haber realizado pero no se hizo."
+        ],
+        "usage": "Se usa para hablar de posibilidades o hipótesis en el pasado que no se cumplieron, mostrando arrepentimiento o sugerencia.\n\nSource note: Condicional simple del verbo poder + infinitivo compuesto",
+        "context_example": "Podríamos haber pedido ayuda con la mudanza a Mario.",
+        "contrasts": [
+          "El condicional simple + infinitivo simple (Podríamos pedir ayuda) expresa una posibilidad en el presente o futuro.",
+          "El condicional perfecto solo (Habríamos pedido ayuda) enfatiza la acción pasada sin añadir el infinitivo compuesto explícito.",
+          "El pretérito pluscuamperfecto de subjuntivo (Si hubiéramos pedido ayuda) se usa para condiciones hipotéticas en el pasado."
+        ],
+        "common_mistakes": [
+          "Podríamos pedir ayuda con la mudanza a Mario (sin pasado compuesto no indica la hipótesis pasada).",
+          "Podríamos haber pedimos ayuda con la mudanza (incorrecto, el infinitivo no se conjuga)."
+        ],
+        "audio": ""
+      },
+      "provider_name": "OpenAI"
+    },
+    {
+      "word": "Pretérito imperfecto de indicativo + que + infinitivo compuesto | Teníamos que haber dicho a Mario que necesitábamos ayuda con la mudanza.",
+      "status": "added_to_anki",
+      "topic": "",
+      "batch_mode": "Grammar",
+      "target_language": "Spanish",
+      "explanation_language": "Polish",
+      "source": "ocr_import/AI all text",
+      "candidate_source": "AI all text",
+      "edited": false,
+      "source_type": "structure_sentence",
+      "strategy": "preserve_source_sentence",
+      "source_rule": "Pretérito imperfecto de indicativo + que + infinitivo compuesto",
+      "source_reason": "estructura con pretérito imperfecto + que + infinitivo compuesto para referencia a obligaciones pasadas",
+      "grammar_target": "Pretérito imperfecto de indicativo + que + infinitivo compuesto",
+      "provided_sentence": "Teníamos que haber dicho a Mario que necesitábamos ayuda con la mudanza.",
+      "duplicate_prechecked": true,
+      "duplicate_precheck_scope": "grammar_exact_on_add",
+      "resolved_mode": "Grammar",
+      "source_focus_warning": "source_rule_kept_as_note_not_audio",
+      "grammar_card": {
+        "sentence": "Teníamos que haber dicho a Mario que necesitábamos ayuda con la mudanza.",
+        "target_language": "Spanish",
+        "meaning": "Esta estructura expresa una obligación o necesidad que existía en el pasado y que no se cumplió.",
+        "structure": "Pretérito imperfecto de indicativo + que + infinitivo compuesto",
+        "breakdown": [
+          "Pretérito imperfecto de indicativo: 'teníamos' indica una obligación pasada no cumplida.",
+          "'que' conecta la clausula principal con el infinitivo.",
+          "Infinitivo compuesto: 'haber dicho' indica una acción que debería haberse realizado en el pasado."
+        ],
+        "usage": "Se usa para hablar de deberes, obligaciones o necesidades pasadas que se esperaba que se realizaran pero que quizás no se hicieron.\n\nSource note: Pretérito imperfecto de indicativo + que + infinitivo compuesto",
+        "context_example": "Teníamos que haber dicho a Mario que necesitábamos ayuda con la mudanza.",
+        "contrasts": [
+          "Pretérito perfecto de indicativo + que + infinitivo compuesto: Indica obligación cumplida (Ej: Hemos tenido que haber dicho a Mario...).",
+          "Pretérito imperfecto + que + infinitivo simple: enfocando la acción en su desarrollo en el pasado (Ej: Teníamos que decirle a Mario...).",
+          "Condicional + que + infinitivo compuesto: expresión de una obligación hipotética en el pasado (Ej: Tendríamos que haber dicho a Mario...)."
+        ],
+        "common_mistakes": [
+          "Usar infinitivo simple en lugar de infinitivo compuesto: 'Teníamos que decir a Mario...' cambia el sentido, pues no expresa cumplimiento o no de la obligación pasada.",
+          "Confundir con pretérito perfecto simple: 'Tuvimos que haber dicho...' suena incorrecto en este contexto.",
+          "Omitir el 'que' entre el imperfecto y el infinitivo compuesto, lo cual rompe la estructura correcta."
+        ],
+        "audio": ""
+      },
+      "provider_name": "OpenAI"
+    },
+    {
+      "word": "infinitivo compuesto | Podríamos haber visitado el museo nacional pero cambiamos los planes.",
+      "status": "added_to_anki",
+      "topic": "",
+      "batch_mode": "Grammar",
+      "target_language": "Spanish",
+      "explanation_language": "Polish",
+      "source": "ocr_import/AI all text",
+      "candidate_source": "AI all text",
+      "edited": false,
+      "source_type": "structure_sentence",
+      "strategy": "preserve_source_sentence",
+      "source_rule": "El infinitivo compuesto se forma con haber + participio pasado",
+      "source_reason": "ejemplo de uso del infinitivo compuesto con verbo haber en infinitivo + participio pasado",
+      "grammar_target": "infinitivo compuesto",
+      "provided_sentence": "Podríamos haber visitado el museo nacional pero cambiamos los planes.",
+      "duplicate_prechecked": true,
+      "duplicate_precheck_scope": "grammar_exact_on_add",
+      "resolved_mode": "Grammar",
+      "source_focus_warning": "source_rule_kept_as_note_not_audio",
+      "grammar_card": {
+        "sentence": "Podríamos haber visitado el museo nacional pero cambiamos los planes.",
+        "target_language": "Spanish",
+        "meaning": "El infinitivo compuesto expresa una acción que podría haberse realizado en el pasado pero no ocurrió.",
+        "structure": "infinitivo compuesto",
+        "breakdown": [
+          "Se forma con el verbo haber en infinitivo + participio pasado (haber visitado).",
+          "Indica una acción pasada no realizada o hipotética.",
+          "En la oración se usa para expresar posibilidad en el pasado con un matiz condicional (Podríamos haber visitado)."
+        ],
+        "usage": "Usamos el infinitivo compuesto para hablar de acciones pasadas que no se hicieron o que podrían haber ocurrido, especialmente en combinaciones con verbos modales o perifrásticos (podríamos, deberías, haber).\n\nSource note: El infinitivo compuesto se forma con haber + participio pasado",
+        "context_example": "Podríamos haber visitado el museo nacional pero cambiamos los planes.",
+        "contrasts": [
+          "Infinitivo simple: visitar el museo (acción en general o futura).",
+          "Pretérito perfecto: visitamos el museo (acción pasada realizada).",
+          "Condicional simple: podríamos visitar el museo (posibilidad presente o futura)."
+        ],
+        "common_mistakes": [
+          "Podríamos visitado el museo (incorrecto, falta el verbo haber).",
+          "Podríamos haber visitar el museo (incorrecto, usar infinitivo en lugar de participio pasado)."
+        ],
+        "audio": ""
+      },
+      "provider_name": "OpenAI"
+    },
+    {
+      "word": "infinitivo compuesto | Tenías que haberme dicho que no podías venir hoy a comer.",
+      "status": "added_to_anki",
+      "topic": "",
+      "batch_mode": "Grammar",
+      "target_language": "Spanish",
+      "explanation_language": "Polish",
+      "source": "ocr_import/AI all text",
+      "candidate_source": "AI all text",
+      "edited": false,
+      "source_type": "structure_sentence",
+      "strategy": "preserve_source_sentence",
+      "source_rule": "El infinitivo compuesto se forma con haber + participio pasado",
+      "source_reason": "otro ejemplo del uso del infinitivo compuesto",
+      "grammar_target": "infinitivo compuesto",
+      "provided_sentence": "Tenías que haberme dicho que no podías venir hoy a comer.",
+      "duplicate_prechecked": true,
+      "duplicate_precheck_scope": "grammar_exact_on_add",
+      "resolved_mode": "Grammar",
+      "source_focus_warning": "source_rule_kept_as_note_not_audio",
+      "grammar_card": {
+        "sentence": "Tenías que haberme dicho que no podías venir hoy a comer.",
+        "target_language": "Spanish",
+        "meaning": "El infinitivo compuesto indica una acción pasada que debía haber ocurrido o que se piensa que ocurrió antes que otra.",
+        "structure": "infinitivo compuesto",
+        "breakdown": [
+          "Se forma con el infinitivo del verbo 'haber' + participio pasado.",
+          "Se usa para expresar acciones que debieron o pudieron haber ocurrido.",
+          "En la frase, 'haberme dicho' señala algo que debería haberse comunicado antes."
+        ],
+        "usage": "El infinitivo compuesto se utiliza para hablar de acciones que son anteriores a otra acción o momento en el pasado o para expresar obligación o posibilidad no cumplida.\n\nSource note: El infinitivo compuesto se forma con haber + participio pasado",
+        "context_example": "Tenías que haberme dicho que no podías venir hoy a comer.",
+        "contrasts": [
+          "Infinitivo simple: 'deberías decirme' (presente o futuro, acción aún posible).",
+          "Pretérito perfecto compuesto: 'has dicho' (acción pasada completada).",
+          "Pluscuamperfecto indicativo: 'habías dicho' (acción pasada anterior a otra pasada)."
+        ],
+        "common_mistakes": [
+          "Decir 'Tenías que decirme' en lugar de 'Tenías que haberme dicho' cuando se quiere enfatizar que la acción ya debió ocurrir.",
+          "Confundir con el pretérito imperfecto 'Había decir' que no existe; la forma correcta es 'haber dicho'."
+        ],
+        "audio": ""
+      },
+      "provider_name": "OpenAI"
+    },
+    {
+      "word": "pretérito pluscuamperfecto de subjuntivo | Cuando queremos referirnos al pasado con hipótesis usamos el pretérito pluscuamperfecto de subjuntivo, que se forma con el verbo haber en pretérito imperfecto de subjuntivo + participio.",
+      "status": "added_to_anki",
+      "topic": "",
+      "batch_mode": "Grammar",
+      "target_language": "Spanish",
+      "explanation_language": "Polish",
+      "source": "ocr_import/AI all text",
+      "candidate_source": "AI all text",
+      "edited": false,
+      "source_type": "rule",
+      "strategy": "generated_example_from_rule",
+      "source_rule": "El pretérito pluscuamperfecto de subjuntivo se forma con haber en pretérito imperfecto de subjuntivo y el participio compuesto",
+      "source_reason": "uso y formación del pretérito pluscuamperfecto de subjuntivo con haber + participio pasado",
+      "grammar_target": "pretérito pluscuamperfecto de subjuntivo",
+      "provided_sentence": "Cuando queremos referirnos al pasado con hipótesis usamos el pretérito pluscuamperfecto de subjuntivo, que se forma con el verbo haber en pretérito imperfecto de subjuntivo + participio.",
+      "duplicate_prechecked": true,
+      "duplicate_precheck_scope": "grammar_exact_on_add",
+      "resolved_mode": "Grammar",
+      "source_focus_warning": "source_rule_kept_as_note_not_audio",
+      "grammar_card": {
+        "sentence": "Cuando queremos referirnos al pasado con hipótesis usamos el pretérito pluscuamperfecto de subjuntivo, que se forma con el verbo haber en pretérito imperfecto de subjuntivo + participio.",
+        "target_language": "Spanish",
+        "meaning": "Se usa para expresar hipótesis o acciones no reales en el pasado.",
+        "structure": "pretérito pluscuamperfecto de subjuntivo | Cuando queremos referirnos al pasado con hipótesis usamos el pretérito pluscuamperfecto de subjuntivo, que se forma con el verbo haber en pretérito imperfecto de subjuntivo + participio.",
+        "breakdown": [
+          "Se usa 'haber' en pretérito imperfecto de subjuntivo (hubiera/hubiese).",
+          "Se añade el participio pasado del verbo principal.",
+          "Expresa situaciones hipotéticas o irreales en el pasado."
+        ],
+        "usage": "Para hablar de condiciones contrarias a la realidad o hipótesis pasadas que no ocurrieron.\n\nSource note: El pretérito pluscuamperfecto de subjuntivo se forma con haber en pretérito imperfecto de subjuntivo y el participio compuesto",
+        "context_example": "Cuando queremos referirnos al pasado con hipótesis usamos el pretérito pluscuamperfecto de subjuntivo, que se forma con el verbo haber en pretérito imperfecto de subjuntivo + participio.",
+        "contrasts": [
+          "Pretérito perfecto de subjuntivo: para acciones pasadas con relevancia en el presente.",
+          "Pretérito imperfecto de subjuntivo: para condiciones o deseos en el presente o futuro.",
+          "Indicativo pluscuamperfecto: expresa acciones reales o confirmadas en el pasado."
+        ],
+        "common_mistakes": [
+          "Usar 'había' en lugar de 'hubiera' para formar el pretérito pluscuamperfecto de subjuntivo; correcto: hubiera hablado, no había hablado.",
+          "No usar el participio pasado después de 'haber' en subjuntivo; correcto: hubiera comido, no hubiera comer.",
+          "Confundir con el pretérito imperfecto de subjuntivo simple; el pluscuamperfecto necesita haber + participio."
+        ],
+        "audio": ""
+      },
+      "provider_name": "OpenAI"
+    },
+    {
+      "word": "condicional compuesto | El condicional compuesto se forma con el verbo haber en condicional simple + participio pasado.",
+      "status": "added_to_anki",
+      "topic": "",
+      "batch_mode": "Grammar",
+      "target_language": "Spanish",
+      "explanation_language": "Polish",
+      "source": "ocr_import/AI all text",
+      "candidate_source": "AI all text",
+      "edited": false,
+      "source_type": "rule",
+      "strategy": "generated_example_from_rule",
+      "source_rule": "Condicional compuesto se forma con haber en condicional simple + participio pasado",
+      "source_reason": "uso y formación del condicional compuesto",
+      "grammar_target": "condicional compuesto",
+      "provided_sentence": "El condicional compuesto se forma con el verbo haber en condicional simple + participio pasado.",
+      "duplicate_prechecked": true,
+      "duplicate_precheck_scope": "grammar_exact_on_add",
+      "resolved_mode": "Grammar",
+      "source_focus_warning": "natural_context_aligned_to_source_sentence, source_rule_kept_as_note_not_audio",
+      "grammar_card": {
+        "sentence": "El condicional compuesto se forma con el verbo haber en condicional simple + participio pasado.",
+        "target_language": "Spanish",
+        "meaning": "El condicional compuesto se usa para expresar acciones hipotéticas en el pasado o para expresar una consecuencia no realizada.",
+        "structure": "condicional compuesto | El condicional compuesto se forma con el verbo haber en condicional simple + participio pasado.",
+        "breakdown": [
+          "El verbo haber va en condicional simple: habría, habrías, habría, habríamos, habríais, habrían.",
+          "Se añade el participio pasado del verbo principal: hablado, comido, vivido, etc."
+        ],
+        "usage": "Usamos el condicional compuesto para hablar de acciones que podrían haber ocurrido bajo ciertas condiciones, pero que no pasaron.\n\nSource note: Condicional compuesto se forma con haber en condicional simple + participio pasado",
+        "context_example": "El condicional compuesto se forma con el verbo haber en condicional simple + participio pasado.",
+        "contrasts": [
+          "Condicional simple: expresa acciones hipotéticas en presente o futuro (Ej: Yo estudiaría más).",
+          "Pretérito perfecto compuesto: expresa acciones recientes o pasadas pero con relevancia en el presente (Ej: He estudiado).",
+          "Pluscuamperfecto de subjuntivo: se usa para expresar acciones hipotéticas en el pasado con un matiz de duda o deseo (Ej: Si hubiera estudiado más...)."
+        ],
+        "common_mistakes": [
+          "Usar el condicional simple en lugar del condicional compuesto para hablar de acciones pasadas: *Habría estudiar más en vez de Haber estudiado más -> Corrección: Habría estudiado más.",
+          "Confundir el participio pasado con el infinitivo: *Habría comer en vez de Habría comido.",
+          "Olvidar conjugar el verbo haber en condicional simple: *Ha estudiado en vez de Habría estudiado."
+        ],
+        "audio": ""
+      },
+      "provider_name": "OpenAI"
+    },
+    {
+      "word": "uso de la partícula si en estructuras condicionales | Las estructuras condicionales normalmente se introducen con la partícula si, especialmente para referirse a situaciones hipotéticas.",
+      "status": "added_to_anki",
+      "topic": "",
+      "batch_mode": "Grammar",
+      "target_language": "Spanish",
+      "explanation_language": "Polish",
+      "source": "ocr_import/AI all text",
+      "candidate_source": "AI all text",
+      "edited": false,
+      "source_type": "rule",
+      "strategy": "generated_example_from_rule",
+      "source_rule": "Las estructuras condicionales se introducen con la partícula si",
+      "source_reason": "uso del conector condicional si",
+      "grammar_target": "uso de la partícula si en estructuras condicionales",
+      "provided_sentence": "Las estructuras condicionales normalmente se introducen con la partícula si, especialmente para referirse a situaciones hipotéticas.",
+      "duplicate_prechecked": true,
+      "duplicate_precheck_scope": "grammar_exact_on_add",
+      "resolved_mode": "Grammar",
+      "source_focus_warning": "natural_context_aligned_to_source_sentence, source_rule_kept_as_note_not_audio",
+      "grammar_card": {
+        "sentence": "Las estructuras condicionales normalmente se introducen con la partícula si, especialmente para referirse a situaciones hipotéticas.",
+        "target_language": "Spanish",
+        "meaning": "La partícula 'si' se usa para introducir oraciones condicionales que expresan una condición o situación hipotética.",
+        "structure": "uso de la partícula si en estructuras condicionales",
+        "breakdown": [
+          "'Si' introduce la condición que debe cumplirse para que ocurra algo.",
+          "Se usa en oraciones hipotéticas o posibles, reales o irreales.",
+          "La oración con 'si' suele estar en presente o pasado subjuntivo según el tipo de condición.",
+          "Se conecta con una consecuencia o resultado que depende de esa condición."
+        ],
+        "usage": "Se usa 'si' para construir oraciones condicionales que expresan una suposición o condición necesaria para que suceda algo.\n\nSource note: Las estructuras condicionales se introducen con la partícula si",
+        "context_example": "Las estructuras condicionales normalmente se introducen con la partícula si, especialmente para referirse a situaciones hipotéticas.",
+        "contrasts": [
+          "A diferencia de 'cuando', que indica un tiempo seguro, 'si' propone una condición que puede no cumplirse.",
+          "No debe confundirse con 'sí' (afirmación).",
+          "'Aunque' introduce concesiones, mientras que 'si' introduce condiciones."
+        ],
+        "common_mistakes": [
+          "Usar 'si' con presente indicativo en situaciones contrarias a la realidad (corregir con pasado subjuntivo): Si tendría tiempo, viajaría -> Si tuviera tiempo, viajaría.",
+          "Confundir 'si' condicional con 'sí' afirmativo: Sí voy a la fiesta (corregir si es condicional).",
+          "Omitir la coma cuando 'si' inicia la oración condicional seguida del resultado: Si llueve, no saldremos."
+        ],
+        "audio": ""
+      },
+      "provider_name": "OpenAI"
+    },
+    {
+      "word": "verbos con participio pasado irregular | Algunos verbos tienen participio pasado irregular, como escribir - escrito, abrir - abierto o morir - muerto.",
+      "status": "added_to_anki",
+      "topic": "",
+      "batch_mode": "Grammar",
+      "target_language": "Spanish",
+      "explanation_language": "Polish",
+      "source": "ocr_import/AI all text",
+      "candidate_source": "AI all text",
+      "edited": false,
+      "source_type": "sentence_only",
+      "strategy": "preserve_source_sentence",
+      "source_reason": "participios irregulares frecuentes en uso con tiempos compuestos",
+      "grammar_target": "verbos con participio pasado irregular",
+      "provided_sentence": "Algunos verbos tienen participio pasado irregular, como escribir - escrito, abrir - abierto o morir - muerto.",
+      "duplicate_prechecked": true,
+      "duplicate_precheck_scope": "grammar_exact_on_add",
+      "resolved_mode": "Grammar",
+      "grammar_card": {
+        "sentence": "Algunos verbos tienen participio pasado irregular, como escribir - escrito, abrir - abierto o morir - muerto.",
+        "target_language": "Spanish",
+        "meaning": "El participio pasado irregular es una forma especial del verbo que no sigue las reglas comunes y se usa en tiempos compuestos.",
+        "structure": "verbos con participio pasado irregular",
+        "breakdown": [
+          "El participio pasado forma parte de los tiempos compuestos, como el pretérito perfecto.",
+          "Algunos verbos tienen formas irregulares, por ejemplo, escribir → escrito, abrir → abierto, morir → muerto."
+        ],
+        "usage": "Se usa para formar tiempos compuestos como el pretérito perfecto (he escrito) y en la voz pasiva (la carta está escrita).",
+        "context_example": "Algunos verbos tienen participio pasado irregular, como escribir - escrito, abrir - abierto o morir - muerto.",
+        "contrasts": [
+          "Participio pasado regular: trabajar → trabajado, hablar → hablado.",
+          "Forma de gerundio: escribir → escribiendo (accion en progreso).",
+          "Infinitivo: escribir (forma base del verbo)."
+        ],
+        "common_mistakes": [
+          "Decir \"he escribido\" en vez de \"he escrito\".",
+          "Usar participio regular con verbos irregulares: \"ha abrido\" en lugar de \"ha abierto\"."
+        ],
+        "audio": ""
+      },
+      "provider_name": "OpenAI"
+    }
+  ],
+  "index": 8,
+  "provider": "OpenAI",
+  "target_language": "Spanish",
+  "explanation_language": "Polish",
+  "feedback_language": "Polish",
+  "batch_topic": "",
+  "batch_mode": "Grammar",
+  "deck": "Español Abraham Gram",
+  "autosaved_at": "2026-07-28T12:35:24"
+}

@@ -1,0 +1,936 @@
+{
+  "items": [
+    {
+      "word": "must + infinitive (present deduction) | That must be an electric car – it isn't making any noise at all.",
+      "status": "added_to_anki",
+      "topic": "",
+      "batch_mode": "Grammar",
+      "target_language": "English",
+      "explanation_language": "Polish",
+      "source": "ocr_import/AI all text",
+      "candidate_source": "AI all text",
+      "edited": false,
+      "source_type": "structure_sentence",
+      "strategy": "preserve_source_sentence",
+      "source_reason": "Deduction about something true in the present.",
+      "grammar_target": "must + infinitive (present deduction)",
+      "provided_sentence": "That must be an electric car – it isn't making any noise at all.",
+      "duplicate_prechecked": true,
+      "duplicate_precheck_scope": "grammar_exact_on_add",
+      "resolved_mode": "Grammar",
+      "grammar_card": {
+        "sentence": "That must be an electric car – it isn't making any noise at all.",
+        "target_language": "English",
+        "meaning": "Used to express a strong logical conclusion about the present based on available evidence.",
+        "structure": "must + infinitive (present deduction)",
+        "breakdown": [
+          "'must' + base verb (infinitive without 'to')",
+          "Shows certainty about a present situation or fact",
+          "Based on deduction or logical reasoning",
+          "Example refers to current reality, not past or future"
+        ],
+        "usage": "Use 'must + infinitive' to say what you believe is true now after thinking about the facts or evidence.",
+        "context_example": "That must be an electric car – it isn't making any noise at all.",
+        "contrasts": [
+          "'must' (deduction) vs 'might/may/could' (possibility or less certain deduction)",
+          "'must' + infinitive (present deduction) vs 'must have' + past participle (past deduction)",
+          "'must' for present deduction vs 'should' for advice or expectation"
+        ],
+        "common_mistakes": [
+          "Using 'must to' instead of 'must' + infinitive: Incorrect - 'That must to be true.' Correct - 'That must be true.'",
+          "Confusing 'must' (deduction) with obligation: Incorrect - 'You must be home now' (meaning deduction). Correct for obligation - 'You must come home now.'"
+        ],
+        "audio": ""
+      },
+      "provider_name": "OpenAI"
+    },
+    {
+      "word": "must have + past participle (past deduction) | You must have seen him – he was standing right in front of you!",
+      "status": "added_to_anki",
+      "topic": "",
+      "batch_mode": "Grammar",
+      "target_language": "English",
+      "explanation_language": "Polish",
+      "source": "ocr_import/AI all text",
+      "candidate_source": "AI all text",
+      "edited": false,
+      "source_type": "structure_sentence",
+      "strategy": "preserve_source_sentence",
+      "source_reason": "Deduction about something true or happened in the past.",
+      "grammar_target": "must have + past participle (past deduction)",
+      "provided_sentence": "You must have seen him – he was standing right in front of you!",
+      "duplicate_prechecked": true,
+      "duplicate_precheck_scope": "grammar_exact_on_add",
+      "resolved_mode": "Grammar",
+      "grammar_card": {
+        "sentence": "You must have seen him – he was standing right in front of you!",
+        "target_language": "English",
+        "meaning": "This structure expresses a strong conclusion or guess about something that happened in the past, based on evidence or reasoning.",
+        "structure": "must have + past participle (past deduction)",
+        "breakdown": [
+          "must have = expresses certainty or strong belief about the past",
+          "past participle = the verb form used after must have (e.g., seen, done, gone)",
+          "used to make deductions about past events"
+        ],
+        "usage": "Use this structure when you are almost sure or deducing something that happened in the past.",
+        "context_example": "You must have seen him – he was standing right in front of you!",
+        "contrasts": [
+          "might have + past participle: weaker possibility about the past",
+          "could have + past participle: suggesting ability or possibility in the past",
+          "should have + past participle: expressing past advice or expectation"
+        ],
+        "common_mistakes": [
+          "You must saw him -> You must have seen him",
+          "You must have saw him -> You must have seen him"
+        ],
+        "audio": ""
+      },
+      "provider_name": "OpenAI"
+    },
+    {
+      "word": "can't + continuous infinitive (present ongoing impossibility) | They can't be playing very well – they're losing 3–0.",
+      "status": "added_to_anki",
+      "topic": "",
+      "batch_mode": "Grammar",
+      "target_language": "English",
+      "explanation_language": "Polish",
+      "source": "ocr_import/AI all text",
+      "candidate_source": "AI all text",
+      "edited": false,
+      "source_type": "structure_sentence",
+      "strategy": "preserve_source_sentence",
+      "source_reason": "Deduction about an action that is almost certainly not true/happening in the present.",
+      "grammar_target": "can't + continuous infinitive (present ongoing impossibility)",
+      "provided_sentence": "They can't be playing very well – they're losing 3–0.",
+      "duplicate_prechecked": true,
+      "duplicate_precheck_scope": "grammar_exact_on_add",
+      "resolved_mode": "Grammar",
+      "grammar_card": {
+        "sentence": "They can't be playing very well – they're losing 3–0.",
+        "target_language": "English",
+        "meaning": "Used to express that something is almost certainly not happening right now or is impossible in the present moment.",
+        "structure": "can't + continuous infinitive (present ongoing impossibility)",
+        "breakdown": [
+          "'Can't' expresses impossibility or strong doubt.",
+          "The continuous infinitive (be + verb-ing) shows an action ongoing in the present.",
+          "Together, they express that the action is unlikely or impossible right now."
+        ],
+        "usage": "Use this structure to say you believe something is not true or not happening at the moment, based on evidence or logic.",
+        "context_example": "They can't be playing very well – they're losing 3–0.",
+        "contrasts": [
+          "Can't + base verb – expresses general inability (e.g., 'They can't play well.').",
+          "Must + continuous infinitive – expresses strong belief that something is happening (e.g., 'They must be playing well.').",
+          "'Can't + continuous infinitive' negates ongoing actions, while 'can't + base verb' negates abilities or possibilities generally."
+        ],
+        "common_mistakes": [
+          "Using 'can't' with base verb instead of continuous infinitive: 'They can't play very well' (lacks present ongoing meaning).",
+          "Using 'can't be playing' to express future impossibility, e.g., 'They can't be playing tomorrow' (should use 'will not be playing')."
+        ],
+        "audio": ""
+      },
+      "provider_name": "OpenAI"
+    },
+    {
+      "word": "can't / couldn't have + past participle (past impossibility) | You can't / couldn't have spent very long on this essay – you've only written 100 words.",
+      "status": "added_to_anki",
+      "topic": "",
+      "batch_mode": "Grammar",
+      "target_language": "English",
+      "explanation_language": "Polish",
+      "source": "ocr_import/AI all text",
+      "candidate_source": "AI all text",
+      "edited": false,
+      "source_type": "structure_sentence",
+      "strategy": "preserve_source_sentence",
+      "source_reason": "Deduction about something that was almost certainly not true/didn't happen in the past.",
+      "grammar_target": "can't / couldn't have + past participle (past impossibility)",
+      "provided_sentence": "You can't / couldn't have spent very long on this essay – you've only written 100 words.",
+      "duplicate_prechecked": true,
+      "duplicate_precheck_scope": "grammar_exact_on_add",
+      "resolved_mode": "Grammar",
+      "grammar_card": {
+        "sentence": "You can't / couldn't have spent very long on this essay – you've only written 100 words.",
+        "target_language": "English",
+        "meaning": "Used to say that something definitely did not happen or was not possible in the past.",
+        "structure": "can't / couldn't have + past participle (past impossibility)",
+        "breakdown": [
+          "Can't / couldn't have shows past impossibility or strong disbelief about a past action.",
+          "The past participle forms the perfect part, referring to a completed past action.",
+          "Used to express certainty that something didn't happen."
+        ],
+        "usage": "We use 'can't/couldn't have + past participle' when we are almost sure something wasn’t true or didn’t happen in the past.",
+        "context_example": "You can't / couldn't have spent very long on this essay – you've only written 100 words.",
+        "contrasts": [
+          "Must have + past participle: shows strong certainty that something did happen.",
+          "May have / might have + past participle: expresses possibility about a past action.",
+          "Could have + past participle: talks about past ability or possibility, sometimes regret."
+        ],
+        "common_mistakes": [
+          "Using base verb instead of past participle: 'You can't have spend' → corrected: 'You can't have spent'.",
+          "Confusing can't with may: 'You may have spent very long' (possible) vs. 'You can't have spent very long' (not possible)."
+        ],
+        "audio": ""
+      },
+      "provider_name": "OpenAI"
+    },
+    {
+      "word": "may / might / could + infinitive (present possibility) | He may / might / could be off sick.",
+      "status": "added_to_anki",
+      "topic": "",
+      "batch_mode": "Grammar",
+      "target_language": "English",
+      "explanation_language": "Polish",
+      "source": "ocr_import/AI all text",
+      "candidate_source": "AI all text",
+      "edited": false,
+      "source_type": "structure_sentence",
+      "strategy": "preserve_source_sentence",
+      "source_reason": "Expressing possibility in the present.",
+      "grammar_target": "may / might / could + infinitive (present possibility)",
+      "provided_sentence": "He may / might / could be off sick.",
+      "duplicate_prechecked": true,
+      "duplicate_precheck_scope": "grammar_exact_on_add",
+      "resolved_mode": "Grammar",
+      "source_focus_warning": "natural_context_aligned_to_source_sentence",
+      "grammar_card": {
+        "sentence": "He may / might / could be off sick.",
+        "target_language": "English",
+        "meaning": "These modal verbs show that there is a possibility something is true or happening now.",
+        "structure": "may / might / could + infinitive (present possibility)",
+        "breakdown": [
+          "Use 'may', 'might', or 'could' before the base form of a verb to talk about something possible now.",
+          "'He may be off sick' means it is possible he is sick today.",
+          "'Might' often suggests a slightly smaller chance than 'may'.",
+          "'Could' can also show possibility, often with a similar meaning."
+        ],
+        "usage": "Use this structure to express that you think something is possibly true in the present but you are not sure.",
+        "context_example": "He may / might / could be off sick.",
+        "contrasts": [
+          "'May/might/could be' vs. 'will be': 'may be' shows possibility; 'will be' shows certainty.",
+          "'May/might/could be' vs. 'is': 'is' states fact; 'may be' shows uncertain possibility.",
+          "'Might' vs. 'may': 'might' is sometimes used for less certain possibilities."
+        ],
+        "common_mistakes": [
+          "Incorrect: He may/might/could is off sick. Correct: He may/might/could be off sick.",
+          "Incorrect: He may/might/could off sick. Correct: He may/might/could be off sick."
+        ],
+        "audio": ""
+      },
+      "provider_name": "OpenAI"
+    },
+    {
+      "word": "may / might / could have + past participle (past possibility) | Do you think someone may / might / could have taken them?",
+      "status": "added_to_anki",
+      "topic": "",
+      "batch_mode": "Grammar",
+      "target_language": "English",
+      "explanation_language": "Polish",
+      "source": "ocr_import/AI all text",
+      "candidate_source": "AI all text",
+      "edited": false,
+      "source_type": "structure_sentence",
+      "strategy": "preserve_source_sentence",
+      "source_reason": "Expressing possibility in the past.",
+      "grammar_target": "may / might / could have + past participle (past possibility)",
+      "provided_sentence": "Do you think someone may / might / could have taken them?",
+      "duplicate_prechecked": true,
+      "duplicate_precheck_scope": "grammar_exact_on_add",
+      "resolved_mode": "Grammar",
+      "grammar_card": {
+        "sentence": "Do you think someone may / might / could have taken them?",
+        "target_language": "English",
+        "meaning": "Expressing possibility about something that happened in the past.",
+        "structure": "may / might / could have + past participle (past possibility)",
+        "breakdown": [
+          "may / might / could express possibility or uncertainty",
+          "have + past participle refers to an action in the past",
+          "used to speculate about past events that are not confirmed"
+        ],
+        "usage": "Use this structure when you want to say that something was possibly true or happened in the past, but you are not certain.",
+        "context_example": "Do you think someone may / might / could have taken them?",
+        "contrasts": [
+          "must have + past participle: expresses a strong certainty about a past event",
+          "can't have + past participle: expresses impossibility about a past event",
+          "will have + past participle: expresses a logical conclusion about a past event"
+        ],
+        "common_mistakes": [
+          "Incorrect: He might has gone home. Correct: He might have gone home.",
+          "Incorrect: She could took the keys. Correct: She could have taken the keys."
+        ],
+        "audio": ""
+      },
+      "provider_name": "OpenAI"
+    },
+    {
+      "word": "may / might not have + past participle (past negative possibility) | He may / might not have heard the message I left.",
+      "status": "added_to_anki",
+      "topic": "",
+      "batch_mode": "Grammar",
+      "target_language": "English",
+      "explanation_language": "Polish",
+      "source": "ocr_import/AI all text",
+      "candidate_source": "AI all text",
+      "edited": false,
+      "source_type": "structure_sentence",
+      "strategy": "preserve_source_sentence",
+      "source_reason": "Expressing negative possibility in the past.",
+      "grammar_target": "may / might not have + past participle (past negative possibility)",
+      "provided_sentence": "He may / might not have heard the message I left.",
+      "duplicate_prechecked": true,
+      "duplicate_precheck_scope": "grammar_exact_on_add",
+      "resolved_mode": "Grammar",
+      "grammar_card": {
+        "sentence": "He may / might not have heard the message I left.",
+        "target_language": "English",
+        "meaning": "Used to express that it is possible someone did not do or experience something in the past.",
+        "structure": "may / might not have + past participle (past negative possibility)",
+        "breakdown": [
+          "may / might not = expresses possibility that something did NOT happen",
+          "have + past participle = refers to a past action or event",
+          "This structure indicates uncertainty about a past negative event"
+        ],
+        "usage": "Use this structure when you want to say something probably didn’t happen, but you are not completely sure.",
+        "context_example": "He may / might not have heard the message I left.",
+        "contrasts": [
+          "may / might have + past participle = expresses positive possibility in the past (e.g., He may have heard the message).",
+          "did not + base verb = definite negative statement about the past (e.g., He did not hear the message).",
+          "could not have + past participle = expresses certainty that something did NOT happen in the past (e.g., He could not have heard the message)."
+        ],
+        "common_mistakes": [
+          "He might not have hear the message. → correct: heard",
+          "He may not have hears the message. → correct: heard"
+        ],
+        "audio": ""
+      },
+      "provider_name": "OpenAI"
+    },
+    {
+      "word": "should / ought to + infinitive (expected present/future situation) | If I post the letter today, it should / ought to arrive on Friday.",
+      "status": "added_to_anki",
+      "topic": "",
+      "batch_mode": "Grammar",
+      "target_language": "English",
+      "explanation_language": "Polish",
+      "source": "ocr_import/AI all text",
+      "candidate_source": "AI all text",
+      "edited": false,
+      "source_type": "structure_sentence",
+      "strategy": "preserve_source_sentence",
+      "source_reason": "Describing a situation we expect to happen.",
+      "grammar_target": "should / ought to + infinitive (expected present/future situation)",
+      "provided_sentence": "If I post the letter today, it should / ought to arrive on Friday.",
+      "duplicate_prechecked": true,
+      "duplicate_precheck_scope": "grammar_exact_on_add",
+      "resolved_mode": "Grammar",
+      "grammar_card": {
+        "sentence": "If I post the letter today, it should / ought to arrive on Friday.",
+        "target_language": "English",
+        "meaning": "Used to talk about an expected or probable present or future situation based on a condition.",
+        "structure": "should / ought to + infinitive (expected present/future situation)",
+        "breakdown": [
+          "Use 'should' or 'ought to' + base form of the verb (infinitive without 'to')",
+          "'Should' and 'ought to' express expectation or probability",
+          "Often used with 'if' to talk about conditions and likely results",
+          "Refers to something likely true now or in the future"
+        ],
+        "usage": "To express what is expected or likely to happen as a result of a present or future condition.",
+        "context_example": "If I post the letter today, it should / ought to arrive on Friday.",
+        "contrasts": [
+          "'will' + infinitive: states a definite future action (e.g., 'It will arrive on Friday.')",
+          "'must' + infinitive: expresses strong certainty or necessity (e.g., 'It must arrive on Friday.')",
+          "Present simple for facts rather than expected outcomes (e.g., 'If I post the letter today, it arrives on Friday.')"
+        ],
+        "common_mistakes": [
+          "Using 'should to' instead of 'should' + infinitive: Incorrect: 'should to arrive', Correct: 'should arrive'",
+          "Confusing 'ought to' with 'ought': 'ought' needs 'to' plus infinitive in this structure",
+          "Using past tense after 'should'/'ought to' in future expectation: Incorrect: 'If I post, it should arrived', Correct: 'should arrive'"
+        ],
+        "audio": ""
+      },
+      "provider_name": "OpenAI"
+    },
+    {
+      "word": "should / ought to have + past participle (expected past situation) | I posted the letter a week ago, it should / ought to have arrived by now.",
+      "status": "added_to_anki",
+      "topic": "",
+      "batch_mode": "Grammar",
+      "target_language": "English",
+      "explanation_language": "Polish",
+      "source": "ocr_import/AI all text",
+      "candidate_source": "AI all text",
+      "edited": false,
+      "source_type": "structure_sentence",
+      "strategy": "preserve_source_sentence",
+      "source_reason": "Describing a situation we would expect to have happened in the past.",
+      "grammar_target": "should / ought to have + past participle (expected past situation)",
+      "provided_sentence": "I posted the letter a week ago, it should / ought to have arrived by now.",
+      "duplicate_prechecked": true,
+      "duplicate_precheck_scope": "grammar_exact_on_add",
+      "resolved_mode": "Grammar",
+      "grammar_card": {
+        "sentence": "I posted the letter a week ago, it should / ought to have arrived by now.",
+        "target_language": "English",
+        "meaning": "Used to express an expectation that something was completed or happened in the past.",
+        "structure": "should / ought to have + past participle (expected past situation)",
+        "breakdown": [
+          "'should / ought to have' = expressing expectation or probability about a past action",
+          "'Past participle' = describes the completed action",
+          "Used for situations we expect to have happened by now, but are unsure"
+        ],
+        "usage": "Use this structure when you believe something was probably done or happened already, but you are not certain.",
+        "context_example": "I posted the letter a week ago, it should / ought to have arrived by now.",
+        "contrasts": [
+          "'should have + past participle' vs. 'should + base verb' (present/future advice)",
+          "'ought to have + past participle' vs. 'must have + past participle' (expectation vs. certainty)",
+          "'should / ought to have' vs. 'could have' (expectation vs. possibility)"
+        ],
+        "common_mistakes": [
+          "I should arrived by now. → I should have arrived by now.",
+          "He ought to have went there. → He ought to have gone there."
+        ],
+        "audio": ""
+      },
+      "provider_name": "OpenAI"
+    },
+    {
+      "word": "mustn't / mustn't have (not for speculation) | You mustn't be late for the meeting.",
+      "status": "added_to_anki",
+      "topic": "",
+      "batch_mode": "Grammar",
+      "target_language": "English",
+      "explanation_language": "Polish",
+      "source": "ocr_import/AI all text",
+      "candidate_source": "AI all text",
+      "edited": false,
+      "source_type": "rule",
+      "strategy": "generated_example_from_rule",
+      "source_rule": "We don't use *mustn't / mustn't have* with this meaning [speculation/deduction].",
+      "source_reason": "The rule explicitly states not to use *mustn't / mustn't have* for speculation. This is an example of correct usage for prohibition.",
+      "grammar_target": "mustn't / mustn't have (not for speculation)",
+      "provided_sentence": "You mustn't be late for the meeting.",
+      "duplicate_prechecked": true,
+      "duplicate_precheck_scope": "grammar_exact_on_add",
+      "resolved_mode": "Grammar",
+      "source_focus_warning": "source_rule_kept_as_note_not_audio",
+      "grammar_card": {
+        "sentence": "You mustn't be late for the meeting.",
+        "target_language": "English",
+        "meaning": "This shows a strong prohibition. It means 'It is not allowed to be late.'",
+        "structure": "mustn't / mustn't have (not for speculation)",
+        "breakdown": [
+          "'mustn't' = prohibition (not allowed)",
+          "Used to tell someone what they must not do",
+          "'mustn't have' is not used for guessing/speculation",
+          "Focus is on rules or strong advice"
+        ],
+        "usage": "Use 'mustn't' to express that something is forbidden or not allowed. Do NOT use 'mustn't' or 'mustn't have' to guess about the past or make speculations.\n\nSource note: We don't use *mustn't / mustn't have* with this meaning [speculation/deduction].",
+        "context_example": "You mustn't be late for the meeting.",
+        "contrasts": [
+          "'must' = obligation or strong advice (You must finish it)",
+          "'can't' = express impossibility or denial (He can't be here now)",
+          "'must have' = present conclusion about the past (She must have left already)"
+        ],
+        "common_mistakes": [
+          "Incorrect: You mustn't have been late yesterday. Correct: You couldn't have been late yesterday.",
+          "Incorrect: He mustn't be at home (to guess). Correct: He can't be at home.",
+          "Incorrect: You mustn't go to the party (when giving permission). Correct: You don't have to go to the party."
+        ],
+        "audio": ""
+      },
+      "provider_name": "OpenAI"
+    },
+    {
+      "word": "must + infinitive (deduction about habitual action) | He must work really hard.",
+      "status": "added_to_anki",
+      "topic": "",
+      "batch_mode": "Grammar",
+      "target_language": "English",
+      "explanation_language": "Polish",
+      "source": "ocr_import/AI all text",
+      "candidate_source": "AI all text",
+      "edited": false,
+      "source_type": "structure_sentence",
+      "strategy": "preserve_source_sentence",
+      "source_reason": "Deduction about a habitual action.",
+      "grammar_target": "must + infinitive (deduction about habitual action)",
+      "provided_sentence": "He must work really hard.",
+      "duplicate_prechecked": true,
+      "duplicate_precheck_scope": "grammar_exact_on_add",
+      "resolved_mode": "Grammar",
+      "grammar_card": {
+        "sentence": "He must work really hard.",
+        "target_language": "English",
+        "meaning": "We use 'must + infinitive' to make a strong guess or deduction about someone's regular or habitual action based on evidence or reasoning.",
+        "structure": "must + infinitive (deduction about habitual action)",
+        "breakdown": [
+          "'must' expresses a logical conclusion",
+          "followed by the base form of the verb (infinitive without 'to')",
+          "used here to guess what a person usually does (habit)",
+          "example: 'He must work really hard' means we believe he works hard every day"
+        ],
+        "usage": "Use this structure when you want to say that you are almost sure about someone's habitual actions from what you observe or know.",
+        "context_example": "He must work really hard.",
+        "contrasts": [
+          "'must + infinitive' shows deduction, while 'can + infinitive' shows ability or permission",
+          "'must + infinitive' (deduction) vs 'must be + verb-ing' (deduction about something happening now)",
+          "'must + infinitive' talks about habitual actions deduced; 'must have + past participle' talks about past actions deduced"
+        ],
+        "common_mistakes": [
+          "He must working really hard. → He must work really hard.",
+          "He must to work really hard. → He must work really hard."
+        ],
+        "audio": ""
+      },
+      "provider_name": "OpenAI"
+    },
+    {
+      "word": "must + continuous infinitive (deduction about action in progress) | He must still be working.",
+      "status": "added_to_anki",
+      "topic": "",
+      "batch_mode": "Grammar",
+      "target_language": "English",
+      "explanation_language": "Polish",
+      "source": "ocr_import/AI all text",
+      "candidate_source": "AI all text",
+      "edited": false,
+      "source_type": "structure_sentence",
+      "strategy": "preserve_source_sentence",
+      "source_reason": "Deduction about an action in progress at the moment of speaking.",
+      "grammar_target": "must + continuous infinitive (deduction about action in progress)",
+      "provided_sentence": "He must still be working.",
+      "duplicate_prechecked": true,
+      "duplicate_precheck_scope": "grammar_exact_on_add",
+      "resolved_mode": "Grammar",
+      "source_focus_warning": "natural_context_aligned_to_source_sentence",
+      "grammar_card": {
+        "sentence": "He must still be working.",
+        "target_language": "English",
+        "meaning": "Used to express a strong deduction that an action is happening right now.",
+        "structure": "must + continuous infinitive (deduction about action in progress)",
+        "breakdown": [
+          "'must' expresses certainty or strong belief",
+          "continuous infinitive (be + verb+ing) shows the action is in progress",
+          "'still' indicates the action continues at the moment"
+        ],
+        "usage": "Use this structure when you are almost sure something is happening at this moment, based on evidence or reasoning.",
+        "context_example": "He must still be working.",
+        "contrasts": [
+          "must + base verb (deduction about general truth): He must work hard.",
+          "might + continuous infinitive (possibility of ongoing action): He might still be working.",
+          "must have + past participle (deduction about past action): He must have finished."
+        ],
+        "common_mistakes": [
+          "He must still working. -> He must still be working.",
+          "He must be work. -> He must be working."
+        ],
+        "audio": ""
+      },
+      "provider_name": "OpenAI"
+    },
+    {
+      "word": "be bound / sure to + infinitive | He's bound / sure to be here in a minute.",
+      "status": "added_to_anki",
+      "topic": "",
+      "batch_mode": "Grammar",
+      "target_language": "English",
+      "explanation_language": "Polish",
+      "source": "ocr_import/AI all text",
+      "candidate_source": "AI all text",
+      "edited": false,
+      "source_type": "structure_sentence",
+      "strategy": "preserve_source_sentence",
+      "source_reason": "Saying that something is certain to be true or to happen.",
+      "grammar_target": "be bound / sure to + infinitive",
+      "provided_sentence": "He's bound / sure to be here in a minute.",
+      "duplicate_prechecked": true,
+      "duplicate_precheck_scope": "grammar_exact_on_add",
+      "resolved_mode": "Grammar",
+      "grammar_card": {
+        "sentence": "He's bound / sure to be here in a minute.",
+        "target_language": "English",
+        "meaning": "This expression means something is certain or very likely to happen.",
+        "structure": "be bound / sure to + infinitive",
+        "breakdown": [
+          "'Be bound to' or 'be sure to' + base verb (infinitive without 'to')",
+          "Used to express strong certainty about a future event",
+          "In the sentence, 'He's' is the contraction of 'He is', followed by 'bound / sure to' + verb"
+        ],
+        "usage": "Use 'be bound to' or 'be sure to' to say that something will definitely or very likely happen.",
+        "context_example": "He's bound / sure to be here in a minute.",
+        "contrasts": [
+          "'Will' expresses future but doesn't always imply certainty (e.g., He will come, but it might not be sure)",
+          "Using 'might be' or 'may be' shows possibility, not certainty",
+          "'Be bound to' is stronger than 'going to' in expressing inevitability"
+        ],
+        "common_mistakes": [
+          "He's bound to be here in a minute. (correct) vs. He's bound to being here in a minute. (incorrect)",
+          "She sure to know the answer. (incorrect) → She is sure to know the answer. (correct)"
+        ],
+        "audio": ""
+      },
+      "provider_name": "OpenAI"
+    },
+    {
+      "word": "subject + be likely / unlikely to + infinitive | I think she's likely / unlikely to agree to our proposal.",
+      "status": "added_to_anki",
+      "topic": "",
+      "batch_mode": "Grammar",
+      "target_language": "English",
+      "explanation_language": "Polish",
+      "source": "ocr_import/AI all text",
+      "candidate_source": "AI all text",
+      "edited": false,
+      "source_type": "structure_sentence",
+      "strategy": "preserve_source_sentence",
+      "source_reason": "Using 'likely / unlikely' as adjectives with a subject.",
+      "grammar_target": "subject + be likely / unlikely to + infinitive",
+      "provided_sentence": "I think she's likely / unlikely to agree to our proposal.",
+      "duplicate_prechecked": true,
+      "duplicate_precheck_scope": "grammar_exact_on_add",
+      "resolved_mode": "Grammar",
+      "grammar_card": {
+        "sentence": "I think she's likely / unlikely to agree to our proposal.",
+        "target_language": "English",
+        "meaning": "It expresses the probability that the subject (she) will or will not do something (agree to our proposal).",
+        "structure": "subject + be likely / unlikely to + infinitive",
+        "breakdown": [
+          "'subject' is the person or thing doing the action.",
+          "'be likely / unlikely to' describes probability or chance.",
+          "Follow with the base form of the verb (infinitive without 'to') after 'to'."
+        ],
+        "usage": "Use this structure to talk about how probable it is that someone will do a specific action.",
+        "context_example": "I think she's likely / unlikely to agree to our proposal.",
+        "contrasts": [
+          "'might / may + base verb' for possibility without certainty.",
+          "'will + base verb' for definite future actions.",
+          "'probably + verb' as an adverb expressing likelihood."
+        ],
+        "common_mistakes": [
+          "Using 'likely' without 'to' + infinitive (Incorrect: She's likely agree. Correct: She's likely to agree.)",
+          "Using the wrong verb form after 'to' (Incorrect: She's likely to agreeing. Correct: She's likely to agree.)"
+        ],
+        "audio": ""
+      },
+      "provider_name": "OpenAI"
+    },
+    {
+      "word": "It is likely / unlikely that + clause | It is likely / unlikely that the government will raise interest rates this year.",
+      "status": "added_to_anki",
+      "topic": "",
+      "batch_mode": "Grammar",
+      "target_language": "English",
+      "explanation_language": "Polish",
+      "source": "ocr_import/AI all text",
+      "candidate_source": "AI all text",
+      "edited": false,
+      "source_type": "structure_sentence",
+      "strategy": "preserve_source_sentence",
+      "source_reason": "Using 'likely / unlikely' as adjectives with 'it is...that'.",
+      "grammar_target": "It is likely / unlikely that + clause",
+      "provided_sentence": "It is likely / unlikely that the government will raise interest rates this year.",
+      "duplicate_prechecked": true,
+      "duplicate_precheck_scope": "grammar_exact_on_add",
+      "resolved_mode": "Grammar",
+      "grammar_card": {
+        "sentence": "It is likely / unlikely that the government will raise interest rates this year.",
+        "target_language": "English",
+        "meaning": "This structure is used to express the probability or expectation that something will or will not happen.",
+        "structure": "It is likely / unlikely that + clause",
+        "breakdown": [
+          "‘It is likely’ means there is a good chance something will happen.",
+          "‘It is unlikely’ means there is a low chance something will happen.",
+          "This is followed by a clause (a subject + verb).",
+          "Example: The government will raise interest rates this year."
+        ],
+        "usage": "Use this structure when you want to talk about how probable it is that a certain event or action will take place.",
+        "context_example": "It is likely / unlikely that the government will raise interest rates this year.",
+        "contrasts": [
+          "‘It is possible that’ focuses on possibility without suggesting likelihood.",
+          "‘It might be that’ is less certain than ‘It is likely that’.",
+          "‘Probably’ + clause is a simpler way to express likelihood."
+        ],
+        "common_mistakes": [
+          "Incorrect: It is likely that will the government raise rates this year. (Correct: It is likely that the government will raise rates this year.)",
+          "Incorrect: It is unlikely the government raise interest rates this year. (Correct: It is unlikely that the government will raise interest rates this year.)"
+        ],
+        "audio": ""
+      },
+      "provider_name": "OpenAI"
+    },
+    {
+      "word": "adverb position: auxiliary + definitely + main verb | She'll definitely pass the exam.",
+      "status": "added_to_anki",
+      "topic": "",
+      "batch_mode": "Grammar",
+      "target_language": "English",
+      "explanation_language": "Polish",
+      "source": "ocr_import/AI all text",
+      "candidate_source": "AI all text",
+      "edited": false,
+      "source_type": "structure_sentence",
+      "strategy": "preserve_source_sentence",
+      "source_reason": "Position of 'definitely' when there is an auxiliary verb.",
+      "grammar_target": "adverb position: auxiliary + definitely + main verb",
+      "provided_sentence": "She'll definitely pass the exam.",
+      "duplicate_prechecked": true,
+      "duplicate_precheck_scope": "grammar_exact_on_add",
+      "resolved_mode": "Grammar",
+      "grammar_card": {
+        "sentence": "She'll definitely pass the exam.",
+        "target_language": "English",
+        "meaning": "'Definitely' is used here to show certainty or strong confidence about the action. It is placed after the auxiliary verb and before the main verb.",
+        "structure": "adverb position: auxiliary + definitely + main verb",
+        "breakdown": [
+          "'She'll' is the contraction of 'She will' (auxiliary verb + subject).",
+          "'Definitely' is the adverb that shows certainty.",
+          "'Pass' is the main verb following 'definitely'.",
+          "The adverb 'definitely' comes between the auxiliary and the main verb."
+        ],
+        "usage": "Use this structure to express strong certainty about a future action with auxiliary verbs like 'will', 'can', or 'should'.",
+        "context_example": "She'll definitely pass the exam.",
+        "contrasts": [
+          "'Definitely' after the main verb: She'll pass definitely the exam. (Incorrect placement)",
+          "When no auxiliary verb is present, 'definitely' goes before the main verb: She definitely passes the exam.",
+          "'Definitely' before the auxiliary verb is less common: Definitely she'll pass the exam."
+        ],
+        "common_mistakes": [
+          "She'll pass definitely the exam. → She'll definitely pass the exam.",
+          "She definitely will pass the exam. (possible but less common)",
+          "She will passes definitely the exam. → She'll definitely pass the exam."
+        ],
+        "audio": ""
+      },
+      "provider_name": "OpenAI"
+    },
+    {
+      "word": "adverb position: definitely + negative auxiliary | She definitely won't pass the exam.",
+      "status": "added_to_anki",
+      "topic": "",
+      "batch_mode": "Grammar",
+      "target_language": "English",
+      "explanation_language": "Polish",
+      "source": "ocr_import/AI all text",
+      "candidate_source": "AI all text",
+      "edited": false,
+      "source_type": "structure_sentence",
+      "strategy": "preserve_source_sentence",
+      "source_reason": "Position of 'definitely' in a negative sentence with an auxiliary verb.",
+      "grammar_target": "adverb position: definitely + negative auxiliary",
+      "provided_sentence": "She definitely won't pass the exam.",
+      "duplicate_prechecked": true,
+      "duplicate_precheck_scope": "grammar_exact_on_add",
+      "resolved_mode": "Grammar",
+      "grammar_card": {
+        "sentence": "She definitely won't pass the exam.",
+        "target_language": "English",
+        "meaning": "The adverb 'definitely' is used here to emphasize a strong certainty about a negative statement made with the auxiliary verb 'won't' (will not).",
+        "structure": "adverb position: definitely + negative auxiliary",
+        "breakdown": [
+          "'definitely' is placed before the negative auxiliary verb 'won't'.",
+          "'won't' is a contraction of 'will not', used to make negative future statements.",
+          "The adverb adds emphasis to the certainty of the negative outcome."
+        ],
+        "usage": "Use 'definitely' before negative auxiliaries (won't, can't, don't, etc.) to stress firm certainty in a negative sentence.",
+        "context_example": "She definitely won't pass the exam.",
+        "contrasts": [
+          "Position of 'definitely' before negative auxiliaries, not after: 'She won't definitely pass' (incorrect).",
+          "Using 'definitely' in positive sentences: 'She will definitely pass the exam.' (positive certainty).",
+          "Placing 'definitely' after the main verb: 'She won't pass definitely the exam' (incorrect)."
+        ],
+        "common_mistakes": [
+          "'She won't definitely pass the exam.' → Correct: 'She definitely won't pass the exam.'",
+          "'She definitely passes not the exam.' → Correct: 'She definitely won't pass the exam.'"
+        ],
+        "audio": ""
+      },
+      "provider_name": "OpenAI"
+    },
+    {
+      "word": "adverb position: auxiliary + probably + be | He'll probably be here around 8.00.",
+      "status": "added_to_anki",
+      "topic": "",
+      "batch_mode": "Grammar",
+      "target_language": "English",
+      "explanation_language": "Polish",
+      "source": "ocr_import/AI all text",
+      "candidate_source": "AI all text",
+      "edited": false,
+      "source_type": "structure_sentence",
+      "strategy": "preserve_source_sentence",
+      "source_reason": "Position of 'probably' with 'be' when there is an auxiliary verb.",
+      "grammar_target": "adverb position: auxiliary + probably + be",
+      "provided_sentence": "He'll probably be here around 8.00.",
+      "duplicate_prechecked": true,
+      "duplicate_precheck_scope": "grammar_exact_on_add",
+      "resolved_mode": "Grammar",
+      "grammar_card": {
+        "sentence": "He'll probably be here around 8.00.",
+        "target_language": "English",
+        "meaning": "Shows where the adverb 'probably' is placed between the auxiliary verb and the main verb 'be' to express likelihood.",
+        "structure": "adverb position: auxiliary + probably + be",
+        "breakdown": [
+          "'He'll' = 'He will' (auxiliary verb 'will')",
+          "'probably' comes after the auxiliary verb",
+          "'be' is the main verb following 'probably'",
+          "The sentence means he is likely to arrive around 8.00"
+        ],
+        "usage": "'Probably' is often placed between an auxiliary and the main verb to show that something is likely but not certain.",
+        "context_example": "He'll probably be here around 8.00.",
+        "contrasts": [
+          "'Probably' before the auxiliary: Probably he'll be here around 8.00. (less common, sounds formal or awkward)",
+          "'Probably' after the main verb: He'll be probably here around 8.00. (incorrect word order)",
+          "Without auxiliary: He probably is here around 8.00. (informal, less common in future tense)"
+        ],
+        "common_mistakes": [
+          "He'll be probably here around 8.00. → Correct: He'll probably be here around 8.00.",
+          "Probably he'll be here around 8.00. (awkward) → Correct: He'll probably be here around 8.00."
+        ],
+        "audio": ""
+      },
+      "provider_name": "OpenAI"
+    },
+    {
+      "word": "adverb position: probably + negative auxiliary + be | He probably won't be here until about 8.15.",
+      "status": "added_to_anki",
+      "topic": "",
+      "batch_mode": "Grammar",
+      "target_language": "English",
+      "explanation_language": "Polish",
+      "source": "ocr_import/AI all text",
+      "candidate_source": "AI all text",
+      "edited": false,
+      "source_type": "structure_sentence",
+      "strategy": "preserve_source_sentence",
+      "source_reason": "Position of 'probably' with 'be' in a negative sentence with an auxiliary verb.",
+      "grammar_target": "adverb position: probably + negative auxiliary + be",
+      "provided_sentence": "He probably won't be here until about 8.15.",
+      "duplicate_prechecked": true,
+      "duplicate_precheck_scope": "grammar_exact_on_add",
+      "resolved_mode": "Grammar",
+      "grammar_card": {
+        "sentence": "He probably won't be here until about 8.15.",
+        "target_language": "English",
+        "meaning": "This structure shows where the adverb 'probably' is placed before the negative auxiliary verb 'won't' and the verb 'be' to express a likely negative event.",
+        "structure": "adverb position: probably + negative auxiliary + be",
+        "breakdown": [
+          "'Probably' is an adverb expressing likelihood.",
+          "The negative auxiliary 'won't' (will not) comes after 'probably'.",
+          "The main verb 'be' follows the auxiliary verb.",
+          "The order is: probably + won't + be."
+        ],
+        "usage": "Use this structure to say something is unlikely or expected not to happen, with a focus on possibility.",
+        "context_example": "He probably won't be here until about 8.15.",
+        "contrasts": [
+          "'Probably' before positive auxiliary: She probably is coming later.",
+          "Adverb after negative auxiliary: He won't probably be here (less common/wrong).",
+          "Different adverb position with modal verbs: She might not be ready."
+        ],
+        "common_mistakes": [
+          "He won't probably be here until about 8.15. → Correct: He probably won't be here until about 8.15.",
+          "He probably not will be here until about 8.15. → Correct: He probably won't be here until about 8.15."
+        ],
+        "audio": ""
+      },
+      "provider_name": "OpenAI"
+    },
+    {
+      "word": "adverb position: 'be' verb + adverb (affirmative) | He's probably British.",
+      "status": "added_to_anki",
+      "topic": "",
+      "batch_mode": "Grammar",
+      "target_language": "English",
+      "explanation_language": "Polish",
+      "source": "ocr_import/AI all text",
+      "candidate_source": "AI all text",
+      "edited": false,
+      "source_type": "structure_sentence",
+      "strategy": "preserve_source_sentence",
+      "source_reason": "Position of adverbs of speculation after the 'be' verb in affirmative sentences.",
+      "grammar_target": "adverb position: 'be' verb + adverb (affirmative)",
+      "provided_sentence": "He's probably British.",
+      "duplicate_prechecked": true,
+      "duplicate_precheck_scope": "grammar_exact_on_add",
+      "resolved_mode": "Grammar",
+      "grammar_card": {
+        "sentence": "He's probably British.",
+        "target_language": "English",
+        "meaning": "This structure shows the position of adverbs of speculation after the 'be' verb in affirmative sentences.",
+        "structure": "adverb position: 'be' verb + adverb (affirmative)",
+        "breakdown": [
+          "'He' is the subject.",
+          "'is' is the 'be' verb.",
+          "'probably' is the adverb of speculation placed after 'be'.",
+          "'British' is the adjective complement."
+        ],
+        "usage": "Use this structure to place adverbs directly after the 'be' verb to express certainty, probability, or possibility about the subject in affirmative sentences.",
+        "context_example": "He's probably British.",
+        "contrasts": [
+          "Adverbs of frequency usually come before the main verb but after 'be' verb here: She is always happy.",
+          "In negative sentences with 'be', adverb placement changes: He isn't probably British (incorrect) vs. He probably isn't British (correct).",
+          "Adverbs can be placed differently with other verbs: He probably lives in London."
+        ],
+        "common_mistakes": [
+          "He's British probably. (Incorrect – adverb should be after 'be')",
+          "He's maybe British. (Less natural; use 'probably' instead)",
+          "He's probably is British. (Incorrect word order)"
+        ],
+        "audio": ""
+      },
+      "provider_name": "OpenAI"
+    },
+    {
+      "word": "adverb position: adverb + 'be' verb (negative) | The painting definitely isn't genuine.",
+      "status": "added_to_anki",
+      "topic": "",
+      "batch_mode": "Grammar",
+      "target_language": "English",
+      "explanation_language": "Polish",
+      "source": "ocr_import/AI all text",
+      "candidate_source": "AI all text",
+      "edited": false,
+      "source_type": "structure_sentence",
+      "strategy": "preserve_source_sentence",
+      "source_reason": "Position of adverbs of speculation before the 'be' verb in negative sentences.",
+      "grammar_target": "adverb position: adverb + 'be' verb (negative)",
+      "provided_sentence": "The painting definitely isn't genuine.",
+      "duplicate_prechecked": true,
+      "duplicate_precheck_scope": "grammar_exact_on_add",
+      "resolved_mode": "Grammar",
+      "grammar_card": {
+        "sentence": "The painting definitely isn't genuine.",
+        "target_language": "English",
+        "meaning": "This structure shows that adverbs like 'definitely' can be placed immediately before the negative 'be' verb to emphasize certainty or emphasis in a negative sentence.",
+        "structure": "adverb position: adverb + 'be' verb (negative)",
+        "breakdown": [
+          "'definitely' is the adverb of certainty",
+          "'isn't' is the negative form of the 'be' verb",
+          "The adverb comes directly before the negative 'be' verb",
+          "This placement adds emphasis to the negation"
+        ],
+        "usage": "Use this structure to clearly express a strong opinion or certainty when negating with forms of 'be' (isn't, aren't, wasn't, weren't). It highlights the adverb's role in modifying the verb.",
+        "context_example": "The painting definitely isn't genuine.",
+        "contrasts": [
+          "Adverb after the negative be verb: 'The painting isn't definitely genuine.' (less natural, less emphasis)",
+          "Adverb before affirmative be verb: 'The painting is definitely genuine.'",
+          "Adverb at the start of the sentence: 'Definitely, the painting isn't genuine.' (more formal or emphatic)"
+        ],
+        "common_mistakes": [
+          "'The painting isn't definitely genuine.' → Adverb should come before the negative be verb.",
+          "'The painting definitely not is genuine.' → Incorrect word order; adverb must be before negative verb.",
+          "'The painting isn't genuine definitely.' → Adverb misplaced after adjective, which sounds unnatural here."
+        ],
+        "audio": ""
+      },
+      "provider_name": "OpenAI"
+    }
+  ],
+  "index": 20,
+  "provider": "OpenAI",
+  "target_language": "English",
+  "explanation_language": "Polish",
+  "feedback_language": "Polish",
+  "batch_topic": "",
+  "batch_mode": "Grammar",
+  "deck": "gr English File Unit 4b Grammar speculation and deduction",
+  "autosaved_at": "2026-07-30T08:55:50"
+}

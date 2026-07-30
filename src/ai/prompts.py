@@ -610,3 +610,84 @@ Return this exact structure:
   ]
 }}
 """
+
+
+def build_multimodal_import_extraction_prompt(
+    target_language: str,
+    explanation_language: str,
+    extraction_mode: str,
+    topic_context: str = "",
+    max_candidates: int = 45,
+) -> str:
+    """Build a table-aware multimodal extraction prompt for screenshots/book photos.
+
+    This is not a card-generation prompt. The vision model should read the
+    visual layout and return candidate drafts only.
+    """
+    mode = (extraction_mode or "Smart grammar import").strip()
+    effective_explanation_language = target_language if explanation_language == "Same as target" else explanation_language
+    topic_hint = f'User topic/context: "{topic_context}".' if topic_context.strip() else "No user topic/context was provided."
+    return f"""
+You are extracting editable language-learning candidate drafts from an image/PDF page.
+
+Target language: {target_language}
+Explanation language for later cards: {effective_explanation_language}
+Extraction mode: {mode}
+{topic_hint}
+
+Important:
+- You are looking at the image/layout directly. Use visual structure: tables, columns, rows, highlights, underlines, bold text, examples and notes.
+- Do NOT generate final Anki cards.
+- Do NOT translate unless translation is explicitly present in the source.
+- Return candidate drafts only. The app will review/edit/send them to Batch later.
+- Keep at most {max_candidates} candidates.
+
+Table-aware rules:
+- If the page contains a table, preserve row relationships. Never mix cells from different rows.
+- For discourse/grammar tables with Expression / Example / Use columns:
+  - target = Expression cell
+  - sentence = Example cell, one clean readable sentence for later audio
+  - source_rule = Use cell
+  - source_type = "structure_sentence"
+  - strategy = "preserve_source_sentence"
+- Do not turn table headers such as Expression, Example or Use into candidates.
+- If an expression has slash alternatives such as "Actually / Incidentally" or "As regards / Regarding", preserve the full alternative group as target. Do not silently drop alternatives.
+
+Highlighted-book-photo rules:
+- If words/phrases are visibly highlighted, underlined, circled or boxed by the learner, extract only those marked items.
+- For each marked item, include the full source sentence containing it when readable.
+- Do not extract every word on the page.
+- Preserve multi-word phrases as one target when the marking covers a phrase.
+
+Mode-specific rules:
+- Vocabulary: return words/phrases/collocations as type="vocabulary". Use sentence when a clear source sentence is visible.
+- Provided examples: return type="provided_example" with target + exact source sentence.
+- Grammar: return type="grammar" with a clear target/structure and source sentence when available.
+- Smart grammar import: every returned candidate MUST use type="grammar" unless it is clearly a vocabulary-only item in Mixed mode. Do not return provided_example in Smart grammar import.
+- Mixed: return vocabulary and grammar candidates, but preserve per-item type.
+
+Grammar rules:
+- target must be the grammar/discourse marker/source focus, not a broad textbook heading.
+- sentence must be a readable example sentence. This becomes the audio sentence later.
+- textbook rules/explanations must go to source_rule/reason, never to sentence.
+- If the source gives only a grammar rule and no example, create one short natural example sentence and keep the original rule in source_rule.
+- For word-form transformations such as "un hippi -> hippies", preserve the transformation as target and create/preserve a sentence using the transformed form.
+
+Return ONLY valid JSON, no markdown and no comments. Never output schema fragments as candidate text.
+
+Return this exact structure:
+{{
+  "candidates": [
+    {{
+      "type": "vocabulary | provided_example | grammar",
+      "target": "string",
+      "sentence": "string",
+      "reason": "short reason or source/use note",
+      "source_type": "vocabulary | provided_example | structure_sentence | rule | transformation | exercise | sentence_only | table_row | highlighted_item",
+      "strategy": "preserve_source_sentence | generated_example_from_rule | word_form_example | exercise_draft_review_answer | infer_later | vocabulary_candidate | preserve_table_row | highlighted_source_sentence",
+      "source_rule": "short original rule/use/exercise text when relevant",
+      "confidence": "high | medium | low"
+    }}
+  ]
+}}
+"""

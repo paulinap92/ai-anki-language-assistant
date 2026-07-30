@@ -1,0 +1,1437 @@
+{
+  "items": [
+    {
+      "word": "Llamar la atención | Me llama mucho la atención.",
+      "status": "added_to_anki",
+      "topic": "",
+      "batch_mode": "Grammar",
+      "target_language": "English",
+      "explanation_language": "Polish",
+      "source": "ocr_import/AI all text",
+      "candidate_source": "AI all text",
+      "edited": false,
+      "source_type": "structure_sentence",
+      "strategy": "preserve_source_sentence",
+      "source_reason": "Expression of interest from dialogue, reinforced in explicit grammar section.",
+      "grammar_target": "Llamar la atención",
+      "provided_sentence": "Me llama mucho la atención.",
+      "duplicate_prechecked": true,
+      "duplicate_precheck_scope": "grammar_exact_on_add",
+      "resolved_mode": "Grammar",
+      "source_focus_warning": "natural_context_aligned_to_source_sentence",
+      "grammar_card": {
+        "sentence": "Me llama mucho la atención.",
+        "target_language": "English",
+        "meaning": "This expression means 'to catch one's attention,' 'to be striking,' or 'to be very interesting/noteworthy' to someone. The example implies a strong degree of interest.",
+        "structure": "Llamar la atención",
+        "breakdown": [
+          "\"Llamar la atención\" literally translates to 'to call the attention.'",
+          "It's an idiomatic phrase used to express that something stands out, captures interest, or is particularly striking.",
+          "In 'Me llama mucho la atención,' the subject (the 'it' implied) is what is interesting, and 'me' is the indirect object pronoun indicating who finds it interesting.",
+          "\"Mucho\" intensifies the feeling, meaning 'very much' or 'a lot,' so 'It really catches my attention.'"
+        ],
+        "usage": "Use this phrase to convey that something is highly interesting, curious, or has a strong impact on your perception or focus.",
+        "context_example": "Me llama mucho la atención.",
+        "contrasts": [
+          "\"Me interesa mucho\": Means 'I am very interested.' While similar, \"Llamar la atención\" often implies something initially *grabs* your notice or stands out from others.",
+          "\"Me atrae mucho\": Means 'It attracts me a lot.' This emphasizes attraction or appeal, whereas \"Llamar la atención\" focuses more on something being noticeable or intriguing."
+        ],
+        "common_mistakes": [
+          "Incorrect pronoun usage or placement: *Yo llamo mucho la atención de eso.* (Incorrect) → *Eso me llama mucho la atención.* (Correct - The thing calls *my* attention.)",
+          "Confusing with 'to attract attention' deliberately: 'She calls attention to herself.' (Ella llama la atención sobre sí misma / se hace notar.) vs. 'It catches my attention.' (Me llama la atención.)"
+        ],
+        "audio": ""
+      },
+      "provider_name": "Gemini"
+    },
+    {
+      "word": "Despertar/Suscitar interés | La historia de Portugal despierta en Manolo mucho interés.",
+      "status": "added_to_anki",
+      "topic": "",
+      "batch_mode": "Grammar",
+      "target_language": "English",
+      "explanation_language": "Polish",
+      "source": "ocr_import/AI all text",
+      "candidate_source": "AI all text",
+      "edited": false,
+      "source_type": "structure_sentence",
+      "strategy": "preserve_source_sentence",
+      "source_reason": "Explicit example of expressing interest.",
+      "grammar_target": "Despertar/Suscitar interés",
+      "provided_sentence": "La historia de Portugal despierta en Manolo mucho interés.",
+      "duplicate_prechecked": true,
+      "duplicate_precheck_scope": "grammar_exact_on_add",
+      "resolved_mode": "Grammar",
+      "source_focus_warning": "natural_context_aligned_to_source_sentence",
+      "grammar_card": {
+        "sentence": "La historia de Portugal despierta en Manolo mucho interés.",
+        "target_language": "English",
+        "meaning": "This phrase means 'to spark interest,' 'to arouse interest,' or 'to awaken interest.' It describes something that generates curiosity or engagement in a person.",
+        "structure": "Despertar/Suscitar interés",
+        "breakdown": [
+          "\"Despertar\" (to awaken) and \"suscitar\" (to arouse/to prompt) are interchangeable in this context.",
+          "\"Interés\" means 'interest.'",
+          "The structure often follows: [Subject] + [despertar/suscitar conjugated] + [interés] + [en + person/topic].",
+          "\"Despierta\" is the 3rd person singular present tense of \"despertar.\""
+        ],
+        "usage": "Use this structure to express that a subject, event, or topic generates significant interest in someone.",
+        "context_example": "La historia de Portugal despierta en Manolo mucho interés.",
+        "contrasts": [
+          "\"Tener interés en\": To be interested in (focuses on the person who *has* the interest). Example: Manolo tiene mucho interés en la historia de Portugal.",
+          "\"Llamar la atención\": To attract attention (broader than just 'interest,' could be positive or negative attention). Example: La historia de Portugal le llama mucho la atención a Manolo."
+        ],
+        "common_mistakes": [
+          "Incorrect: \"La historia de Portugal hace interés en Manolo.\" (Using 'hacer' instead of 'despertar'/'suscitar'). Correct: \"La historia de Portugal despierta interés en Manolo.\"",
+          "Incorrect: \"La historia de Portugal despierta mucho interés por Manolo.\" (Using 'por' instead of 'en' for the person experiencing the interest). Correct: \"La historia de Portugal despierta mucho interés en Manolo.\""
+        ],
+        "audio": ""
+      },
+      "provider_name": "Gemini"
+    },
+    {
+      "word": "Despertar/Suscitar interés | La costura creativa nunca suscitó mi interés.",
+      "status": "added_to_anki",
+      "topic": "",
+      "batch_mode": "Grammar",
+      "target_language": "English",
+      "explanation_language": "Polish",
+      "source": "ocr_import/AI all text",
+      "candidate_source": "AI all text",
+      "edited": false,
+      "source_type": "structure_sentence",
+      "strategy": "preserve_source_sentence",
+      "source_reason": "Explicit example of expressing lack of interest (past tense, negative).",
+      "grammar_target": "Despertar/Suscitar interés",
+      "provided_sentence": "La costura creativa nunca suscitó mi interés.",
+      "duplicate_prechecked": true,
+      "duplicate_precheck_scope": "grammar_exact_on_add",
+      "resolved_mode": "Grammar",
+      "source_focus_warning": "natural_context_aligned_to_source_sentence",
+      "grammar_card": {
+        "sentence": "La costura creativa nunca suscitó mi interés.",
+        "target_language": "English",
+        "meaning": "To arouse or stir up interest. The sentence indicates that creative sewing never generated any interest for the speaker.",
+        "structure": "Despertar/Suscitar interés",
+        "breakdown": [
+          "\"Despertar\" and \"Suscitar\": Both verbs mean 'to awaken', 'to arouse', or 'to stir up' and are largely interchangeable in this context.",
+          "\"Interés\": Means 'interest'.",
+          "\"Nunca\": Means 'never'. It is typically placed before the conjugated verb for negation.",
+          "\"Suscitó\": This is the preterite tense (simple past) of 'suscitar', used to describe a completed action or state in the past."
+        ],
+        "usage": "Used to express that something generates (or fails to generate) curiosity, attention, or enthusiasm in someone.",
+        "context_example": "La costura creativa nunca suscitó mi interés.",
+        "contrasts": [
+          "\"Llamar la atención\": To attract attention (often more about immediate notice or visual appeal).",
+          "\"Captar el interés\": To capture/gain interest (very similar in meaning, often interchangeable with 'suscitar/despertar interés')."
+        ],
+        "common_mistakes": [
+          "Mistake: \"El tema me suscita.\" (Incorrect use of 'suscitar' directly with a person as the object). Correct: \"El tema *suscitó mi interés*.\" (The topic aroused my interest).",
+          "Mistake: \"La política nunca *ha despertado mi interés*.\" (Using present perfect for a definitive past statement about a consistent lack of interest). Correct: \"La política nunca *despertó mi interés*.\" (Preterite, for a specific past evaluation or general past truth)."
+        ],
+        "audio": ""
+      },
+      "provider_name": "Gemini"
+    },
+    {
+      "word": "No me dice nada / No me dice gran cosa | No me dice mucho, la verdad.",
+      "status": "added_to_anki",
+      "topic": "",
+      "batch_mode": "Grammar",
+      "target_language": "English",
+      "explanation_language": "Polish",
+      "source": "ocr_import/AI all text",
+      "candidate_source": "AI all text",
+      "edited": false,
+      "source_type": "structure_sentence",
+      "strategy": "preserve_source_sentence",
+      "source_reason": "Expression of indifference/dislike from dialogue, similar to explicit grammar rule.",
+      "grammar_target": "No me dice nada / No me dice gran cosa",
+      "provided_sentence": "No me dice mucho, la verdad.",
+      "duplicate_prechecked": true,
+      "duplicate_precheck_scope": "grammar_exact_on_add",
+      "resolved_mode": "Grammar",
+      "previous_error": "429 RESOURCE_EXHAUSTED. {'error': {'code': 429, 'message': 'You exceeded your current quota, please check your plan and billing details. For more information on this error, head to: https://ai.google.dev/gemini-api/docs/rate-limits. To monitor your current usage, head to: https://ai.dev/rate-limit. \\n* Quota exceeded for metric: generativelanguage.googleapis.com/generate_content_free_tier_requests, limit: 20, model: gemini-2.5-flash\\nPlease retry in 15.121511331s.', 'status': 'RESOURCE_EXHAUSTED', 'details': [{'@type': 'type.googleapis.com/google.rpc.Help', 'links': [{'description': 'Learn more about Gemini API quotas', 'url': 'https://ai.google.dev/gemini-api/docs/rate-limits'}]}, {'@type': 'type.googleapis.com/google.rpc.QuotaFailure', 'violations': [{'quotaMetric': 'generativelanguage.googleapis.com/generate_content_free_tier_requests', 'quotaId': 'GenerateRequestsPerDayPerProjectPerModel-FreeTier', 'quotaDimensions': {'model': 'gemini-2.5-flash', 'location': 'global'}, 'quotaValue': '20'}]}, {'@type': 'type.googleapis.com/google.rpc.RetryInfo', 'retryDelay': '15s'}]}}",
+      "retry_provider": "OpenAI",
+      "source_focus_warning": "natural_context_aligned_to_source_sentence",
+      "grammar_card": {
+        "sentence": "No me dice mucho, la verdad.",
+        "target_language": "English",
+        "meaning": "It means 'It doesn't tell me much, honestly.' This phrase expresses indifference or that something is not very meaningful or impressive to the speaker.",
+        "structure": "No me dice nada / No me dice gran cosa | No me dice mucho, la verdad.",
+        "breakdown": [
+          "'No me dice' means 'it doesn't tell me' or 'doesn't mean much to me'.",
+          "'mucho' means 'much' or 'a lot', used here to express a low amount of information or impact.",
+          "'la verdad' means 'the truth' or 'honestly', adding sincerity to the statement."
+        ],
+        "usage": "Use this phrase when something seems unimportant, unclear, or unimpressive to you. It’s a casual expression to show lack of strong feelings or opinions about what was said.",
+        "context_example": "No me dice mucho, la verdad.",
+        "contrasts": [
+          "'Me dice mucho' - it tells me a lot (positive/strong impression).",
+          "'No me dice nada' - it tells me nothing (complete indifference).",
+          "'Me dice gran cosa' - it tells me a big/significant thing (emphasis on importance)."
+        ],
+        "common_mistakes": [
+          "Saying 'No me dice mucho la verdad' without comma changes the emphasis; correct usage is 'No me dice mucho, la verdad.'",
+          "Incorrect word order: 'Me no dice mucho' should be 'No me dice mucho'."
+        ],
+        "audio": ""
+      },
+      "provider_name": "OpenAI"
+    },
+    {
+      "word": "No me dice nada / No me dice gran cosa | Las películas de ese director húngaro no me dicen gran cosa.",
+      "status": "added_to_anki",
+      "topic": "",
+      "batch_mode": "Grammar",
+      "target_language": "English",
+      "explanation_language": "Polish",
+      "source": "ocr_import/AI all text",
+      "candidate_source": "AI all text",
+      "edited": false,
+      "source_type": "structure_sentence",
+      "strategy": "preserve_source_sentence",
+      "source_reason": "Explicit example of expressing indifference/dislike.",
+      "grammar_target": "No me dice nada / No me dice gran cosa",
+      "provided_sentence": "Las películas de ese director húngaro no me dicen gran cosa.",
+      "duplicate_prechecked": true,
+      "duplicate_precheck_scope": "grammar_exact_on_add",
+      "resolved_mode": "Grammar",
+      "grammar_card": {
+        "sentence": "Las películas de ese director húngaro no me dicen gran cosa.",
+        "target_language": "English",
+        "meaning": "This phrase means that the movies of that Hungarian director do not say much to me; they don't impress me or make a strong impact.",
+        "structure": "No me dice nada / No me dice gran cosa",
+        "breakdown": [
+          "\"No me dice\" means \"does not tell me\" or \"does not say to me.\"",
+          "\"Nada\" means \"anything\" or \"nothing,\" while \"gran cosa\" means \"much\" or \"a big deal.\"",
+          "Together, \"No me dice nada\" and \"No me dice gran cosa\" express indifference or lack of impression."
+        ],
+        "usage": "Use this phrase to express that something does not have much meaning or impact for you, often used with opinions about art, films, music, or ideas.",
+        "context_example": "Las películas de ese director húngaro no me dicen gran cosa.",
+        "contrasts": [
+          "No me gusta (I don't like it) - expresses dislike directly, while \"No me dice gran cosa\" is more neutral and means it doesn't affect me much.",
+          "Me dice mucho (It speaks to me a lot) - the opposite, meaning something is meaningful or impressive.",
+          "No me interesa (It doesn't interest me) - similar in meaning but more focused on interest rather than emotional impact."
+        ],
+        "common_mistakes": [
+          "Using 'No me dice algo' - incorrect because 'algo' is less common in this phrase; 'nada' or 'gran cosa' are standard.",
+          "Saying 'No me dice la cosa gran' - incorrect word order; correct is 'gran cosa'."
+        ],
+        "audio": ""
+      },
+      "provider_name": "OpenAI"
+    },
+    {
+      "word": "¿Qué opinas de esa chaqueta verde?",
+      "status": "added_to_anki",
+      "topic": "",
+      "batch_mode": "Grammar",
+      "target_language": "English",
+      "explanation_language": "Polish",
+      "source": "ocr_import/AI all text",
+      "candidate_source": "AI all text",
+      "edited": false,
+      "source_type": "structure_sentence",
+      "strategy": "preserve_source_sentence",
+      "source_reason": "Common expression for asking for an opinion.",
+      "provided_sentence": "¿Qué opinas de esa chaqueta verde?",
+      "duplicate_prechecked": true,
+      "duplicate_precheck_scope": "grammar_exact_on_add",
+      "resolved_mode": "Grammar",
+      "grammar_card": {
+        "sentence": "¿Qué opinas de esa chaqueta verde?",
+        "target_language": "English",
+        "meaning": "This question is used to ask someone's opinion about a specific thing, in this case, a green jacket.",
+        "structure": "¿Qué opinas de + noun phrase?",
+        "breakdown": [
+          "¿Qué opinas? means 'What do you think?' or 'What's your opinion?'",
+          "'de' means 'about' or 'of' and introduces the topic you are asking about",
+          "'esa chaqueta verde' refers to 'that green jacket', with 'esa' indicating something near the listener"
+        ],
+        "usage": "Use this structure to politely ask for someone's opinion about something specific.",
+        "context_example": "¿Qué opinas de esa chaqueta verde?",
+        "contrasts": [
+          "¿Qué piensas de esa chaqueta verde? – Another way to say 'What do you think about that green jacket?'",
+          "¿Te gusta esa chaqueta verde? – More about liking rather than a general opinion",
+          "¿Qué opinas sobre esa chaqueta verde? – 'Sobre' can replace 'de' with similar meaning"
+        ],
+        "common_mistakes": [
+          "¿Qué opinas esa chaqueta verde? – Missing 'de' after 'opinas'; correct form is '¿Qué opinas de esa chaqueta verde?'",
+          "¿Qué opinas sobre esa chaqueta verde? – Less common but correct; just be consistent with preposition",
+          "¿Qué opinas en esa chaqueta verde? – Incorrect preposition; 'de' is correct"
+        ],
+        "audio": ""
+      },
+      "provider_name": "OpenAI"
+    },
+    {
+      "word": "Adorar | Adoro este estilo de ropa fresca y ligera.",
+      "status": "added_to_anki",
+      "topic": "",
+      "batch_mode": "Grammar",
+      "target_language": "English",
+      "explanation_language": "Polish",
+      "source": "ocr_import/AI all text",
+      "candidate_source": "AI all text",
+      "edited": false,
+      "source_type": "structure_sentence",
+      "strategy": "preserve_source_sentence",
+      "source_reason": "Direct verb expressing strong liking.",
+      "grammar_target": "Adorar",
+      "provided_sentence": "Adoro este estilo de ropa fresca y ligera.",
+      "duplicate_prechecked": true,
+      "duplicate_precheck_scope": "grammar_exact_on_add",
+      "resolved_mode": "Grammar",
+      "grammar_card": {
+        "sentence": "Adoro este estilo de ropa fresca y ligera.",
+        "target_language": "English",
+        "meaning": "To express a strong liking or love for something.",
+        "structure": "Adorar",
+        "breakdown": [
+          "'Adoro' is the first person singular present tense of 'adorar' meaning 'I adore' or 'I love'.",
+          "The verb is followed by the direct object: 'este estilo de ropa fresca y ligera' (this style of fresh and light clothing)."
+        ],
+        "usage": "Use 'adorar' when you want to communicate strong positive feelings or enthusiasm about a person, thing, or activity.",
+        "context_example": "Adoro este estilo de ropa fresca y ligera.",
+        "contrasts": [
+          "'Me gusta' is milder than 'adoro' for liking something.",
+          "'Encantar' is similar in meaning but often used to express 'to really like' or 'to delight in'.",
+          "'Querer' can mean 'to want' or 'to love' but is less intense in everyday opinion expressions."
+        ],
+        "common_mistakes": [
+          "Using 'adoro' incorrectly with indirect objects instead of direct objects – correct: 'Adoro esta película', wrong: 'Adoro a esta película'.",
+          "Confusing 'adorar' with 'amar' when referring to romantic love – 'adorar' is more general admiration or strong liking."
+        ],
+        "audio": ""
+      },
+      "provider_name": "OpenAI"
+    },
+    {
+      "word": "Preferir | Prefiero esa otra chaquetilla anaranjada.",
+      "status": "added_to_anki",
+      "topic": "",
+      "batch_mode": "Grammar",
+      "target_language": "English",
+      "explanation_language": "Polish",
+      "source": "ocr_import/AI all text",
+      "candidate_source": "AI all text",
+      "edited": false,
+      "source_type": "structure_sentence",
+      "strategy": "preserve_source_sentence",
+      "source_reason": "Direct verb expressing preference.",
+      "grammar_target": "Preferir",
+      "provided_sentence": "Prefiero esa otra chaquetilla anaranjada.",
+      "duplicate_prechecked": true,
+      "duplicate_precheck_scope": "grammar_exact_on_add",
+      "resolved_mode": "Grammar",
+      "source_focus_warning": "natural_context_aligned_to_source_sentence",
+      "grammar_card": {
+        "sentence": "Prefiero esa otra chaquetilla anaranjada.",
+        "target_language": "English",
+        "meaning": "I prefer that other orange jacket.",
+        "structure": "Preferir",
+        "breakdown": [
+          "Prefiero = I prefer (first person singular present of preferir)",
+          "esa otra chaquetilla anaranjada = that other orange jacket",
+          "Used to express a preference or choice between options"
+        ],
+        "usage": "Use 'preferir' to talk about what you like or want more compared to other options, usually followed by a noun or infinitive verb.",
+        "context_example": "Prefiero esa otra chaquetilla anaranjada.",
+        "contrasts": [
+          "Using 'gustar' to express liking something ('Me gusta esa chaquetilla') versus 'preferir' to express preference between options",
+          "Using 'quiero' (I want) which focuses on desire, not preference",
+          "Using future tense to talk about preference later, e.g., 'Preferiré' (I will prefer)"
+        ],
+        "common_mistakes": [
+          "Using infinitive instead of conjugated verb: 'Prefiero preferir esa chaquetilla' (Incorrect) — Correct: 'Prefiero esa chaquetilla'",
+          "Mixing subject pronouns: 'Yo prefiero' is fine but saying 'Prefiero yo' is unusual",
+          "Confusing 'preferir' with 'gustar' when expressing preference specifically among options"
+        ],
+        "audio": ""
+      },
+      "provider_name": "OpenAI"
+    },
+    {
+      "word": "¿Cuál te gusta?",
+      "status": "added_to_anki",
+      "topic": "",
+      "batch_mode": "Grammar",
+      "target_language": "English",
+      "explanation_language": "Polish",
+      "source": "ocr_import/AI all text",
+      "candidate_source": "AI all text",
+      "edited": false,
+      "source_type": "structure_sentence",
+      "strategy": "preserve_source_sentence",
+      "source_reason": "Foundational expression for asking about likes.",
+      "provided_sentence": "¿Cuál te gusta?",
+      "duplicate_prechecked": true,
+      "duplicate_precheck_scope": "grammar_exact_on_add",
+      "resolved_mode": "Grammar",
+      "source_focus_warning": "natural_context_aligned_to_source_sentence",
+      "grammar_card": {
+        "sentence": "¿Cuál te gusta?",
+        "target_language": "English",
+        "meaning": "This question means 'Which one do you like?'. It asks someone to choose or identify their preference among options.",
+        "structure": "¿Cuál + te gusta?",
+        "breakdown": [
+          "¿Cuál? means 'Which one?' and is used to ask about a choice.",
+          "Te gusta means 'you like' (te = 'to you', gusta = 'like').",
+          "Together they form a question asking for a preference."
+        ],
+        "usage": "Use this structure to ask someone which item or option they prefer or like when presenting choices.",
+        "context_example": "¿Cuál te gusta?",
+        "contrasts": [
+          "¿Qué te gusta? — asks 'What do you like?' more generally, not about specific options.",
+          "¿Cuál prefieres? — asks 'Which do you prefer?' using preferir instead of gustar."
+        ],
+        "common_mistakes": [
+          "Using 'Qué te gusta?' when asking to choose between specific options — use 'Cuál te gusta?' instead.",
+          "Saying '¿Cuál te gusta?' for plural items without adjusting — '¿Cuáles te gustan?' is correct for plural."
+        ],
+        "audio": ""
+      },
+      "provider_name": "OpenAI"
+    },
+    {
+      "word": "Sí, a mí tampoco me agrada.",
+      "status": "added_to_anki",
+      "topic": "",
+      "batch_mode": "Grammar",
+      "target_language": "English",
+      "explanation_language": "Polish",
+      "source": "ocr_import/AI all text",
+      "candidate_source": "AI all text",
+      "edited": false,
+      "source_type": "structure_sentence",
+      "strategy": "preserve_source_sentence",
+      "source_reason": "Expression of shared dislike.",
+      "provided_sentence": "Sí, a mí tampoco me agrada.",
+      "duplicate_prechecked": true,
+      "duplicate_precheck_scope": "grammar_exact_on_add",
+      "resolved_mode": "Grammar",
+      "source_focus_warning": "audio_sentence_restored_from_source, natural_context_aligned_to_source_sentence",
+      "grammar_card": {
+        "sentence": "Sí, a mí tampoco me agrada.",
+        "target_language": "English",
+        "meaning": "Expressing agreement with a negative feeling or opinion.",
+        "structure": "\"me neither\" / \"I don't like it either\" – used to agree negatively with what someone else said.",
+        "breakdown": [
+          "\"Yes\" agrees or confirms.",
+          "\"I don't like it\" is a negative statement about preference.",
+          "\"either\" shows agreement with a negative statement."
+        ],
+        "usage": "Use this structure when you want to say that you share or agree with someone's negative opinion or feeling about something.",
+        "context_example": "Sí, a mí tampoco me agrada.",
+        "contrasts": [
+          "\"Me too\" is used to agree with positive statements, not negative ones.",
+          "\"Neither do I\" is a more formal way to express the same idea.",
+          "\"I like it too\" expresses agreement with a positive preference."
+        ],
+        "common_mistakes": [
+          "\"Yes, me neither\" → Correct: \"I don't like it either.\"",
+          "\"No, I don't either\" → Correct: \"Yes, I don't like it either.\""
+        ],
+        "audio": ""
+      },
+      "provider_name": "OpenAI"
+    },
+    {
+      "word": "¿qué te parece esa blusa de ahí con mangas tipo mariposa?",
+      "status": "added_to_anki",
+      "topic": "",
+      "batch_mode": "Grammar",
+      "target_language": "English",
+      "explanation_language": "Polish",
+      "source": "ocr_import/AI all text",
+      "candidate_source": "AI all text",
+      "edited": false,
+      "source_type": "structure_sentence",
+      "strategy": "preserve_source_sentence",
+      "source_reason": "Common expression for asking for an opinion or preference.",
+      "provided_sentence": "¿qué te parece esa blusa de ahí con mangas tipo mariposa?",
+      "duplicate_prechecked": true,
+      "duplicate_precheck_scope": "grammar_exact_on_add",
+      "resolved_mode": "Grammar",
+      "grammar_card": {
+        "sentence": "¿qué te parece esa blusa de ahí con mangas tipo mariposa?",
+        "target_language": "English",
+        "meaning": "Asking for someone's opinion about a specific item or situation.",
+        "structure": "¿qué te parece + [noun or phrase]?",
+        "breakdown": [
+          "¿qué te parece? means 'what do you think of?' or 'how does it seem to you?'",
+          "Use it to ask someone's opinion about things or ideas.",
+          "The phrase usually precedes the item or situation you want an opinion about."
+        ],
+        "usage": "Use '¿qué te parece?' when you want to ask someone for their thoughts or feelings about a particular object, idea, or situation in an informal way.",
+        "context_example": "¿qué te parece esa blusa de ahí con mangas tipo mariposa?",
+        "contrasts": [
+          "¿qué piensas de...? — more formal, more general for thoughts rather than feelings",
+          "¿cómo ves...? — asking 'how do you see?' often about opinions but less common",
+          "¿te gusta...? — asking if you like something rather than your opinion on it"
+        ],
+        "common_mistakes": [
+          "Incorrect: ¿qué piensas esa blusa? Correct: ¿qué te parece esa blusa?",
+          "Incorrect: ¿qué te parece de esa blusa? Correct: ¿qué te parece esa blusa?"
+        ],
+        "audio": ""
+      },
+      "provider_name": "OpenAI"
+    },
+    {
+      "word": "Verbos como gustar | A mí me gusta la música.",
+      "status": "added_to_anki",
+      "topic": "",
+      "batch_mode": "Grammar",
+      "target_language": "English",
+      "explanation_language": "Polish",
+      "source": "ocr_import/AI all text",
+      "candidate_source": "AI all text",
+      "edited": false,
+      "source_type": "rule",
+      "strategy": "generated_example_from_rule",
+      "source_rule": "Estos verbos se conjugan como el verbo gustar.",
+      "source_reason": "Key grammatical rule: verbs that conjugate like gustar.",
+      "grammar_target": "Verbos como gustar",
+      "provided_sentence": "A mí me gusta la música.",
+      "duplicate_prechecked": true,
+      "duplicate_precheck_scope": "grammar_exact_on_add",
+      "resolved_mode": "Grammar",
+      "source_focus_warning": "source_rule_kept_as_note_not_audio",
+      "grammar_card": {
+        "sentence": "A mí me gusta la música.",
+        "target_language": "English",
+        "meaning": "This sentence shows how to use verbs like 'gustar' where the subject is what's liked, and the person liking it is expressed indirectly.",
+        "structure": "Verbos como gustar",
+        "breakdown": [
+          "The verb 'gustar' agrees with the thing liked, not the person liking it.",
+          "Use indirect object pronouns (me, te, le) to show who likes something.",
+          "'A mí' is used to emphasize the person who likes the music."
+        ],
+        "usage": "In Spanish, verbs like 'gustar' work differently—they focus on what is pleasing (the subject) rather than the person who experiences the feeling.\n\nSource note: Estos verbos se conjugan como el verbo gustar.",
+        "context_example": "A mí me gusta la música.",
+        "contrasts": [
+          "Unlike English 'I like music,' Spanish says literally 'Music is pleasing to me.'",
+          "Other verbs like 'encantar' and 'interesar' follow the same pattern.",
+          "Do not conjugate the verb based on the person who likes something; conjugate it based on what is liked."
+        ],
+        "common_mistakes": [
+          "Incorrect: 'Yo gusto la música.' Correct: 'Me gusta la música.'",
+          "Incorrect: 'A mí gusta la música.' Correct: 'A mí me gusta la música.'"
+        ],
+        "audio": ""
+      },
+      "provider_name": "OpenAI"
+    },
+    {
+      "word": "cautivar (como gustar) | Me cautiva su forma de mirar.",
+      "status": "added_to_anki",
+      "topic": "",
+      "batch_mode": "Grammar",
+      "target_language": "English",
+      "explanation_language": "Polish",
+      "source": "ocr_import/AI all text",
+      "candidate_source": "AI all text",
+      "edited": false,
+      "source_type": "structure_sentence",
+      "strategy": "preserve_source_sentence",
+      "source_reason": "Explicit example of a verb conjugating like gustar.",
+      "grammar_target": "cautivar (como gustar)",
+      "provided_sentence": "Me cautiva su forma de mirar.",
+      "duplicate_prechecked": true,
+      "duplicate_precheck_scope": "grammar_exact_on_add",
+      "resolved_mode": "Grammar",
+      "grammar_card": {
+        "sentence": "Me cautiva su forma de mirar.",
+        "target_language": "English",
+        "meaning": "It means 'I am captivated by the way he/she looks' or 'His/her way of looking captivates me.' The verb 'cautivar' works like 'gustar', where the subject of the sentence causes a feeling or reaction in the indirect object.",
+        "structure": "cautivar (como gustar)",
+        "breakdown": [
+          "'Me' is the indirect object pronoun showing who is captivated.",
+          "'cautiva' is the third person singular form of 'cautivar', agreeing with the subject.",
+          "'su forma de mirar' is the subject, meaning 'his/her way of looking'."
+        ],
+        "usage": "Use 'cautivar' to express that something or someone captivates or fascinates you, similar to how 'gustar' structures are formed in Spanish with indirect object pronouns.",
+        "context_example": "Me cautiva su forma de mirar.",
+        "contrasts": [
+          "'cautivar' vs. 'gustar': both use indirect object pronouns, but 'cautivar' means 'to captivate' or 'fascinate' rather than 'to like'.",
+          "'cautivar' vs. 'encantar': 'encantar' means 'to love' or 'delight', which is stronger enthusiasm.",
+          "'cautivar' vs. active verbs: here the subject causes a feeling rather than the subject doing an obvious action."
+        ],
+        "common_mistakes": [
+          "Using subject pronouns instead of indirect object pronouns (e.g., *Yo cautivo su forma..., instead of Me cautiva su forma...).",
+          "Making the verb agree with the indirect object instead of the subject (e.g., *Me cautivan su forma..., instead of Me cautiva su forma...)."
+        ],
+        "audio": ""
+      },
+      "provider_name": "OpenAI"
+    },
+    {
+      "word": "agradar (como gustar) | No os agrada esa película americana.",
+      "status": "added_to_anki",
+      "topic": "",
+      "batch_mode": "Grammar",
+      "target_language": "English",
+      "explanation_language": "Polish",
+      "source": "ocr_import/AI all text",
+      "candidate_source": "AI all text",
+      "edited": false,
+      "source_type": "structure_sentence",
+      "strategy": "preserve_source_sentence",
+      "source_reason": "Explicit example of a verb conjugating like gustar, in negative form.",
+      "grammar_target": "agradar (como gustar)",
+      "provided_sentence": "No os agrada esa película americana.",
+      "duplicate_prechecked": true,
+      "duplicate_precheck_scope": "grammar_exact_on_add",
+      "resolved_mode": "Grammar",
+      "grammar_card": {
+        "sentence": "No os agrada esa película americana.",
+        "target_language": "English",
+        "meaning": "This sentence means 'You (plural informal) do not like that American movie.' The verb 'agradar' is used similarly to 'gustar,' meaning it requires an indirect object and is conjugated based on the thing that pleases or not.",
+        "structure": "agradar (como gustar)",
+        "breakdown": [
+          "'No' negates the verb.",
+          "'os' is the indirect object pronoun meaning 'to you (plural informal)'.",
+          "'agrada' is the third person singular form matching the singular subject 'esa película americana'.",
+          "'esa película americana' is the subject, the thing that pleases or not."
+        ],
+        "usage": "Use 'agradar' like 'gustar' when expressing if something pleases or appeals to someone. The subject is what pleases, and the indirect object is the person affected.",
+        "context_example": "No os agrada esa película americana.",
+        "contrasts": [
+          "'Gustar' also follows this pattern but often refers to liking more generally.",
+          "'Encantar' works similarly but means 'to love' something.",
+          "Unlike regular verbs, 'agradar' requires indirect object pronouns and agrees with the subject, not the person who likes."
+        ],
+        "common_mistakes": [
+          "Incorrect: No os agrada esa película americana os. Correct: No os agrada esa película americana.",
+          "Incorrect: No os agrada esas películas americana (agreement error). Correct: No os agradan esas películas americanas.",
+          "Incorrect: No me agrada esa película (with wrong indirect object for the person). Correct: Me agrada esa película."
+        ],
+        "audio": ""
+      },
+      "provider_name": "OpenAI"
+    },
+    {
+      "word": "maravillar (como gustar) | A Alberto le maravillan esas pinturas de paisajes.",
+      "status": "added_to_anki",
+      "topic": "",
+      "batch_mode": "Grammar",
+      "target_language": "English",
+      "explanation_language": "Polish",
+      "source": "ocr_import/AI all text",
+      "candidate_source": "AI all text",
+      "edited": false,
+      "source_type": "structure_sentence",
+      "strategy": "preserve_source_sentence",
+      "source_reason": "Explicit example of a verb conjugating like gustar, with prepositional phrase.",
+      "grammar_target": "maravillar (como gustar)",
+      "provided_sentence": "A Alberto le maravillan esas pinturas de paisajes.",
+      "duplicate_prechecked": true,
+      "duplicate_precheck_scope": "grammar_exact_on_add",
+      "resolved_mode": "Grammar",
+      "grammar_card": {
+        "sentence": "A Alberto le maravillan esas pinturas de paisajes.",
+        "target_language": "English",
+        "meaning": "This structure shows how the verb 'maravillar' works like 'gustar,' where the thing that causes wonder is the subject and the person experiencing the feeling is indicated by an indirect object pronoun.",
+        "structure": "maravillar (como gustar)",
+        "breakdown": [
+          "'A Alberto' marks the person affected.",
+          "'le' is the indirect object pronoun referring to Alberto.",
+          "'maravillan' agrees with 'esas pinturas de paisajes' (plural subject).",
+          "The verb is conjugated to match what causes the feeling."
+        ],
+        "usage": "Use this pattern to express that something amazes or fascinates someone, emphasizing the thing as the subject and the person as the indirect object, similar to 'gustar'.",
+        "context_example": "A Alberto le maravillan esas pinturas de paisajes.",
+        "contrasts": [
+          "Unlike direct verbs, 'maravillar' here works like 'gustar', so the subject is what causes the emotion, not who experiences it.",
+          "Different from active verbs where the subject performs the action; here the subject is the object of admiration.",
+          "Contrast with a sentence using a direct verb: 'Alberto mira esas pinturas' (Alberto looks at those paintings)."
+        ],
+        "common_mistakes": [
+          "Incorrect: 'Alberto le maravilla esas pinturas.' Correct: 'A Alberto le maravillan esas pinturas.' (Verb agrees with paintings, plural).",
+          "Incorrect: 'A Alberto las maravillan esas pinturas.' Correct: 'A Alberto le maravillan esas pinturas.' (Use correct indirect object pronoun)."
+        ],
+        "audio": ""
+      },
+      "provider_name": "OpenAI"
+    },
+    {
+      "word": "enamorar (como gustar) | Ya sabes que me enamora el color violeta para la ropa",
+      "status": "added_to_anki",
+      "topic": "",
+      "batch_mode": "Grammar",
+      "target_language": "English",
+      "explanation_language": "Polish",
+      "source": "ocr_import/AI all text",
+      "candidate_source": "AI all text",
+      "edited": false,
+      "source_type": "structure_sentence",
+      "strategy": "preserve_source_sentence",
+      "source_reason": "Example of a verb conjugating like gustar from dialogue.",
+      "grammar_target": "enamorar (como gustar)",
+      "provided_sentence": "Ya sabes que me enamora el color violeta para la ropa",
+      "duplicate_prechecked": true,
+      "duplicate_precheck_scope": "grammar_exact_on_add",
+      "resolved_mode": "Grammar",
+      "source_focus_warning": "natural_context_aligned_to_source_sentence",
+      "grammar_card": {
+        "sentence": "Ya sabes que me enamora el color violeta para la ropa",
+        "target_language": "English",
+        "meaning": "This sentence shows how 'enamorar' is used like 'gustar,' meaning something causes a strong liking or attraction to the subject, literally 'the color purple enchants me for clothing.'",
+        "structure": "enamorar (como gustar)",
+        "breakdown": [
+          "'Enamorar' here works like 'gustar', so the verb agrees with what causes the feeling (color violeta).",
+          "'Me enamora' literally means 'it enchants me' or 'I really like it', focusing on the thing, not the person.",
+          "'Ya sabes que' means 'you already know that'.",
+          "'Para la ropa' means 'for clothing' or 'for clothes'."
+        ],
+        "usage": "Use 'enamorar' like 'gustar' when something strongly attracts or fascinates you, emphasizing the thing as the subject causing the feeling.",
+        "context_example": "Ya sabes que me enamora el color violeta para la ropa",
+        "contrasts": [
+          "Unlike 'gustar', which simply means 'to like,' 'enamorar' implies a stronger, more passionate attraction.",
+          "In a standard transitive use, 'enamorar' means 'to make someone fall in love', e.g., 'Él enamoró a ella' (He made her fall in love).",
+          "'Gustar' structures the verb around the liked object, while 'quedar' (to fit) focuses on clothing fitting the person."
+        ],
+        "common_mistakes": [
+          "Incorrect: 'Me enamoro el color violeta para la ropa.' Correct: 'Me enamora el color violeta...'.",
+          "Incorrect: 'El color violeta me enamora para la ropa.' Correct (same here but avoid pronoun confusion): pronoun before verb is necessary: 'Me enamora el color violeta...'"
+        ],
+        "audio": ""
+      },
+      "provider_name": "OpenAI"
+    },
+    {
+      "word": "chiflar (como gustar) | A vuestras hermanas les chiflan los batidos de fresa.",
+      "status": "added_to_anki",
+      "topic": "",
+      "batch_mode": "Grammar",
+      "target_language": "English",
+      "explanation_language": "Polish",
+      "source": "ocr_import/AI all text",
+      "candidate_source": "AI all text",
+      "edited": false,
+      "source_type": "exercise",
+      "strategy": "exercise_draft_review_answer",
+      "source_rule": "Completa conjugando (chiflar)",
+      "source_reason": "Completed exercise sentence demonstrating 'chiflar' like 'gustar'.",
+      "grammar_target": "chiflar (como gustar)",
+      "provided_sentence": "A vuestras hermanas les chiflan los batidos de fresa.",
+      "duplicate_prechecked": true,
+      "duplicate_precheck_scope": "grammar_exact_on_add",
+      "resolved_mode": "Grammar",
+      "source_focus_warning": "source_rule_kept_as_note_not_audio",
+      "grammar_card": {
+        "sentence": "A vuestras hermanas les chiflan los batidos de fresa.",
+        "target_language": "English",
+        "meaning": "'Chiflar' is used like 'gustar' to express strong liking or preference for something.",
+        "structure": "chiflar (como gustar)",
+        "breakdown": [
+          "The verb 'chiflar' agrees with the thing liked, not the person liking it.",
+          "Use indirect object pronouns (me, te, le, nos, os, les) to indicate who likes it.",
+          "'Chiflar' requires a plural or singular verb depending on the subject liked (here 'los batidos')."
+        ],
+        "usage": "Use 'chiflar' to say someone loves or is crazy about something, following the indirect object + verb + subject pattern, like with 'gustar'.\n\nSource note: Completa conjugando (chiflar)",
+        "context_example": "A vuestras hermanas les chiflan los batidos de fresa.",
+        "contrasts": [
+          "'Chiflar' vs. 'gustar': Both express liking, but 'chiflar' is more intense, like 'to be crazy about'.",
+          "'Chiflar' vs. 'encantar': 'Encantar' means 'to love' something, 'chiflar' conveys being crazy about it.",
+          "'Chiflar' requires indirect object pronouns, unlike verbs that take a direct object."
+        ],
+        "common_mistakes": [
+          "Incorrect: *Les chiflan a sus hermanas los batidos de fresa. Correct: A vuestras hermanas les chiflan los batidos de fresa.",
+          "Incorrect: *Les chiflan los batidos de fresa a vuestras hermanas (awkward order). Correct: A vuestras hermanas les chiflan los batidos de fresa.",
+          "Incorrect: *Les chiflan los batidos de fresa a ellas. Correct: A ellas les chiflan los batidos de fresa."
+        ],
+        "audio": ""
+      },
+      "provider_name": "OpenAI"
+    },
+    {
+      "word": "apasionar (como gustar) | A mí nunca me apasiona el fútbol americano.",
+      "status": "added_to_anki",
+      "topic": "",
+      "batch_mode": "Grammar",
+      "target_language": "English",
+      "explanation_language": "Polish",
+      "source": "ocr_import/AI all text",
+      "candidate_source": "AI all text",
+      "edited": false,
+      "source_type": "exercise",
+      "strategy": "exercise_draft_review_answer",
+      "source_rule": "Completa conjugando (apasionar)",
+      "source_reason": "Completed exercise sentence demonstrating 'apasionar' like 'gustar'.",
+      "grammar_target": "apasionar (como gustar)",
+      "provided_sentence": "A mí nunca me apasiona el fútbol americano.",
+      "duplicate_prechecked": true,
+      "duplicate_precheck_scope": "grammar_exact_on_add",
+      "resolved_mode": "Grammar",
+      "source_focus_warning": "source_rule_kept_as_note_not_audio",
+      "grammar_card": {
+        "sentence": "A mí nunca me apasiona el fútbol americano.",
+        "target_language": "English",
+        "meaning": "This sentence shows how to use 'apasionar' in Spanish similarly to 'gustar' to express strong liking or passion for something (or lack thereof). It means 'I am never passionate about American football.'",
+        "structure": "apasionar (como gustar)",
+        "breakdown": [
+          "'A mí' emphasizes the person experiencing the feeling.",
+          "'nunca' means 'never,' negating the passion.",
+          "'me' is the indirect object pronoun matching the subject 'yo'.",
+          "'apasiona' is the third person singular form of 'apasionar', agreeing with 'el fútbol americano' (the subject).",
+          "'el fútbol americano' is the thing causing passion."
+        ],
+        "usage": "Use 'apasionar' like 'gustar' with indirect object pronouns to express what strongly interests or excites someone. The verb agrees with the thing that causes the feeling, not the person.\n\nSource note: Completa conjugando (apasionar)",
+        "context_example": "A mí nunca me apasiona el fútbol americano.",
+        "contrasts": [
+          "Unlike 'gustar', 'apasionar' implies a stronger emotional intensity.",
+          "'Apasionar' is often used to express passion, whereas 'gustar' is for general liking.",
+          "Both verbs require indirect object pronouns but 'apasionar' usually refers to stronger feelings."
+        ],
+        "common_mistakes": [
+          "Incorrect: *Yo me apasiono de fútbol americano. Correct: A mí me apasiona el fútbol americano.",
+          "Incorrect: *Me apasiona el fútbol americano a mí. Correct: A mí me apasiona el fútbol americano."
+        ],
+        "audio": ""
+      },
+      "provider_name": "OpenAI"
+    },
+    {
+      "word": "embelesar (como gustar) | A Paco y a Luis les embelesa cómo baila Estefanía.",
+      "status": "added_to_anki",
+      "topic": "",
+      "batch_mode": "Grammar",
+      "target_language": "English",
+      "explanation_language": "Polish",
+      "source": "ocr_import/AI all text",
+      "candidate_source": "AI all text",
+      "edited": false,
+      "source_type": "exercise",
+      "strategy": "exercise_draft_review_answer",
+      "source_rule": "Completa conjugando (embelesar)",
+      "source_reason": "Completed exercise sentence demonstrating 'embelesar' like 'gustar'.",
+      "grammar_target": "embelesar (como gustar)",
+      "provided_sentence": "A Paco y a Luis les embelesa cómo baila Estefanía.",
+      "duplicate_prechecked": true,
+      "duplicate_precheck_scope": "grammar_exact_on_add",
+      "resolved_mode": "Grammar",
+      "source_focus_warning": "source_rule_kept_as_note_not_audio",
+      "grammar_card": {
+        "sentence": "A Paco y a Luis les embelesa cómo baila Estefanía.",
+        "target_language": "English",
+        "meaning": "Expresses a feeling of being fascinated or enchanted by something, using 'embelesar' in a similar way to 'gustar' where the subject is what causes the feeling.",
+        "structure": "embelesar (como gustar)",
+        "breakdown": [
+          "'A Paco y a Luis' shows the indirect object (to whom it fascinates).",
+          "'les embelesa' uses the third person singular form of 'embelesar' with an indirect object pronoun indicating who is fascinated.",
+          "'cómo baila Estefanía' is the subject clause causing the fascination."
+        ],
+        "usage": "Used to express that someone is captivated or enchanted by an action or characteristic, using an indirect object to show who is affected.\n\nSource note: Completa conjugando (embelesar)",
+        "context_example": "A Paco y a Luis les embelesa cómo baila Estefanía.",
+        "contrasts": [
+          "'gustar' typically expresses liking, while 'embelesar' expresses enchantment or fascination.",
+          "'embelesar' often focuses on being mesmerized by actions or qualities rather than simple preferences.",
+          "Unlike 'gustar', 'embelesar' conveys a stronger emotional or aesthetic attraction."
+        ],
+        "common_mistakes": [
+          "Incorrect: *Les embelesan cómo baila Estefanía. Correct: Les embelesa cómo baila Estefanía.",
+          "Incorrect: *Les embelesan a Paco y a Luis. Correct: A Paco y a Luis les embelesa.",
+          "Incorrect: *Embelesa a Paco y a Luis cómo baila Estefanía. Correct: A Paco y a Luis les embelesa cómo baila Estefanía."
+        ],
+        "audio": ""
+      },
+      "provider_name": "OpenAI"
+    },
+    {
+      "word": "volver locos (como gustar) | A mi novio y a mí nos vuelven locos los libros de Paul Auster.",
+      "status": "added_to_anki",
+      "topic": "",
+      "batch_mode": "Grammar",
+      "target_language": "English",
+      "explanation_language": "Polish",
+      "source": "ocr_import/AI all text",
+      "candidate_source": "AI all text",
+      "edited": false,
+      "source_type": "exercise",
+      "strategy": "exercise_draft_review_answer",
+      "source_rule": "Completa conjugando (volver locos)",
+      "source_reason": "Completed exercise sentence demonstrating idiomatic 'volver locos' like 'gustar'.",
+      "grammar_target": "volver locos (como gustar)",
+      "provided_sentence": "A mi novio y a mí nos vuelven locos los libros de Paul Auster.",
+      "duplicate_prechecked": true,
+      "duplicate_precheck_scope": "grammar_exact_on_add",
+      "resolved_mode": "Grammar",
+      "source_focus_warning": "source_rule_kept_as_note_not_audio",
+      "grammar_card": {
+        "sentence": "A mi novio y a mí nos vuelven locos los libros de Paul Auster.",
+        "target_language": "English",
+        "meaning": "This structure expresses that 'Paul Auster's books drive my boyfriend and me crazy,' similar to the verb 'gustar'. It shows how something affects the subject emotionally or mentally.",
+        "structure": "volver locos (como gustar)",
+        "breakdown": [
+          "The verb 'volver' is conjugated to agree with the subject (los libros).",
+          "'Nos' indicates the indirect object (to my boyfriend and me).",
+          "'Vuelven locos' means 'drive crazy' or 'make crazy'.",
+          "The phrase uses a similar pattern as the verb 'gustar', where the subject comes after the verb."
+        ],
+        "usage": "Use 'volver locos' with indirect object pronouns to say that something makes someone go crazy, excited, or passionate about it, following the pattern of verbs like 'gustar'.\n\nSource note: Completa conjugando (volver locos)",
+        "context_example": "A mi novio y a mí nos vuelven locos los libros de Paul Auster.",
+        "contrasts": [
+          "'Volver locos' focuses on emotional/mental state caused by something; 'gustar' expresses liking or pleasing.",
+          "Unlike regular verbs, 'volver locos' uses indirect object pronouns to indicate who is affected.",
+          "Not to be confused with 'volver' meaning 'to return'; here it idiomatically means 'to drive crazy'."
+        ],
+        "common_mistakes": [
+          "Incorrect: Nos vuelven locos a los libros. Correct: Nos vuelven locos los libros.",
+          "Incorrect: A mí me vuelven locos los libros. Correct form must include all affected persons if mentioned: A mi novio y a mí nos vuelven locos los libros.",
+          "Incorrect: Volvemos locos los libros. Correct: Nos vuelven locos los libros (subject-verb agreement and use of indirect object)."
+        ],
+        "audio": ""
+      },
+      "provider_name": "OpenAI"
+    },
+    {
+      "word": "desagradar (como gustar) | ¿A vosotras os desagradan las fiestas sorpresa?",
+      "status": "added_to_anki",
+      "topic": "",
+      "batch_mode": "Grammar",
+      "target_language": "English",
+      "explanation_language": "Polish",
+      "source": "ocr_import/AI all text",
+      "candidate_source": "AI all text",
+      "edited": false,
+      "source_type": "exercise",
+      "strategy": "exercise_draft_review_answer",
+      "source_rule": "Completa conjugando (desagradar)",
+      "source_reason": "Completed exercise sentence demonstrating 'desagradar' like 'gustar', in a question.",
+      "grammar_target": "desagradar (como gustar)",
+      "provided_sentence": "¿A vosotras os desagradan las fiestas sorpresa?",
+      "duplicate_prechecked": true,
+      "duplicate_precheck_scope": "grammar_exact_on_add",
+      "resolved_mode": "Grammar",
+      "source_focus_warning": "source_rule_kept_as_note_not_audio",
+      "grammar_card": {
+        "sentence": "¿A vosotras os desagradan las fiestas sorpresa?",
+        "target_language": "English",
+        "meaning": "The verb 'desagradar' works like 'gustar' to express dislike; it means 'to be unpleasant to' or 'to disagree with someone.'",
+        "structure": "desagradar (como gustar)",
+        "breakdown": [
+          "'Desagradar' functions similarly to 'gustar,' where the subject is what causes the feeling.",
+          "The indirect object pronoun (os) matches the person experiencing the dislike.",
+          "The verb 'desagradan' agrees in number with the subject 'las fiestas sorpresa.'",
+          "The question is formed by adding the question mark and the indirect object pronoun before the verb."
+        ],
+        "usage": "Use 'desagradar' to say something displeases or annoys someone, using indirect object pronouns as with 'gustar'.\n\nSource note: Completa conjugando (desagradar)",
+        "context_example": "¿A vosotras os desagradan las fiestas sorpresa?",
+        "contrasts": [
+          "'Gustar' expresses liking; 'desagradar' expresses disliking.",
+          "'No gustar' negates liking, while 'desagradar' positively expresses dislike.",
+          "Unlike regular verbs, 'desagradar' requires indirect object pronouns matching the person bothered."
+        ],
+        "common_mistakes": [
+          "Incorrect: *¿Las fiestas sorpresa os desagradan a vosotras? Correct: ¿A vosotras os desagradan las fiestas sorpresa?",
+          "Incorrect: *Os desagrada las fiestas sorpresa. Correct: Os desagradan las fiestas sorpresa. (verb agrees with plural subject)",
+          "Incorrect: *Me desagrada ella. Correct: Ella me desagrada."
+        ],
+        "audio": ""
+      },
+      "provider_name": "OpenAI"
+    },
+    {
+      "word": "Verbos como gustar: pronombre de objeto indirecto | A mi hermana le embelesa la música clásica.",
+      "status": "added_to_anki",
+      "topic": "",
+      "batch_mode": "Grammar",
+      "target_language": "English",
+      "explanation_language": "Polish",
+      "source": "ocr_import/AI all text",
+      "candidate_source": "AI all text",
+      "edited": false,
+      "source_type": "exercise",
+      "strategy": "exercise_draft_review_answer",
+      "source_rule": "Corrige: A mi hermana se embelesa la música clásica.",
+      "source_reason": "Corrected exercise sentence highlighting correct use of indirect object pronoun 'le'.",
+      "grammar_target": "Verbos como gustar: pronombre de objeto indirecto",
+      "provided_sentence": "A mi hermana le embelesa la música clásica.",
+      "duplicate_prechecked": true,
+      "duplicate_precheck_scope": "grammar_exact_on_add",
+      "resolved_mode": "Grammar",
+      "source_focus_warning": "source_rule_kept_as_note_not_audio",
+      "grammar_card": {
+        "sentence": "A mi hermana le embelesa la música clásica.",
+        "target_language": "English",
+        "meaning": "This sentence shows how indirect object pronouns (like 'le') are used with verbs similar to 'gustar' to express who is affected by the action.",
+        "structure": "Verbos como gustar: pronombre de objeto indirecto",
+        "breakdown": [
+          "'A mi hermana' clarifies who the indirect object is.",
+          "'le' is the indirect object pronoun referring to 'mi hermana'.",
+          "'embelesa' is the verb agreeing with the subject 'la música clásica'.",
+          "'la música clásica' is the subject causing the feeling."
+        ],
+        "usage": "Use indirect object pronouns with verbs like 'gustar' to say what pleases or affects someone. The verb agrees with the subject, not the indirect object.\n\nSource note: Corrige: A mi hermana se embelesa la música clásica.",
+        "context_example": "A mi hermana le embelesa la música clásica.",
+        "contrasts": [
+          "Use 'le' for indirect objects instead of subject pronouns like 'ella'.",
+          "Unlike regular verbs, the verb agrees with the subject, not the indirect object.",
+          "Do not use 'se' as an indirect object pronoun here; 'le' is correct."
+        ],
+        "common_mistakes": [
+          "Incorrect: A mi hermana se embelesa la música clásica. Correct: A mi hermana le embelesa la música clásica.",
+          "Incorrect: Mi hermana le embelesa la música clásica. (missing 'A' for clarity)",
+          "Incorrect: A mi hermana le embelesan la música clásica. (verb agreement should be singular matching 'la música clásica')"
+        ],
+        "audio": ""
+      },
+      "provider_name": "OpenAI"
+    },
+    {
+      "word": "Verbos como gustar: concordancia singular/plural | En cambio, a mis primos no les agrada este tipo de música.",
+      "status": "added_to_anki",
+      "topic": "",
+      "batch_mode": "Grammar",
+      "target_language": "English",
+      "explanation_language": "Polish",
+      "source": "ocr_import/AI all text",
+      "candidate_source": "AI all text",
+      "edited": false,
+      "source_type": "exercise",
+      "strategy": "exercise_draft_review_answer",
+      "source_rule": "Corrige: a mis primos no les agradan este tipo de música.",
+      "source_reason": "Corrected exercise sentence highlighting singular agreement with 'este tipo'.",
+      "grammar_target": "Verbos como gustar: concordancia singular/plural",
+      "provided_sentence": "En cambio, a mis primos no les agrada este tipo de música.",
+      "duplicate_prechecked": true,
+      "duplicate_precheck_scope": "grammar_exact_on_add",
+      "resolved_mode": "Grammar",
+      "source_focus_warning": "source_rule_kept_as_note_not_audio",
+      "grammar_card": {
+        "sentence": "En cambio, a mis primos no les agrada este tipo de música.",
+        "target_language": "English",
+        "meaning": "Expressing like/dislike with verbs like 'gustar' requires agreement with the subject in singular or plural form.",
+        "structure": "Verbos como gustar: concordancia singular/plural",
+        "breakdown": [
+          "'a mis primos' is the indirect object (to my cousins)",
+          "'no les agrada' means 'it does not please them' (singular agreement)",
+          "'este tipo de música' is the singular subject ('this type of music')"
+        ],
+        "usage": "When using 'gustar' and similar verbs, the verb agrees with the subject, not the indirect object. Here the subject is singular, so 'agrada' is singular even though 'primos' is plural.\n\nSource note: Corrige: a mis primos no les agradan este tipo de música.",
+        "context_example": "En cambio, a mis primos no les agrada este tipo de música.",
+        "contrasts": [
+          "If the subject is plural, the verb is plural: 'A mis primos no les agradan las canciones clásicas.'",
+          "Regular verbs agree with the subject, not the indirect object: 'Mis primos no escuchan música clásica.'",
+          "Some learners wrongly make the verb agree with the indirect object: Incorrect 'a mis primos no les agradan este tipo de música.'"
+        ],
+        "common_mistakes": [
+          "A mis primos no les agradan este tipo de música. → Correct: agrada",
+          "A mis primos no les gusta las películas. → Correct: gusta (if singular film) or gustan (if plural)"
+        ],
+        "audio": ""
+      },
+      "provider_name": "OpenAI"
+    },
+    {
+      "word": "Verbos como gustar: concordancia singular/plural | En cambio, no me fascina ni mucho menos la música popular moderna.",
+      "status": "added_to_anki",
+      "topic": "",
+      "batch_mode": "Grammar",
+      "target_language": "English",
+      "explanation_language": "Polish",
+      "source": "ocr_import/AI all text",
+      "candidate_source": "AI all text",
+      "edited": false,
+      "source_type": "exercise",
+      "strategy": "exercise_draft_review_answer",
+      "source_rule": "Corrige: no me fascinan ni mucho menos la música popular moderna.",
+      "source_reason": "Corrected exercise sentence highlighting singular agreement with 'la música popular moderna'.",
+      "grammar_target": "Verbos como gustar: concordancia singular/plural",
+      "provided_sentence": "En cambio, no me fascina ni mucho menos la música popular moderna.",
+      "duplicate_prechecked": true,
+      "duplicate_precheck_scope": "grammar_exact_on_add",
+      "resolved_mode": "Grammar",
+      "source_focus_warning": "source_rule_kept_as_note_not_audio",
+      "grammar_card": {
+        "sentence": "En cambio, no me fascina ni mucho menos la música popular moderna.",
+        "target_language": "English",
+        "meaning": "This sentence shows how verbs like 'gustar' agree in singular or plural with the subject, not the person who likes or dislikes something.",
+        "structure": "Verbos como gustar: concordancia singular/plural",
+        "breakdown": [
+          "'Me fascina' agrees with 'la música popular moderna' (singular).",
+          "'No me fascinan' would be incorrect because the subject is singular.",
+          "'En cambio' is a connector meaning 'on the other hand' or 'instead'."
+        ],
+        "usage": "Verbs like 'gustar' agree with the thing being liked or disliked, so use singular if the item is singular and plural if the items are plural.\n\nSource note: Corrige: no me fascinan ni mucho menos la música popular moderna.",
+        "context_example": "En cambio, no me fascina ni mucho menos la música popular moderna.",
+        "contrasts": [
+          "'Me gustan las canciones' (plural) vs. 'Me gusta la canción' (singular).",
+          "Regular verbs agree with the subject, but 'gustar'-type verbs agree with the object liked/disliked.",
+          "Don't confuse the person who likes with the thing that is liked in verb agreement."
+        ],
+        "common_mistakes": [
+          "No me fascinan ni mucho menos la música popular moderna. (Incorrect, 'la música' is singular)",
+          "No me gustan ni mucho menos la música popular moderna. (Incorrect verb form for singular subject)",
+          "Me fascinan la música popular moderna. (Incorrect singular/plural agreement)"
+        ],
+        "audio": ""
+      },
+      "provider_name": "OpenAI"
+    },
+    {
+      "word": "cuanto más la miro, menos me gusta.",
+      "status": "added_to_anki",
+      "topic": "",
+      "batch_mode": "Grammar",
+      "target_language": "English",
+      "explanation_language": "Polish",
+      "source": "ocr_import/AI all text",
+      "candidate_source": "AI all text",
+      "edited": false,
+      "source_type": "structure_sentence",
+      "strategy": "preserve_source_sentence",
+      "source_reason": "Comparative structure from dialogue, introduces the pattern.",
+      "provided_sentence": "cuanto más la miro, menos me gusta.",
+      "duplicate_prechecked": true,
+      "duplicate_precheck_scope": "grammar_exact_on_add",
+      "resolved_mode": "Grammar",
+      "source_focus_warning": "audio_sentence_restored_from_source, natural_context_aligned_to_source_sentence",
+      "grammar_card": {
+        "sentence": "cuanto más la miro, menos me gusta.",
+        "target_language": "English",
+        "meaning": "This structure shows a relationship where increasing one thing causes a decrease in another.",
+        "structure": "The more + subject + verb, the less + subject + verb",
+        "breakdown": [
+          "'The more' introduces an increasing amount or degree.",
+          "Followed by subject and verb describing the first action.",
+          "'The less' introduces a decreasing amount or degree.",
+          "Also followed by subject and verb describing the second action."
+        ],
+        "usage": "Use this pattern to express two contrasting changes happening simultaneously: as one thing increases, the other decreases.",
+        "context_example": "cuanto más la miro, menos me gusta.",
+        "contrasts": [
+          "The more + verb, the more + verb (both increase)",
+          "The more + verb, the better + adjective (improvement)",
+          "The more + verb, the harder + verb (increase in difficulty)"
+        ],
+        "common_mistakes": [
+          "Using 'than' instead of 'the' in the pattern: 'The more I look than less I like it.' Correct: 'The more I look, the less I like it.'",
+          "Missing the second 'the': 'The more I look, less I like it.' Correct: 'The more I look, the less I like it.'"
+        ],
+        "audio": ""
+      },
+      "provider_name": "OpenAI"
+    },
+    {
+      "word": "Cuanto más veo esa serie, menos me agrada.",
+      "status": "added_to_anki",
+      "topic": "",
+      "batch_mode": "Grammar",
+      "target_language": "English",
+      "explanation_language": "Polish",
+      "source": "ocr_import/AI all text",
+      "candidate_source": "AI all text",
+      "edited": false,
+      "source_type": "structure_sentence",
+      "strategy": "preserve_source_sentence",
+      "source_reason": "Explicit example of the comparative structure.",
+      "provided_sentence": "Cuanto más veo esa serie, menos me agrada.",
+      "duplicate_prechecked": true,
+      "duplicate_precheck_scope": "grammar_exact_on_add",
+      "resolved_mode": "Grammar",
+      "source_focus_warning": "natural_context_aligned_to_source_sentence",
+      "grammar_card": {
+        "sentence": "Cuanto más veo esa serie, menos me agrada.",
+        "target_language": "English",
+        "meaning": "This structure expresses that as one thing increases, another thing decreases.",
+        "structure": "Cuanto más ... , menos ...",
+        "breakdown": [
+          "'Cuanto más' means 'the more'.",
+          "'menos' means 'less'.",
+          "The structure shows a relationship where increasing one thing decreases another.",
+          "Used to compare two related changes happening simultaneously."
+        ],
+        "usage": "Use this to talk about situations where increasing something causes a decrease in something else.",
+        "context_example": "Cuanto más veo esa serie, menos me agrada.",
+        "contrasts": [
+          "Cuanto más ... , más ... (the more ... , the more ...)",
+          "Mientras más ... , menos ... (while the more ... , the less ...)",
+          "Use 'menos' to show decrease, not 'más'."
+        ],
+        "common_mistakes": [
+          "Using 'Cuanto menos' instead of 'Cuanto más' for increasing something. Correct: 'Cuanto más estudio, mejor entiendo.'",
+          "Mixing up word order: 'Menos me agrada cuanto más veo esa serie.' Correct: 'Cuanto más veo esa serie, menos me agrada.'"
+        ],
+        "audio": ""
+      },
+      "provider_name": "OpenAI"
+    },
+    {
+      "word": "Cuanto menos leo, más me maravillan las redes sociales.",
+      "status": "added_to_anki",
+      "topic": "",
+      "batch_mode": "Grammar",
+      "target_language": "English",
+      "explanation_language": "Polish",
+      "source": "ocr_import/AI all text",
+      "candidate_source": "AI all text",
+      "edited": false,
+      "source_type": "structure_sentence",
+      "strategy": "preserve_source_sentence",
+      "source_reason": "Explicit example of the comparative structure with 'menos... más'.",
+      "provided_sentence": "Cuanto menos leo, más me maravillan las redes sociales.",
+      "duplicate_prechecked": true,
+      "duplicate_precheck_scope": "grammar_exact_on_add",
+      "resolved_mode": "Grammar",
+      "source_focus_warning": "audio_sentence_restored_from_source, natural_context_aligned_to_source_sentence",
+      "grammar_card": {
+        "sentence": "Cuanto menos leo, más me maravillan las redes sociales.",
+        "target_language": "English",
+        "meaning": "This structure is used to express a relationship where a decrease in one thing leads to an increase in another.",
+        "structure": "Cuanto menos ... , más ... / The less ... , the more ...",
+        "breakdown": [
+          "\"The less I read\" shows a decrease in reading.",
+          "\"The more amazed I am by social media\" shows an increase in amazement.",
+          "The two parts are connected to show a cause-effect comparison."
+        ],
+        "usage": "Use this structure to compare two related actions or states where one decreases and the other increases, emphasizing contrast.",
+        "context_example": "Cuanto menos leo, más me maravillan las redes sociales.",
+        "contrasts": [
+          "\"The more I read, the more I understand\" shows two increasing actions.",
+          "\"The less I eat, the weaker I feel\" uses the same pattern with different verbs.",
+          "Not to be confused with 'less... more' used without this comparative structure."
+        ],
+        "common_mistakes": [
+          "Incorrect: The less I read, more amazed I am by social media. / Correct: The less I read, the more amazed I am by social media.",
+          "Incorrect: The less I read, the social media amaze me more. / Correct: The less I read, the more amazed I am by social media."
+        ],
+        "audio": ""
+      },
+      "provider_name": "OpenAI"
+    },
+    {
+      "word": "Cuanto más paseo por este parque, más me gusta.",
+      "status": "added_to_anki",
+      "topic": "",
+      "batch_mode": "Grammar",
+      "target_language": "English",
+      "explanation_language": "Polish",
+      "source": "ocr_import/AI all text",
+      "candidate_source": "AI all text",
+      "edited": false,
+      "source_type": "exercise",
+      "strategy": "exercise_draft_review_answer",
+      "source_rule": "Completa: Cuanto más paseo por este parque, ...",
+      "source_reason": "Completed exercise sentence demonstrating the comparative structure.",
+      "provided_sentence": "Cuanto más paseo por este parque, más me gusta.",
+      "duplicate_prechecked": true,
+      "duplicate_precheck_scope": "grammar_exact_on_add",
+      "resolved_mode": "Grammar",
+      "source_focus_warning": "natural_context_aligned_to_source_sentence, source_rule_kept_as_note_not_audio",
+      "grammar_card": {
+        "sentence": "Cuanto más paseo por este parque, más me gusta.",
+        "target_language": "English",
+        "meaning": "This structure expresses that the more you do one thing, the more another thing happens or becomes true.",
+        "structure": "Cuanto más + verb, más + verb",
+        "breakdown": [
+          "Cuanto más paseo por este parque = The more I walk through this park",
+          "más me gusta = the more I like it"
+        ],
+        "usage": "Use this comparative correlative structure to talk about how increasing one action or condition leads to an increase in another.\n\nSource note: Completa: Cuanto más paseo por este parque, ...",
+        "context_example": "Cuanto más paseo por este parque, más me gusta.",
+        "contrasts": [
+          "Using 'más ... que' which compares two things directly: Este parque es más bonito que aquél (This park is prettier than that one).",
+          "Using 'cada vez más' to express gradual increase but not a direct correlation: Cada vez me gusta más este parque.",
+          "Using simple comparatives without repetition: Paseo más por el parque y me gusta más."
+        ],
+        "common_mistakes": [
+          "Incorrect: Cuanto paseo más por el parque, más me gusta. Correct: Cuanto más paseo por el parque, más me gusta.",
+          "Incorrect: Cuanto más paseo este parque, más me gusta. Correct: Cuanto más paseo por este parque, más me gusta."
+        ],
+        "audio": ""
+      },
+      "provider_name": "OpenAI"
+    },
+    {
+      "word": "Cuanto menos sal lleva el arroz, más me agrada.",
+      "status": "added_to_anki",
+      "topic": "",
+      "batch_mode": "Grammar",
+      "target_language": "English",
+      "explanation_language": "Polish",
+      "source": "ocr_import/AI all text",
+      "candidate_source": "AI all text",
+      "edited": false,
+      "source_type": "exercise",
+      "strategy": "exercise_draft_review_answer",
+      "source_rule": "Completa: Cuanto menos sal lleva el arroz, ...",
+      "source_reason": "Completed exercise sentence demonstrating the comparative structure with different context.",
+      "provided_sentence": "Cuanto menos sal lleva el arroz, más me agrada.",
+      "duplicate_prechecked": true,
+      "duplicate_precheck_scope": "grammar_exact_on_add",
+      "resolved_mode": "Grammar",
+      "source_focus_warning": "source_rule_kept_as_note_not_audio",
+      "grammar_card": {
+        "sentence": "Cuanto menos sal lleva el arroz, más me agrada.",
+        "target_language": "English",
+        "meaning": "This structure means 'The less salt the rice has, the more I like it.' It expresses a direct relationship between two comparative clauses.",
+        "structure": "Cuanto menos... más...",
+        "breakdown": [
+          "'Cuanto menos' introduces the first clause with a negative comparative meaning 'the less...'",
+          "'más' introduces the second clause with a positive comparative meaning 'the more...'",
+          "It shows a cause-effect or proportional relationship between two actions or qualities",
+          "The verbs are in indicative mood and agree with the subjects of each clause"
+        ],
+        "usage": "Use this structure to compare two related things where one decreases and the other increases. It's commonly used to express preferences, quantities, or conditions.\n\nSource note: Completa: Cuanto menos sal lleva el arroz, ...",
+        "context_example": "Cuanto menos sal lleva el arroz, más me agrada.",
+        "contrasts": [
+          "Using 'Cuanto más... más...' to express 'The more... the more...'",
+          "Using 'Mientras menos...' as an alternative but less common connector",
+          "Not mixing comparative forms: avoid 'Cuanto menos... menos...' or 'Cuanto más... menos...' unless intentionally contrasting"
+        ],
+        "common_mistakes": [
+          "Incorrect: 'Cuanto menos sal lleva el arroz, menos me agrada.' Correct: 'más me agrada.' to express the opposite effect",
+          "Incorrect: 'Cuanto menos sal lleva el arroz, más me gusta.' (Less formal, but 'agrada' fits the construction better)",
+          "Incorrect: 'Cuanto menos sal lleva el arroz más me agrada.' Missing comma before 'más' - comma is necessary"
+        ],
+        "audio": ""
+      },
+      "provider_name": "OpenAI"
+    },
+    {
+      "word": "Cuanto menos va al cine, menos le interesan las películas.",
+      "status": "added_to_anki",
+      "topic": "",
+      "batch_mode": "Grammar",
+      "target_language": "English",
+      "explanation_language": "Polish",
+      "source": "ocr_import/AI all text",
+      "candidate_source": "AI all text",
+      "edited": false,
+      "source_type": "exercise",
+      "strategy": "exercise_draft_review_answer",
+      "source_rule": "Completa: Cuanto menos va al cine, ...",
+      "source_reason": "Completed exercise sentence demonstrating the comparative structure with 'interesar'.",
+      "provided_sentence": "Cuanto menos va al cine, menos le interesan las películas.",
+      "duplicate_prechecked": true,
+      "duplicate_precheck_scope": "grammar_exact_on_add",
+      "resolved_mode": "Grammar",
+      "source_focus_warning": "natural_context_aligned_to_source_sentence, source_rule_kept_as_note_not_audio",
+      "grammar_card": {
+        "sentence": "Cuanto menos va al cine, menos le interesan las películas.",
+        "target_language": "English",
+        "meaning": "This sentence uses a correlative comparative structure to express that the less someone goes to the cinema, the less interested they are in movies.",
+        "structure": "Cuanto menos ... menos ...",
+        "breakdown": [
+          "'Cuanto menos' means 'the less' referring to frequency or quantity.",
+          "The structure shows a relationship of decrease: less of one thing = less of another.",
+          "'menos le interesan' translates as 'less interested'."
+        ],
+        "usage": "Use this structure to compare two linked decreasing quantities or intensities.\n\nSource note: Completa: Cuanto menos va al cine, ...",
+        "context_example": "Cuanto menos va al cine, menos le interesan las películas.",
+        "contrasts": [
+          "Versus 'Cuanto + más ... más ...' for increasing relationships (the more ... the more ...).",
+          "Versus simple comparatives like 'menos ... que' which compare two distinct things.",
+          "Versus 'Si ... entonces ...' conditional statements, which do not express inherent proportional relations."
+        ],
+        "common_mistakes": [
+          "Using 'cuanto menos' without pairing it with 'menos' in the second clause - incorrect: 'Cuanto menos va al cine, le interesan las películas.' Correct: 'Cuanto menos va al cine, menos le interesan las películas.'",
+          "Using 'más' instead of 'menos' in the second clause when indicating a decrease - incorrect: 'Cuanto menos va al cine, más le interesan las películas.'"
+        ],
+        "audio": ""
+      },
+      "provider_name": "OpenAI"
+    },
+    {
+      "word": "Cuanto más miramos ese cuadro, más nos fascina.",
+      "status": "added_to_anki",
+      "topic": "",
+      "batch_mode": "Grammar",
+      "target_language": "English",
+      "explanation_language": "Polish",
+      "source": "ocr_import/AI all text",
+      "candidate_source": "AI all text",
+      "edited": false,
+      "source_type": "exercise",
+      "strategy": "exercise_draft_review_answer",
+      "source_rule": "Completa: Cuanto más miramos ese cuadro, ...",
+      "source_reason": "Completed exercise sentence demonstrating the comparative structure with 'fascinar'.",
+      "provided_sentence": "Cuanto más miramos ese cuadro, más nos fascina.",
+      "duplicate_prechecked": true,
+      "duplicate_precheck_scope": "grammar_exact_on_add",
+      "resolved_mode": "Grammar",
+      "source_focus_warning": "natural_context_aligned_to_source_sentence, source_rule_kept_as_note_not_audio",
+      "grammar_card": {
+        "sentence": "Cuanto más miramos ese cuadro, más nos fascina.",
+        "target_language": "English",
+        "meaning": "The more we look at that painting, the more it fascinates us.",
+        "structure": "Cuanto más + verb, más + verb",
+        "breakdown": [
+          "Cuanto más miramos ese cuadro = The more we look at that painting",
+          "más nos fascina = the more it fascinates us",
+          "This structure expresses an increasing relationship between two actions or states."
+        ],
+        "usage": "Use this comparative correlative structure to show how one action or quality increases as another increases.\n\nSource note: Completa: Cuanto más miramos ese cuadro, ...",
+        "context_example": "Cuanto más miramos ese cuadro, más nos fascina.",
+        "contrasts": [
+          "Comparatives with 'más' (e.g., más alto que = taller than) compare two things without showing increasing relationship.",
+          "Using 'cuando' (when) instead of 'cuanto' changes the meaning from comparative to temporal.",
+          "'Cuanto menos... menos...' expresses a decreasing relationship, the opposite of 'cuanto más... más...'"
+        ],
+        "common_mistakes": [
+          "Incorrect: Cuanto más miramos, fascina más. Correct: Cuanto más miramos, más nos fascina.",
+          "Incorrect: Cuanto más miramos, más fascinar. Correct: Cuanto más miramos, más nos fascina.",
+          "Incorrect: Cuanto más miramos ese cuadro, nos fascina más. (Less natural word order)"
+        ],
+        "audio": ""
+      },
+      "provider_name": "OpenAI"
+    },
+    {
+      "word": "Cuanto menos viajáis, menos experiencia tenéis.",
+      "status": "added_to_anki",
+      "topic": "",
+      "batch_mode": "Grammar",
+      "target_language": "English",
+      "explanation_language": "Polish",
+      "source": "ocr_import/AI all text",
+      "candidate_source": "AI all text",
+      "edited": false,
+      "source_type": "exercise",
+      "strategy": "exercise_draft_review_answer",
+      "source_rule": "Completa: Cuanto menos viajáis, ...",
+      "source_reason": "Completed exercise sentence demonstrating the comparative structure with a general consequence.",
+      "provided_sentence": "Cuanto menos viajáis, menos experiencia tenéis.",
+      "duplicate_prechecked": true,
+      "duplicate_precheck_scope": "grammar_exact_on_add",
+      "resolved_mode": "Grammar",
+      "source_focus_warning": "audio_sentence_restored_from_source, natural_context_aligned_to_source_sentence, source_rule_kept_as_note_not_audio",
+      "grammar_card": {
+        "sentence": "Cuanto menos viajáis, menos experiencia tenéis.",
+        "target_language": "English",
+        "meaning": "This structure shows a cause and effect relationship with two comparative statements. When one thing happens less, another thing also happens less.",
+        "structure": "The less + verb, the less + noun/verb",
+        "breakdown": [
+          "Use 'the less' to compare two things that decrease together.",
+          "The first part states something happens less.",
+          "The second part shows the consequence also happens less."
+        ],
+        "usage": "Use this pattern to express that a decrease in one action or condition results in a decrease in another.\n\nSource note: Completa: Cuanto menos viajáis, ...",
+        "context_example": "Cuanto menos viajáis, menos experiencia tenéis.",
+        "contrasts": [
+          "The more + verb, the more + noun (shows increase relationship)",
+          "Less than vs the less (less than is a comparison, the less shows correspondence)",
+          "Fewer + plural noun vs the less + uncountable (fewer for countables)"
+        ],
+        "common_mistakes": [
+          "Using 'less' twice but not pairing the comparative correctly: 'Less you travel, less experience you have.' Correct: 'The less you travel, the less experience you have.'",
+          "Replacing 'the less' with 'less': 'The less you travel, less experience you have.' Correct: 'The less you travel, the less experience you have.'"
+        ],
+        "audio": ""
+      },
+      "provider_name": "OpenAI"
+    }
+  ],
+  "index": 31,
+  "provider": "OpenAI",
+  "target_language": "Spanish",
+  "explanation_language": "Polish",
+  "feedback_language": "Polish",
+  "batch_topic": "",
+  "batch_mode": "Grammar",
+  "deck": "Español Abraham Gram",
+  "autosaved_at": "2026-07-28T13:37:13"
+}
