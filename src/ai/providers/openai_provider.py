@@ -22,6 +22,7 @@ class OpenAiVocabularyClient(VocabularyAiClient):
         """Initialize the OpenAI client."""
         self._client = OpenAI(api_key=api_key)
         self._model = model
+        self._last_usage_metadata: dict[str, int] = {}
 
     @property
     def provider_name(self) -> str:
@@ -34,6 +35,12 @@ class OpenAiVocabularyClient(VocabularyAiClient):
             model=self._model,
             input=prompt,
         )
+        usage = getattr(response, "usage", None)
+        self._last_usage_metadata = {
+            "input_tokens": int(getattr(usage, "input_tokens", 0) or 0),
+            "output_tokens": int(getattr(usage, "output_tokens", 0) or 0),
+            "total_tokens": int(getattr(usage, "total_tokens", 0) or 0),
+        } if usage is not None else {}
         return response.output_text or ""
 
     def generate_card(

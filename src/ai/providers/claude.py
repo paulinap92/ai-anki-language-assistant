@@ -36,6 +36,7 @@ class ClaudeVocabularyClient(VocabularyAiClient):
         self._client = Anthropic(api_key=api_key)
         self._model = model
         self._max_tokens = max_tokens
+        self._last_usage_metadata: dict[str, int] = {}
 
     @property
     def provider_name(self) -> str:
@@ -53,6 +54,15 @@ class ClaudeVocabularyClient(VocabularyAiClient):
             max_tokens=self._max_tokens,
             messages=[{"role": "user", "content": prompt}],
         )
+
+        usage = getattr(response, "usage", None)
+        input_tokens = int(getattr(usage, "input_tokens", 0) or 0) if usage is not None else 0
+        output_tokens = int(getattr(usage, "output_tokens", 0) or 0) if usage is not None else 0
+        self._last_usage_metadata = {
+            "input_tokens": input_tokens,
+            "output_tokens": output_tokens,
+            "total_tokens": input_tokens + output_tokens,
+        } if usage is not None else {}
 
         text_parts = [
             block.text

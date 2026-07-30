@@ -9,6 +9,7 @@ from datetime import datetime
 
 from src.speech.models import TtsDiagnostic, TtsRequest, TtsResult
 from src.speech.tts.base import TextToSpeechProvider
+from src.observability.langsmith_tracing import get_llmops_tracer
 
 
 class SpeechService:
@@ -131,10 +132,35 @@ class SpeechService:
         cached = path.exists() and path.stat().st_size > 0
         if not cached:
             provider.synthesize(request, path)
-        return TtsResult(
+        result = TtsResult(
             path=path,
             provider_name=provider.provider_name,
             model=request.model,
             voice=request.voice,
             cached=cached,
         )
+        try:
+            tracer = get_llmops_tracer()
+            cost_metadata = tracer.tts_cost_metadata(
+                provider=provider.provider_name,
+                model=request.model,
+                text=clean_text,
+                cache_hit=cached,
+            )
+            tracer.record_outcome(
+                feature="tts_generation",
+                provider=provider.provider_name,
+                model=request.model,
+                source="speech_audio",
+                prompt_version="not_applicable",
+                outcome="cache_hit" if cached else "audio_generated",
+                detail=(
+                    f"voice={request.voice} | chars={cost_metadata.get('characters')} | "
+                    f"cache_hit={cached} | estimated_cost={cost_metadata.get('estimated_cost', 'rate_not_configured')} "
+                    f"{cost_metadata.get('cost_currency', 'EUR')}"
+                ),
+                metadata=cost_metadata,
+            )
+        except Exception:
+            pass
+        return result

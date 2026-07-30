@@ -22,6 +22,7 @@ class GeminiVocabularyClient(VocabularyAiClient):
         """Initialize the Gemini client."""
         self._client = genai.Client(api_key=api_key)
         self._model = model
+        self._last_usage_metadata: dict[str, int] = {}
 
     @property
     def provider_name(self) -> str:
@@ -34,6 +35,12 @@ class GeminiVocabularyClient(VocabularyAiClient):
             model=self._model,
             contents=prompt,
         )
+        usage = getattr(response, "usage_metadata", None)
+        self._last_usage_metadata = {
+            "input_tokens": int(getattr(usage, "prompt_token_count", 0) or 0),
+            "output_tokens": int(getattr(usage, "candidates_token_count", 0) or 0),
+            "total_tokens": int(getattr(usage, "total_token_count", 0) or 0),
+        } if usage is not None else {}
         return response.text or ""
 
     def generate_card(

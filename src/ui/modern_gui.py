@@ -104,6 +104,7 @@ class ModernVocabularyGui:
         self._speech_deck_var = ctk.StringVar(value=anki_client.deck_name)
         self._speech_language_var = ctk.StringVar(value=default_target_language)
         self._status_var = ctk.StringVar(value="Ready. Open Anki and choose a deck.")
+        self._llmops_cost_var = ctk.StringVar(value="Cost summary: no events yet.")
         self._ocr_ai_running = False
 
         self._word_var = ctk.StringVar()
@@ -613,7 +614,7 @@ class ModernVocabularyGui:
         ).grid(row=0, column=0, sticky="w", padx=18, pady=(18, 4))
         ctk.CTkLabel(
             header,
-            text="Optional tracing layer for AI calls: provider, model, latency, validation flow and safe input/output summaries.",
+            text="Optional tracing layer for AI calls: provider, model, latency, token/cost estimates, validation flow and safe input/output summaries.",
             text_color=("gray35", "gray75"),
             wraplength=1000,
         ).grid(row=1, column=0, sticky="w", padx=18, pady=(0, 18))
@@ -628,19 +629,22 @@ class ModernVocabularyGui:
             row=1, column=0, columnspan=4, sticky="ew", padx=18, pady=(0, 4)
         )
         ctk.CTkLabel(status, textvariable=self._llmops_project_var, anchor="w").grid(
-            row=2, column=0, columnspan=4, sticky="ew", padx=18, pady=(0, 12)
+            row=2, column=0, columnspan=4, sticky="ew", padx=18, pady=(0, 4)
+        )
+        ctk.CTkLabel(status, textvariable=self._llmops_cost_var, anchor="w", justify="left", text_color=("gray30", "gray75")).grid(
+            row=3, column=0, columnspan=4, sticky="ew", padx=18, pady=(0, 12)
         )
         ctk.CTkButton(status, text="Refresh status", width=130, command=self._refresh_llmops_status).grid(
-            row=3, column=0, sticky="w", padx=(18, 8), pady=(0, 16)
+            row=4, column=0, sticky="w", padx=(18, 8), pady=(0, 16)
         )
         ctk.CTkButton(status, text="Test trace", width=110, command=self._send_llmops_test_trace).grid(
-            row=3, column=1, sticky="w", padx=(0, 8), pady=(0, 16)
+            row=4, column=1, sticky="w", padx=(0, 8), pady=(0, 16)
         )
         ctk.CTkButton(status, text="Copy .env setup", width=140, command=self._copy_llmops_setup).grid(
-            row=3, column=2, sticky="w", padx=(0, 8), pady=(0, 16)
+            row=4, column=2, sticky="w", padx=(0, 8), pady=(0, 16)
         )
         ctk.CTkButton(status, text="Open LangSmith app", width=160, command=self._open_langsmith).grid(
-            row=3, column=3, sticky="w", padx=(0, 18), pady=(0, 16)
+            row=4, column=3, sticky="w", padx=(0, 18), pady=(0, 16)
         )
 
         info = ctk.CTkFrame(layout, corner_radius=18)
@@ -653,8 +657,8 @@ class ModernVocabularyGui:
             info,
             text=(
                 "Current MVP traces vocabulary cards, grammar cards, provided-example cards, conversation start/feedback, "
-                "and raw AI extraction calls used by Import Material. Redaction is ON by default, so source text is summarized "
-                "instead of being sent in full unless you disable LANGSMITH_REDACT_INPUTS."
+                "raw AI extraction calls used by Import Material, and lightweight token/cost estimates. Redaction is ON by default, "
+                "so source text is summarized instead of being sent in full unless you disable LANGSMITH_REDACT_INPUTS."
             ),
             wraplength=1000,
             justify="left",
@@ -692,6 +696,7 @@ class ModernVocabularyGui:
             f"LangSmith: {tracer.status_text()} | package: {package_status} | API key: {api_status} | redaction: {redact_status}"
         )
         self._llmops_project_var.set(f"Project: {tracer.project_name}")
+        self._llmops_cost_var.set(tracer.cost_summary_text())
         self._refresh_llmops_log()
 
     def _format_llmops_events(self) -> str:
@@ -714,6 +719,12 @@ class ModernVocabularyGui:
                 quality_bits.append(f"red_flags={event.red_flags_count}")
             if event.issue_type:
                 quality_bits.append(f"issue={event.issue_type}")
+            if event.total_tokens:
+                quality_bits.append(f"tokens={event.total_tokens}")
+            if event.estimated_cost is not None:
+                quality_bits.append(f"cost={event.estimated_cost:.6f} {event.cost_currency}")
+            elif event.total_tokens:
+                quality_bits.append("cost=rate not configured")
             quality = " | " + " · ".join(quality_bits) if quality_bits else ""
             lines.append(
                 f"[{event.timestamp}] {event.feature} | {event.provider} {event.model} | "
@@ -733,6 +744,9 @@ class ModernVocabularyGui:
         text_widget.delete("1.0", "end")
         text_widget.insert("1.0", self._format_llmops_events())
         text_widget.configure(state="disabled")
+        cost_var = getattr(self, "_llmops_cost_var", None)
+        if cost_var is not None:
+            cost_var.set(get_llmops_tracer().cost_summary_text())
 
     def _clear_llmops_log(self) -> None:
         get_llmops_tracer().clear_events()
@@ -765,6 +779,14 @@ class ModernVocabularyGui:
             "LANGSMITH_API_KEY=your_langsmith_api_key_here\n"
             "LANGSMITH_PROJECT=ai-anki-language-assistant\n"
             "LANGSMITH_REDACT_INPUTS=true\n"
+            "# Optional estimated-cost rates. Leave empty to track tokens without local cost estimates.\n"
+            "OPENAI_INPUT_COST_PER_1M_TOKENS=\n"
+            "OPENAI_OUTPUT_COST_PER_1M_TOKENS=\n"
+            "GEMINI_INPUT_COST_PER_1M_TOKENS=\n"
+            "GEMINI_OUTPUT_COST_PER_1M_TOKENS=\n"
+            "CLAUDE_INPUT_COST_PER_1M_TOKENS=\n"
+            "CLAUDE_OUTPUT_COST_PER_1M_TOKENS=\n"
+            "ELEVENLABS_COST_PER_1000_CHARS=\n"
         )
         self._root.clipboard_clear()
         self._root.clipboard_append(setup)

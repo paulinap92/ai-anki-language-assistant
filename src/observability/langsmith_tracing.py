@@ -14,6 +14,7 @@ The tracer has two jobs:
 
 from __future__ import annotations
 
+import math
 import os
 import time
 from collections import deque
@@ -46,6 +47,12 @@ class LlmOpsEvent:
     red_flags_count: int | None = None
     issue_type: str = ""
     outcome: str = ""
+    input_tokens: int | None = None
+    output_tokens: int | None = None
+    total_tokens: int | None = None
+    estimated_cost: float | None = None
+    cost_currency: str = "EUR"
+    cost_source: str = ""
 
 
 @dataclass
@@ -96,6 +103,11 @@ class LlmOpsTracer:
         self.langsmith_available: bool | None = None
         self.last_error: str = ""
         self._events: Deque[LlmOpsEvent] = deque(maxlen=120)
+        self.session_runs: int = 0
+        self.session_total_tokens: int = 0
+        self.session_estimated_cost: float = 0.0
+        self.session_costed_runs: int = 0
+        self.session_tts_cache_hits: int = 0
 
     def configure(
         self,
@@ -197,6 +209,11 @@ class LlmOpsTracer:
 
     def clear_events(self) -> None:
         self._events.clear()
+        self.session_runs = 0
+        self.session_total_tokens = 0
+        self.session_estimated_cost = 0.0
+        self.session_costed_runs = 0
+        self.session_tts_cache_hits = 0
 
     def feature_defaults(self, feature: str) -> dict[str, str]:
         return dict(FEATURE_DEFAULTS.get(feature, {"prompt_version": "unknown", "source": "unknown"}))
@@ -217,6 +234,12 @@ class LlmOpsTracer:
         red_flags_count: int | None = None,
         issue_type: str = "",
         outcome: str = "",
+        input_tokens: int | None = None,
+        output_tokens: int | None = None,
+        total_tokens: int | None = None,
+        estimated_cost: float | None = None,
+        cost_currency: str = "EUR",
+        cost_source: str = "",
     ) -> None:
         self._events.appendleft(
             LlmOpsEvent(
@@ -234,8 +257,22 @@ class LlmOpsTracer:
                 red_flags_count=red_flags_count,
                 issue_type=issue_type,
                 outcome=outcome,
+                input_tokens=input_tokens,
+                output_tokens=output_tokens,
+                total_tokens=total_tokens,
+                estimated_cost=estimated_cost,
+                cost_currency=cost_currency,
+                cost_source=cost_source,
             )
         )
+        self.session_runs += 1
+        if total_tokens:
+            self.session_total_tokens += int(total_tokens)
+        if estimated_cost is not None:
+            self.session_estimated_cost += float(estimated_cost)
+            self.session_costed_runs += 1
+        if feature == "tts_generation" and "cache_hit=True" in str(detail):
+            self.session_tts_cache_hits += 1
 
     def record_outcome(
         self,
@@ -252,6 +289,7 @@ class LlmOpsTracer:
         red_flags_count: int | None = None,
         issue_type: str = "",
         detail: str = "",
+        metadata: dict[str, Any] | None = None,
     ) -> None:
         """Record a non-LLM user/outcome event in the local LLMOps log.
 
@@ -280,6 +318,9 @@ class LlmOpsTracer:
             red_flags_count=red_flags_count,
             issue_type=issue_type,
             outcome=outcome,
+            estimated_cost=(metadata or {}).get("estimated_cost"),
+            cost_currency=str((metadata or {}).get("cost_currency") or (metadata or {}).get("estimated_cost_currency") or self._cost_currency()),
+            cost_source=str((metadata or {}).get("cost_source") or ""),
         )
 
     def sanitize_value(self, value: Any) -> Any:
@@ -470,6 +511,169 @@ class LlmOpsTracer:
             issues.append("audio_sentence_mismatch")
         return _dedupe(issues)
 
+
+    def _env_float(self, name: str) -> float | None:
+        value = os.getenv(name)
+        if value is None:
+            return None
+        try:
+            cleaned = value.strip().replace(",", ".")
+            if not cleaned:
+                return None
+            return float(cleaned)
+        except Exception:
+            return None
+
+    def _cost_currency(self) -> str:
+        return (os.getenv("LLMOPS_COST_CURRENCY") or "EUR").strip() or "EUR"
+
+    def _provider_key(self, provider: str) -> str:
+        name = str(provider or "").casefold()
+        if "openai" in name or "chatgpt" in name:
+            return "OPENAI"
+        if "gemini" in name or "google" in name:
+            return "GEMINI"
+        if "claude" in name or "anthropic" in name:
+            return "CLAUDE"
+        if "eleven" in name:
+            return "ELEVENLABS"
+        return "UNKNOWN"
+
+    def _langsmith_provider_name(self, provider: str) -> str:
+        key = self._provider_key(provider)
+        return {
+            "OPENAI": "openai",
+            "GEMINI": "google_genai",
+            "CLAUDE": "anthropic",
+            "ELEVENLABS": "elevenlabs",
+        }.get(key, str(provider or "unknown").lower())
+
+    def _text_token_estimate(self, value: Any) -> int:
+        """Very rough fallback: enough for local/session estimates when APIs do not return usage."""
+        if value is None:
+            return 0
+        if isinstance(value, BaseModel):
+            text = value.model_dump_json()
+        elif isinstance(value, dict):
+            text = " ".join(str(v) for v in value.values())
+        elif isinstance(value, (list, tuple, set)):
+            text = " ".join(str(v) for v in value)
+        else:
+            text = str(value)
+        return max(0, math.ceil(len(text) / 4))
+
+    def _normalize_usage_metadata(self, usage: Any) -> dict[str, int]:
+        if not usage:
+            return {}
+        if not isinstance(usage, dict):
+            data = {
+                "input_tokens": getattr(usage, "input_tokens", None) or getattr(usage, "prompt_tokens", None) or getattr(usage, "prompt_token_count", None),
+                "output_tokens": getattr(usage, "output_tokens", None) or getattr(usage, "completion_tokens", None) or getattr(usage, "candidates_token_count", None),
+                "total_tokens": getattr(usage, "total_tokens", None) or getattr(usage, "total_token_count", None),
+            }
+        else:
+            data = dict(usage)
+        input_tokens = data.get("input_tokens") or data.get("prompt_tokens") or data.get("prompt_token_count") or 0
+        output_tokens = data.get("output_tokens") or data.get("completion_tokens") or data.get("candidates_token_count") or 0
+        total_tokens = data.get("total_tokens") or data.get("total_token_count") or (int(input_tokens or 0) + int(output_tokens or 0))
+        result = {
+            "input_tokens": int(input_tokens or 0),
+            "output_tokens": int(output_tokens or 0),
+            "total_tokens": int(total_tokens or 0),
+        }
+        return {key: value for key, value in result.items() if value > 0}
+
+    def _cost_metadata_for_call(
+        self,
+        *,
+        provider: str,
+        model: str,
+        inputs: dict[str, Any],
+        result: Any,
+        usage_metadata: Any = None,
+    ) -> dict[str, Any]:
+        usage = self._normalize_usage_metadata(usage_metadata)
+        cost_source = "provider_usage" if usage else "estimated_from_text_length"
+        if not usage:
+            input_tokens = self._text_token_estimate(inputs)
+            output_tokens = self._text_token_estimate(result)
+            usage = {
+                "input_tokens": input_tokens,
+                "output_tokens": output_tokens,
+                "total_tokens": input_tokens + output_tokens,
+            }
+        provider_key = self._provider_key(provider)
+        input_rate = self._env_float(f"{provider_key}_INPUT_COST_PER_1M_TOKENS")
+        output_rate = self._env_float(f"{provider_key}_OUTPUT_COST_PER_1M_TOKENS")
+        estimated_cost = None
+        if input_rate is not None or output_rate is not None:
+            estimated_cost = (
+                usage.get("input_tokens", 0) * float(input_rate or 0.0)
+                + usage.get("output_tokens", 0) * float(output_rate or 0.0)
+            ) / 1_000_000
+        metadata: dict[str, Any] = {
+            "ls_provider": self._langsmith_provider_name(provider),
+            "ls_model_name": model,
+            "usage_metadata": usage,
+            "input_tokens": usage.get("input_tokens"),
+            "output_tokens": usage.get("output_tokens"),
+            "total_tokens": usage.get("total_tokens"),
+            "cost_source": cost_source,
+            "estimated_cost_currency": self._cost_currency(),
+        }
+        if estimated_cost is not None:
+            metadata["estimated_cost"] = round(float(estimated_cost), 8)
+        return {key: value for key, value in metadata.items() if value not in (None, "", [], {})}
+
+    def tts_cost_metadata(
+        self,
+        *,
+        provider: str,
+        model: str,
+        text: str,
+        cache_hit: bool,
+    ) -> dict[str, Any]:
+        chars = len(str(text or ""))
+        provider_key = self._provider_key(provider)
+        rate = self._env_float(f"{provider_key}_COST_PER_1000_CHARS")
+        if provider_key == "OPENAI":
+            rate = rate if rate is not None else self._env_float("OPENAI_TTS_COST_PER_1000_CHARS")
+        if provider_key == "GEMINI":
+            rate = rate if rate is not None else self._env_float("GEMINI_TTS_COST_PER_1000_CHARS")
+        estimated_cost = 0.0 if cache_hit else None
+        if estimated_cost is None and rate is not None:
+            estimated_cost = chars * float(rate) / 1000
+        data: dict[str, Any] = {
+            "provider": provider,
+            "model": model,
+            "ls_provider": self._langsmith_provider_name(provider),
+            "ls_model_name": model,
+            "characters": chars,
+            "cache_hit": cache_hit,
+            "cost_source": "cache_hit" if cache_hit else "configured_tts_estimate",
+            "cost_currency": self._cost_currency(),
+        }
+        if estimated_cost is not None:
+            data["estimated_cost"] = round(float(estimated_cost), 8)
+        return data
+
+    def cost_summary_text(self) -> str:
+        if not self._events:
+            return "Cost summary: no events yet. Generate a card or audio to populate estimates."
+        last_cost = next((event for event in self._events if event.total_tokens or event.estimated_cost is not None), None)
+        last = "Last costed run: not available yet."
+        if last_cost is not None:
+            cost = "rate not configured" if last_cost.estimated_cost is None else f"{last_cost.estimated_cost:.6f} {last_cost.cost_currency}"
+            tokens = f"{last_cost.total_tokens} tokens" if last_cost.total_tokens else "no token count"
+            last = f"Last costed run: {last_cost.feature} · {last_cost.provider} {last_cost.model} · {tokens} · {cost}"
+        session_cost = f"{self.session_estimated_cost:.6f} {self._cost_currency()}" if self.session_costed_runs else "rate not configured"
+        return (
+            f"{last}\n"
+            f"Current session: {self.session_runs} events · {self.session_total_tokens} tokens · estimated cost {session_cost} · "
+            f"TTS cache hits {self.session_tts_cache_hits}\n"
+            "Costs are estimates. LangSmith can show token/cost metadata when provider/model and usage are available."
+        )
+
     def _metadata_value(self, value: Any) -> Any:
         """Keep operational metadata readable while avoiding huge payloads."""
         if value is None or isinstance(value, (bool, int, float)):
@@ -518,6 +722,8 @@ class LlmOpsTracer:
         call_fn: Callable[[], Any],
         metadata: dict[str, Any],
         disabled_detail: str,
+        usage_fn: Callable[[], Any] | None = None,
+        inputs: dict[str, Any] | None = None,
     ) -> Any:
         start = time.perf_counter()
         try:
@@ -540,6 +746,14 @@ class LlmOpsTracer:
             raise
         latency_ms = int((time.perf_counter() - start) * 1000)
         quality = self.quality_snapshot(feature, result)
+        usage_metadata = usage_fn() if usage_fn else None
+        cost_metadata = self._cost_metadata_for_call(
+            provider=provider,
+            model=model,
+            inputs=inputs or {},
+            result=result,
+            usage_metadata=usage_metadata,
+        )
         defaults = self.feature_defaults(feature)
         self._record_event(
             feature=feature,
@@ -555,6 +769,12 @@ class LlmOpsTracer:
             red_flags_count=quality.red_flags_count,
             issue_type=quality.issue_type,
             outcome=quality.outcome,
+            input_tokens=cost_metadata.get("input_tokens"),
+            output_tokens=cost_metadata.get("output_tokens"),
+            total_tokens=cost_metadata.get("total_tokens"),
+            estimated_cost=cost_metadata.get("estimated_cost"),
+            cost_currency=str(cost_metadata.get("estimated_cost_currency") or self._cost_currency()),
+            cost_source=str(cost_metadata.get("cost_source") or ""),
         )
         return result
 
@@ -567,6 +787,7 @@ class LlmOpsTracer:
         inputs: dict[str, Any],
         metadata: dict[str, Any] | None,
         call_fn: Callable[[], Any],
+        usage_fn: Callable[[], Any] | None = None,
     ) -> Any:
         """Run call_fn, optionally sending a LangSmith trace and always logging locally."""
         traceable = self._load_traceable() if self.enabled else None
@@ -583,6 +804,8 @@ class LlmOpsTracer:
                 call_fn=call_fn,
                 metadata=safe_metadata,
                 disabled_detail=detail,
+                usage_fn=usage_fn,
+                inputs=inputs,
             )
 
         holder: dict[str, Any] = {}
@@ -595,13 +818,25 @@ class LlmOpsTracer:
                 holder["provider_exception"] = exc
                 raise
             quality = self.quality_snapshot(feature, result)
+            usage_metadata = usage_fn() if usage_fn else None
+            cost_metadata = self._cost_metadata_for_call(
+                provider=provider,
+                model=model,
+                inputs=inputs,
+                result=result,
+                usage_metadata=usage_metadata,
+            )
+            runtime_metadata = {**safe_metadata, **cost_metadata}
             holder["result"] = result
             holder["quality"] = quality
+            holder["cost_metadata"] = cost_metadata
             return {
                 "inputs": payload,
                 "result_summary": self.output_summary(result),
                 "quality_metrics": quality.as_metadata(),
-                "metadata": safe_metadata,
+                "usage_metadata": cost_metadata.get("usage_metadata"),
+                "cost_metadata": cost_metadata,
+                "metadata": runtime_metadata,
             }
 
         try:
@@ -614,7 +849,7 @@ class LlmOpsTracer:
 
                 @traceable(  # type: ignore[misc]
                     name=feature,
-                    run_type="chain",
+                    run_type="llm" if feature.endswith("generation") or feature in {"raw_text_generation", "conversation_feedback", "conversation_start", "grammar_analysis"} else "chain",
                     metadata=safe_metadata,
                     tags=[
                         "ai-anki",
@@ -637,6 +872,7 @@ class LlmOpsTracer:
             self._wait_for_tracers()
             result = holder.get("result")
             quality = holder.get("quality") or self.quality_snapshot(feature, result)
+            cost_metadata = holder.get("cost_metadata") or {}
             latency_ms = int((time.perf_counter() - start) * 1000)
             self._record_event(
                 feature=feature,
@@ -652,6 +888,12 @@ class LlmOpsTracer:
                 red_flags_count=quality.red_flags_count,
                 issue_type=quality.issue_type,
                 outcome=quality.outcome,
+                input_tokens=cost_metadata.get("input_tokens"),
+                output_tokens=cost_metadata.get("output_tokens"),
+                total_tokens=cost_metadata.get("total_tokens"),
+                estimated_cost=cost_metadata.get("estimated_cost"),
+                cost_currency=str(cost_metadata.get("estimated_cost_currency") or self._cost_currency()),
+                cost_source=str(cost_metadata.get("cost_source") or ""),
             )
             return result
         except Exception as exc:
@@ -675,6 +917,7 @@ class LlmOpsTracer:
                 # not break the app; keep the generated card and record locally.
                 result = holder["result"]
                 quality = holder.get("quality") or self.quality_snapshot(feature, result)
+                cost_metadata = holder.get("cost_metadata") or {}
                 latency_ms = int((time.perf_counter() - start) * 1000)
                 self._record_event(
                     feature=feature,
@@ -690,6 +933,12 @@ class LlmOpsTracer:
                     red_flags_count=quality.red_flags_count,
                     issue_type=quality.issue_type,
                     outcome=quality.outcome,
+                    input_tokens=cost_metadata.get("input_tokens"),
+                    output_tokens=cost_metadata.get("output_tokens"),
+                    total_tokens=cost_metadata.get("total_tokens"),
+                    estimated_cost=cost_metadata.get("estimated_cost"),
+                    cost_currency=str(cost_metadata.get("estimated_cost_currency") or self._cost_currency()),
+                    cost_source=str(cost_metadata.get("cost_source") or ""),
                 )
                 return result
 
@@ -700,6 +949,8 @@ class LlmOpsTracer:
                 call_fn=call_fn,
                 metadata=safe_metadata,
                 disabled_detail=f"LangSmith wrapper failed before provider call: {exc}",
+                usage_fn=usage_fn,
+                inputs=inputs,
             )
 
 
@@ -777,6 +1028,7 @@ class TracedVocabularyAiClient(VocabularyAiClient):
             inputs=inputs,
             metadata=base_metadata,
             call_fn=call_fn,
+            usage_fn=lambda: getattr(self._inner, "_last_usage_metadata", None),
         )
 
     def _generate_text(self, prompt: str) -> str:
