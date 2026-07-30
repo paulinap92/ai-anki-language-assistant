@@ -104,3 +104,9 @@ ver 3/
 ver 4/
 .audio_cache/
 .import_cache/
+
+# Local runtime progress/state files
+audio_progress.json
+audio_progress*.json
+audio_progress/
+
