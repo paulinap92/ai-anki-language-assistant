@@ -28,14 +28,14 @@ from tkinter import filedialog, messagebox, ttk
 import customtkinter as ctk
 
 from src.ai.base import VocabularyAiClient
-from src.ai.prompts import build_ocr_candidate_extraction_prompt
+from src.ai.prompts import build_ocr_candidate_extraction_prompt, build_multimodal_import_extraction_prompt
 from src.anki.client import AnkiClient, DuplicateNoteError
 from src.anki.templates import MODEL_NAME
 from src.domain.languages import LANGUAGE_TAGS
 from src.domain.models import ConversationFeedback, GrammarAnalysis, VocabularyCard
 from src.practice import PracticeItem, PracticeQuestion, PracticeService
 from src.quality import validate_vocabulary_card
-from src.ocr import HTML_EXTENSIONS, TEXT_EXTENSIONS, OcrExtractionError, clean_ocr_text, extract_text_from_paths, extract_text_with_mistral
+from src.ocr import HTML_EXTENSIONS, TEXT_EXTENSIONS, OcrExtractionError, clean_ocr_text, extract_text_from_paths, extract_text_with_mistral, extract_candidates_with_multimodal
 from src.speech import LocalWhisperSttService, SpeechService
 from src.speech.models import TtsResult
 from src.speech.voice_presets import get_voice_by_label, get_voice_labels
@@ -46,7 +46,7 @@ EXPLANATION_LANGUAGES = ["Polish", "English", "Spanish", "German", "Italian", "S
 IMPROVEMENT_LEVELS = ["Natural B1/B2", "Strong B2/C1", "Professional / Interview"]
 BATCH_MODES = ["Vocabulary", "Grammar", "Mixed", "Provided examples"]
 OCR_EXTRACTION_MODES = ["Provided examples", "Vocabulary", "Grammar", "Smart grammar import", "Mixed"]
-OCR_IMPORT_METHODS = ["Local extraction (free)", "Mistral OCR (cloud text only)"]
+OCR_IMPORT_METHODS = ["Local extraction (free)", "Mistral OCR (cloud text only)", "OpenAI multimodal import", "Gemini multimodal import"]
 
 TOPIC_PRESETS = [
     "",
@@ -1829,7 +1829,7 @@ class ModernVocabularyGui:
         names = ", ".join(path.name for path in self._ocr_source_paths[:3])
         if len(self._ocr_source_paths) > 3:
             names += f" + {len(self._ocr_source_paths) - 3} more"
-        action = "Run Mistral extraction" if "Mistral" in self._ocr_method_var.get() else "Extract text locally"
+        action = self._ocr_import_action_label()
         self._ocr_status_var.set(f"Selected: {names}. Click {action}.")
 
     def _open_paste_material_dialog(self) -> None:
@@ -1954,7 +1954,7 @@ class ModernVocabularyGui:
             names = ", ".join(path.name for path in staged_paths[:3])
             if len(staged_paths) > 3:
                 names += f" + {len(staged_paths) - 3} more"
-            action = "Run Mistral extraction" if "Mistral" in self._ocr_method_var.get() else "Extract text locally"
+            action = self._ocr_import_action_label()
             info_var.set(f"Screenshot/file staged: {names}. Click Use this material to {action.lower()}.")
 
         def open_file_for_material() -> None:
@@ -2066,12 +2066,20 @@ class ModernVocabularyGui:
         method = self._ocr_method_var.get()
         button = getattr(self, "_ocr_run_button", None)
         if button is not None:
-            if "Mistral" in method:
-                button.configure(text="Run Mistral extraction")
-            else:
-                button.configure(text="Extract text locally")
+            button.configure(text=self._ocr_import_action_label())
         if self._ocr_source_paths:
             self._ocr_set_source_paths([str(path) for path in self._ocr_source_paths])
+
+    def _ocr_import_action_label(self) -> str:
+        """Return the main Import Material button label for the selected pipeline."""
+        method = self._ocr_method_var.get()
+        if "Mistral" in method:
+            return "Run Mistral OCR"
+        if "OpenAI multimodal" in method:
+            return "Run OpenAI multimodal import"
+        if "Gemini multimodal" in method:
+            return "Run Gemini multimodal import"
+        return "Extract text locally"
 
     def _set_ocr_text(self, text: str) -> None:
         textbox = getattr(self, "_ocr_textbox", None)
@@ -3185,6 +3193,12 @@ class ModernVocabularyGui:
         if "Mistral" in method:
             self._run_mistral_ocr_auto_candidates()
             return
+        if "OpenAI multimodal" in method:
+            self._run_multimodal_import_candidates("OpenAI")
+            return
+        if "Gemini multimodal" in method:
+            self._run_multimodal_import_candidates("Gemini")
+            return
         self._run_local_ocr_import()
 
     def _run_ocr_import(self) -> None:
@@ -3281,6 +3295,123 @@ class ModernVocabularyGui:
         self._ocr_status_var.set(
             f"Mistral extracted {len(text.split())} word(s). Click Look for words/phrases or Look for sentences."
         )
+
+    def _run_multimodal_import_candidates(self, provider: str) -> None:
+        """Use a vision-capable model to extract structured candidates directly from images/PDF pages."""
+        if self._ocr_ai_running:
+            self._ocr_candidate_status_var.set("Multimodal import is already running. Wait for it to finish.")
+            return
+        if not self._ocr_source_paths:
+            pasted = self._get_ocr_text()
+            if pasted.strip():
+                self._ocr_status_var.set("Pasted text does not need multimodal import. Use Find candidates with selected strategy.")
+                return
+            messagebox.showwarning("Multimodal import", "Load an image or PDF first.")
+            return
+
+        text_like_paths = [
+            path for path in self._ocr_source_paths
+            if path.suffix.casefold() in (TEXT_EXTENSIONS | HTML_EXTENSIONS)
+        ]
+        if text_like_paths:
+            messagebox.showwarning(
+                "Multimodal import",
+                "Multimodal import is for image/PDF material. Use Local extraction for TXT/HTML files.",
+            )
+            return
+
+        mode = self._ocr_mode_var.get().strip() or "Smart grammar import"
+        self._ocr_ai_running = True
+        run_button = getattr(self, "_ocr_run_button", None)
+        ai_button = getattr(self, "_ocr_ai_button", None)
+        try:
+            if run_button is not None:
+                run_button.configure(state="disabled", text=f"Running {provider} multimodal...")
+            if ai_button is not None:
+                ai_button.configure(state="disabled")
+            names = ", ".join(path.name for path in self._ocr_source_paths[:3])
+            if len(self._ocr_source_paths) > 3:
+                names += f" + {len(self._ocr_source_paths) - 3} more"
+            self._ocr_status_var.set(f"Running {provider} multimodal import on: {names}")
+            self._ocr_candidate_status_var.set(
+                f"{provider} is reading the image layout/table directly. This uses API credits."
+            )
+            self._root.update_idletasks()
+            prompt = build_multimodal_import_extraction_prompt(
+                target_language=self._language_var.get(),
+                explanation_language=self._explanation_language_var.get(),
+                extraction_mode=mode,
+                topic_context=self._batch_topic_var.get(),
+            )
+            raw_text = extract_candidates_with_multimodal(
+                self._ocr_source_paths,
+                provider=provider,
+                prompt=prompt,
+            )
+            items = self._ocr_candidate_items_from_ai_response(
+                raw_text, default_mode=mode, source=f"{provider} multimodal"
+            )
+        except OcrExtractionError as exc:
+            LOGGER.exception("Multimodal import failed")
+            self._ocr_status_var.set(f"{provider} multimodal import failed.")
+            self._ocr_candidate_status_var.set("Multimodal import failed; try Mistral OCR or crop the image.")
+            messagebox.showerror("Multimodal import", str(exc))
+            return
+        except Exception as exc:
+            LOGGER.exception("Unexpected multimodal import failed")
+            self._ocr_status_var.set(f"{provider} multimodal import failed.")
+            self._ocr_candidate_status_var.set("Multimodal import failed; try another import provider.")
+            messagebox.showerror("Multimodal import", f"Unexpected multimodal import error: {exc}")
+            return
+        finally:
+            self._ocr_ai_running = False
+            if run_button is not None:
+                run_button.configure(state="normal", text=self._ocr_import_action_label())
+            if ai_button is not None:
+                ai_button.configure(state="normal")
+
+        if not items:
+            self._set_ocr_text(self._ocr_clean_json_text(raw_text))
+            self._set_ocr_candidate_items([])
+            self._ocr_status_var.set(f"{provider} multimodal returned text but no usable candidates.")
+            self._ocr_candidate_status_var.set("No usable candidates found. Try another provider, crop, or use manual picker.")
+            return
+
+        total = len(items)
+        max_render = 80
+        if total > max_render:
+            items = items[:max_render]
+            self._ocr_status_var.set(f"{provider} returned {total} candidates; rendering first {max_render}.")
+        else:
+            self._ocr_status_var.set(f"{provider} multimodal extracted {total} candidate draft(s).")
+        self._set_ocr_text(self._ocr_review_text_from_candidate_items(items, provider=provider))
+        self._set_ocr_candidate_items(items)
+        self._ocr_candidate_status_var.set(
+            f"{provider} multimodal found {total} candidate draft(s); showing {len(items)}. Review/cherry-pick before Batch."
+        )
+        self._record_activity(f"{provider} multimodal import candidates: {len(items)}")
+
+    @staticmethod
+    def _ocr_review_text_from_candidate_items(items: list[dict[str, str]], provider: str = "Multimodal") -> str:
+        """Create a readable reviewed-source summary from structured multimodal candidates."""
+        lines = [f"--- {provider} multimodal structured extraction ---"]
+        for index, item in enumerate(items, start=1):
+            kind = item.get("type", "")
+            target = item.get("target", "")
+            sentence = item.get("sentence", "")
+            source_rule = item.get("source_rule", "") or item.get("reason", "")
+            source_type = item.get("source_type", "")
+            strategy = item.get("strategy", "")
+            lines.append(f"\n[{index}] {kind}")
+            if target:
+                lines.append(f"Target: {target}")
+            if sentence:
+                lines.append(f"Example/audio: {sentence}")
+            if source_rule:
+                lines.append(f"Use/source note: {source_rule}")
+            if source_type or strategy:
+                lines.append(f"Detected as: {source_type or '-'} | Strategy: {strategy or '-'}")
+        return "\n".join(lines).strip()
 
     def _clean_ocr_preview_text(self) -> None:
         original = self._get_ocr_text()
@@ -3403,6 +3534,11 @@ class ModernVocabularyGui:
             "sentence": "sentence_only",
             "sentence_only": "sentence_only",
             "provided_example": "provided_example",
+            "table_row": "table_row",
+            "table": "table_row",
+            "highlighted_item": "highlighted_item",
+            "highlighted": "highlighted_item",
+            "marked_item": "highlighted_item",
             "vocabulary": "vocabulary",
         }
         return aliases.get(text, text or "")
@@ -3444,6 +3580,8 @@ class ModernVocabularyGui:
             "exercise": "exercise_draft_review_answer",
             "sentence_only": "infer_later",
             "provided_example": "preserve_source_sentence",
+            "table_row": "preserve_table_row",
+            "highlighted_item": "highlighted_source_sentence",
             "vocabulary": "vocabulary_candidate",
         }
         return mapping.get(source_type, "review_candidate")

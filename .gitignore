@@ -105,8 +105,8 @@ ver 4/
 .audio_cache/
 .import_cache/
 
-# Local runtime progress/state files
-audio_progress.json
-audio_progress*.json
-audio_progress/
+# Local batch autosaves
+batch_autosaves/
+batch_autosave_*.json
+batch_autosaves/audio_progress_*.json
 
