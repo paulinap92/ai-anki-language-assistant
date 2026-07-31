@@ -45,7 +45,7 @@ from src.observability import get_llmops_tracer
 EXPLANATION_LANGUAGES = ["Polish", "English", "Spanish", "German", "Italian", "Same as target", "No translation"]
 IMPROVEMENT_LEVELS = ["Natural B1/B2", "Strong B2/C1", "Professional / Interview"]
 BATCH_MODES = ["Vocabulary", "Grammar", "Mixed", "Provided examples"]
-OCR_EXTRACTION_MODES = ["Provided examples", "Vocabulary", "Grammar", "Smart grammar import", "Mixed"]
+OCR_EXTRACTION_MODES = ["Provided examples", "Vocabulary", "Vocabulary + source examples", "Smart vocabulary", "Grammar", "Smart grammar import", "Mixed"]
 OCR_IMPORT_METHODS = ["Local extraction (free)", "Mistral OCR (cloud text only)", "OpenAI multimodal import", "Gemini multimodal import"]
 
 TOPIC_PRESETS = [
@@ -2484,6 +2484,12 @@ class ModernVocabularyGui:
                 meta_bits.append(f"Strategy: {strategy.replace('_', ' ')}")
             if reason:
                 meta_bits.append(f"Why: {reason}")
+            vocab_kind = str(item.get("candidate_kind") or "").strip()
+            source_section = str(item.get("source_section") or "").strip()
+            if vocab_kind:
+                meta_bits.append(f"Kind: {vocab_kind.replace('_', ' ')}")
+            if source_section:
+                meta_bits.append(f"Section: {source_section.replace('_', ' ')}")
             example_origin = str(item.get("example_origin") or "").strip()
             needs_review = str(item.get("needs_review") or "").strip()
             if example_origin:
@@ -2839,9 +2845,18 @@ class ModernVocabularyGui:
         return value in {"grammar", "smart grammar import"}
 
     @staticmethod
+    def _is_vocabulary_import_mode(mode: str) -> bool:
+        value = (mode or "").strip().casefold()
+        return value in {"vocabulary", "vocabulary + source examples", "smart vocabulary"}
+
+    @staticmethod
     def _normalize_ocr_candidate_type(candidate_type: str, default_mode: str = "Vocabulary") -> str:
         raw = (candidate_type or default_mode or "vocabulary").strip().casefold().replace("_", " ")
         default_raw = (default_mode or "").strip().casefold().replace("_", " ")
+        if default_raw in {"vocabulary", "vocabulary + source examples", "smart vocabulary"}:
+            # Vocabulary extraction modes must stay vocabulary-only. Source
+            # examples are context metadata, not Provided Examples mode.
+            return "vocabulary"
         if raw in {"smart grammar import", "smart grammar", "grammar import"}:
             return "grammar"
         if raw in {"provided", "provided example", "provided examples", "sentence", "source sentence", "example"}:
@@ -3572,6 +3587,13 @@ class ModernVocabularyGui:
             "highlighted": "highlighted_item",
             "marked_item": "highlighted_item",
             "vocabulary": "vocabulary",
+            "vocabulary_list": "vocabulary_list",
+            "vocab_list": "vocabulary_list",
+            "colloquial_expression": "colloquial_expression",
+            "colloquial_expressions": "colloquial_expression",
+            "reading_text_collocation": "reading_text_collocation",
+            "dialogue_example": "dialogue_example",
+            "expanded_variant": "expanded_variant",
         }
         return aliases.get(text, text or "")
 
@@ -3615,6 +3637,11 @@ class ModernVocabularyGui:
             "table_row": "preserve_table_row",
             "highlighted_item": "highlighted_source_sentence",
             "vocabulary": "vocabulary_candidate",
+            "vocabulary_list": "vocabulary_candidate",
+            "colloquial_expression": "vocabulary_with_source_sentence",
+            "reading_text_collocation": "vocabulary_candidate",
+            "dialogue_example": "vocabulary_with_source_sentence",
+            "expanded_variant": "expanded_vocabulary_variant",
         }
         return mapping.get(source_type, "review_candidate")
 
@@ -3637,7 +3664,9 @@ class ModernVocabularyGui:
                     continue
                 raw_type = str(candidate.get("type") or default_mode or "vocabulary")
                 candidate_type = self._normalize_ocr_candidate_type(raw_type, default_mode)
-                if self._is_grammar_import_mode(default_mode) and candidate_type == "provided_example":
+                if self._is_vocabulary_import_mode(default_mode):
+                    candidate_type = "vocabulary"
+                elif self._is_grammar_import_mode(default_mode) and candidate_type == "provided_example":
                     candidate_type = "grammar"
                 target = str(
                     candidate.get("target")
@@ -3671,6 +3700,8 @@ class ModernVocabularyGui:
                     needs_review = "true" if needs_review_value else "false"
                 elif needs_review_value not in (None, ""):
                     needs_review = str(needs_review_value).strip().casefold()
+                candidate_kind_meta = str(candidate.get("candidate_kind") or candidate.get("kind") or "").strip()
+                source_section_meta = str(candidate.get("source_section") or candidate.get("section") or "").strip()
 
                 if self._looks_like_json_fragment(target):
                     target = ""
@@ -3682,6 +3713,10 @@ class ModernVocabularyGui:
                     source_role = ""
                 if self._looks_like_json_fragment(example_origin):
                     example_origin = ""
+                if self._looks_like_json_fragment(candidate_kind_meta):
+                    candidate_kind_meta = ""
+                if self._looks_like_json_fragment(source_section_meta):
+                    source_section_meta = ""
                 if not target and not sentence and not source_rule:
                     continue
 
@@ -3746,6 +3781,10 @@ class ModernVocabularyGui:
                     item["example_origin"] = example_origin
                 if needs_review:
                     item["needs_review"] = needs_review
+                if candidate_kind_meta:
+                    item["candidate_kind"] = clean_ocr_text(candidate_kind_meta).replace("\n", " ").strip()
+                if source_section_meta:
+                    item["source_section"] = clean_ocr_text(source_section_meta).replace("\n", " ").strip()
                 if confidence:
                     item["confidence"] = confidence
                 if answer:
@@ -3782,7 +3821,9 @@ class ModernVocabularyGui:
                     continue
                 raw_type = str(candidate.get("type") or default_mode or "vocabulary")
                 candidate_type = self._normalize_ocr_candidate_type(raw_type, default_mode)
-                if self._is_grammar_import_mode(default_mode) and candidate_type == "provided_example":
+                if self._is_vocabulary_import_mode(default_mode):
+                    candidate_type = "vocabulary"
+                elif self._is_grammar_import_mode(default_mode) and candidate_type == "provided_example":
                     candidate_type = "grammar"
                 target = str(
                     candidate.get("target")
@@ -3925,6 +3966,8 @@ class ModernVocabularyGui:
             needs_review = str(candidate.get("needs_review") or "").strip()
             source_rule_meta = str(candidate.get("source_rule") or "").strip()
             reason_meta = str(candidate.get("reason") or "").strip()
+            candidate_kind_meta = str(candidate.get("candidate_kind") or "").strip()
+            source_section_meta = str(candidate.get("source_section") or "").strip()
             if source_type:
                 item_extra["source_type"] = source_type
             if strategy:
@@ -3937,6 +3980,10 @@ class ModernVocabularyGui:
                 item_extra["source_rule"] = source_rule_meta
             if reason_meta:
                 item_extra["source_reason"] = reason_meta
+            if candidate_kind_meta:
+                item_extra["candidate_kind"] = candidate_kind_meta
+            if source_section_meta:
+                item_extra["source_section"] = source_section_meta
             if candidate_type == "provided_example":
                 word = f"{target} | {sentence}" if target and sentence else (sentence or target)
                 batch_mode = "Provided examples"
@@ -3998,6 +4045,9 @@ class ModernVocabularyGui:
             else:
                 word = target or sentence
                 batch_mode = "Vocabulary"
+                if sentence and target:
+                    item_extra["source_sentence"] = sentence
+                    item_extra.setdefault("source_reason", reason_meta or "Vocabulary source example kept as context, not Provided Examples mode.")
             word = word.strip()
             if not word:
                 continue
@@ -4499,6 +4549,30 @@ class ModernVocabularyGui:
             label.grid_remove()
             frame.grid_remove()
 
+    @staticmethod
+    def _clean_batch_visible_message(message: str, max_chars: int = 360) -> str:
+        """Keep Batch labels short and stop raw JSON/provider dumps from breaking the layout."""
+        if not message:
+            return ""
+        clean = str(message).strip()
+        for marker in ("Raw response:", "raw_response", "```json", "{\n", "{\r\n", "Autosave:"):
+            index = clean.find(marker)
+            if index != -1:
+                clean = clean[:index].strip()
+                break
+        clean = re.sub(r"\s+", " ", clean).strip()
+        if len(clean) > max_chars:
+            clean = clean[:max_chars].rstrip() + "..."
+        return clean
+
+    @classmethod
+    def _friendly_batch_detail(cls, detail: str, max_chars: int = 220) -> str:
+        """Short user-facing error detail; raw payload stays in autosave/logs."""
+        clean = cls._clean_batch_visible_message(detail, max_chars=max_chars)
+        if not clean:
+            return "Raw provider/Anki details saved in autosave/logs."
+        return clean
+
     def _set_batch_preview(self, content: str) -> None:
         self._batch_preview.configure(state="normal")
         self._batch_preview.delete("1.0", "end")
@@ -4576,7 +4650,7 @@ class ModernVocabularyGui:
 
         blocks.extend(["", "STATUS", status])
         if detail:
-            blocks.extend(["", "DETAILS", detail])
+            blocks.extend(["", "DETAILS", self._friendly_batch_detail(detail)])
         if actions:
             blocks.extend(["", "SAFE NEXT ACTIONS", actions])
         self._set_batch_preview("\n".join(blocks))
@@ -4750,14 +4824,14 @@ class ModernVocabularyGui:
             "Auto Batch stopped: provider error. "
             "Progress saved. Switch provider and retry failed/rate-limited items, or resume later."
         )
-        self._batch_status_var.set(f"{message} Autosave: {autosave}")
+        self._batch_status_var.set(f"{message} Autosaved.")
         self._status_var.set(message)
         status_name = "rate_limited" if self._is_provider_rate_limit_detail(detail) else "provider_failed"
         self._set_batch_status_card(
             title="AUTO BATCH STOPPED",
             word=word,
             status=status_name,
-            detail=f"{friendly_detail}\n\nAutosave: {autosave}",
+            detail=f"{friendly_detail}\n\nAutosaved.",
             actions=(
                 "- Switch provider\n"
                 "- Retry failed/rate-limited\n"
@@ -6133,7 +6207,7 @@ class ModernVocabularyGui:
             self._batch_auto_generate_running = False
             self._update_batch_progress()
             self._autosave_batch_session("auto-generation finished")
-            self._batch_status_var.set(f"Auto-generation finished. Autosave: {self._batch_autosave_path}")
+            self._batch_status_var.set("Auto-generation finished. Autosaved.")
             self._status_var.set(self._batch_status_var.get())
             self._record_activity("Auto-generation finished")
             return
@@ -6366,7 +6440,7 @@ class ModernVocabularyGui:
                 warnings = item.get("quality_warnings")
                 if isinstance(warnings, list):
                     reason = "; ".join(str(w) for w in warnings[:2])
-            details.append(f"{word}: {reason or status}")
+            details.append(f"{word}: {self._friendly_batch_detail(reason or status, max_chars=160)}")
             if len(details) >= limit:
                 break
         return details
@@ -6407,8 +6481,8 @@ class ModernVocabularyGui:
                 message += f"; +{len(invalid_details) - 4} more"
             message += "."
         if self._batch_autosave_path:
-            message += f" Autosave: {self._batch_autosave_path}"
-        return message
+            message += " Autosaved."
+        return self._clean_batch_visible_message(message, max_chars=520)
 
     def _mark_pending_duplicates_before_auto_generation(self) -> int:
         """Mark pending Batch items that already exist in Anki before any API call.

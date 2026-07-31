@@ -681,6 +681,108 @@ Return this exact structure:
 }}
 """
 
+
+def build_vocabulary_candidate_extraction_prompt(
+    extracted_text: str,
+    target_language: str,
+    explanation_language: str,
+    extraction_mode: str,
+    topic_context: str = "",
+) -> str:
+    """Build a focused vocabulary-only extraction prompt for OCR/imported lessons.
+
+    The generic OCR prompt is intentionally not used for Vocabulary mode because
+    lesson vocabulary lists need recall, not "top N" selection. This prompt keeps
+    the output type stable and lets Batch decide how to generate final cards.
+    """
+    mode = (extraction_mode or "Vocabulary").strip()
+    effective_explanation_language = target_language if explanation_language == "Same as target" else explanation_language
+    topic_hint = f'User topic/context: "{topic_context}".' if topic_context.strip() else "No user topic/context was provided."
+    include_examples = mode.casefold() in {"vocabulary + source examples", "smart vocabulary"}
+    example_rule = (
+        "- Attach source_sentence when a clear source example is available, but keep type=\"vocabulary\".\n"
+        if include_examples else
+        "- Do not attach source sentences unless they are short and directly tied to an explicit expression.\n"
+    )
+    return f"""
+You are extracting vocabulary candidate drafts from OCR / imported lesson text.
+
+Target language: {target_language}
+Explanation language for later cards: {effective_explanation_language}
+Extraction mode: {mode}
+{topic_hint}
+
+OCR / imported text:
+<<<TEXT
+{extracted_text}
+TEXT>>>
+
+VOCABULARY EXTRACTION CONTRACT
+
+This mode extracts vocabulary candidates only.
+
+Allowed output type:
+- vocabulary
+
+Never return:
+- provided_example
+- grammar
+
+Your job is recall, not selection:
+- Do NOT choose only the best 30 items.
+- Extract every explicit vocabulary item from lesson vocabulary lists.
+- Extract every explicit idiom/expression from expression sections.
+- If there are many candidates, return all explicit lesson items you can fit in valid JSON; do not silently omit items just because there are more than 35.
+
+Priority order:
+1. Extract every explicit bullet/list item under headings such as Vocabulario, Vocabulary, Léxico, Lexique, Wortschatz, Expresiones, Expresiones coloquiales, Idioms, Expressions.
+2. Extract every numbered idiom/expression heading from expression sections.
+3. Extract useful collocations from reading text only after explicit lists and expression headings are complete.
+4. Skip exercises, questions, tasks, page footers, emails, websites, image filenames, copyright/footer text, tutor IDs, and page numbers.
+
+Slash and parenthesis rules:
+- If a slash-separated item is a list of separate words, split it into separate vocabulary candidates.
+- If a slash-separated item represents alternatives inside one fixed expression, preserve the full expression or create clean variants.
+- Expand useful parenthetical variants when they make natural standalone candidates.
+- Examples:
+  - "Cólico / eccema / jaqueca" -> "cólico", "eccema", "jaqueca".
+  - "poner la carne / piel de gallina" -> "poner la carne de gallina", "poner la piel de gallina".
+  - "batido (de proteínas / de frutas)" -> "batido", "batido de proteínas", "batido de frutas".
+  - "amputar (un brazo / una pierna)" -> "amputar", "amputar un brazo", "amputar una pierna".
+
+Source example rules:
+{example_rule}- For vocabulary with a source example, source_sentence is context only; it does NOT change type to provided_example.
+- If a dialogue under an idiom clearly demonstrates the idiom, attach the best short source_sentence.
+- Do not invent examples here. Final card generation can create examples later.
+
+Candidate metadata:
+- candidate_kind = word | phrase | idiom | collocation | specialist_term | expression | body_part | disease | profession | medication | other
+- source_section = vocabulary_list | colloquial_expressions | reading_text | dialogue | table | highlighted_item | other
+- source_sentence = exact source sentence/context when useful and readable, otherwise empty
+- reason = short reason or source heading
+- needs_review = true only for uncertain, OCR-damaged, or expanded variants
+
+Return ONLY valid JSON, no markdown, no comments.
+
+Return this exact structure:
+{{
+  "candidates": [
+    {{
+      "type": "vocabulary",
+      "target": "string",
+      "candidate_kind": "word | phrase | idiom | collocation | specialist_term | expression | body_part | disease | profession | medication | other",
+      "source_section": "vocabulary_list | colloquial_expressions | reading_text | dialogue | table | highlighted_item | other",
+      "source_sentence": "optional exact source example/context",
+      "reason": "short reason or source heading",
+      "source_type": "vocabulary_list | colloquial_expression | reading_text_collocation | dialogue_example | highlighted_item | table_row | expanded_variant",
+      "strategy": "vocabulary_candidate | vocabulary_with_source_sentence | expanded_vocabulary_variant",
+      "needs_review": false,
+      "confidence": "high | medium | low"
+    }}
+  ]
+}}
+"""
+
 def build_ocr_candidate_extraction_prompt(
     extracted_text: str,
     target_language: str,
@@ -697,13 +799,22 @@ def build_ocr_candidate_extraction_prompt(
     mode = (extraction_mode or "Provided examples").strip()
     effective_explanation_language = target_language if explanation_language == "Same as target" else explanation_language
     topic_hint = f'User topic/context: "{topic_context}".' if topic_context.strip() else "No user topic/context was provided."
-    if mode.casefold() == "smart grammar import":
+    mode_key = mode.casefold()
+    if mode_key == "smart grammar import":
         return build_smart_grammar_candidate_extraction_prompt(
             extracted_text=extracted_text,
             target_language=target_language,
             explanation_language=explanation_language,
             topic_context=topic_context,
             max_candidates=max_candidates,
+        )
+    if mode_key in {"vocabulary", "vocabulary + source examples", "smart vocabulary"}:
+        return build_vocabulary_candidate_extraction_prompt(
+            extracted_text=extracted_text,
+            target_language=target_language,
+            explanation_language=explanation_language,
+            extraction_mode=mode,
+            topic_context=topic_context,
         )
     return f"""
 You are extracting language-learning candidates from OCR / imported lesson text.
@@ -733,7 +844,7 @@ Candidate types:
 - grammar: a grammar target/pattern/structure + optional source sentence. If there is only a sentence and no target, mark it as grammar with an empty target; the UI will show it as Grammar from sentence.
 
 Mode-specific rules:
-- If mode is Vocabulary, return mostly vocabulary candidates with target only.
+- If mode is Vocabulary, return ONLY vocabulary candidates with target only. Never return provided_example or grammar in Vocabulary mode.
 - If mode is Provided examples, return provided_example candidates in target + sentence form.
 - If mode is Grammar, return grammar candidates with a clear target whenever possible, e.g. verb pattern, tense pattern, connector, prefix, or structure. Preserve the source sentence as sentence. If you cannot identify the target, return the sentence with type grammar and an empty target; do not label it as provided_example.
 - If mode is Smart grammar import, every returned candidate MUST use type="grammar". Do not return provided_example in this mode.
@@ -836,6 +947,14 @@ Mode-specific rules:
 - Grammar: return type="grammar" with a clear target/structure and source sentence when available.
 - Smart grammar import: every returned candidate MUST use type="grammar" unless it is clearly a vocabulary-only item in Mixed mode. Do not return provided_example in Smart grammar import.
 - Mixed: return vocabulary and grammar candidates, but preserve per-item type.
+
+Vocabulary image contract:
+- In Vocabulary, Vocabulary + source examples, or Smart vocabulary mode, return vocabulary candidates only.
+- Extract all explicit list items from visible Vocabulario/Vocabulary/Léxico/Expresiones sections before extracting anything from prose.
+- Extract numbered idiom/expression headings as vocabulary/idiom candidates.
+- Split slash-separated word lists into separate candidates; preserve or expand slash alternatives inside fixed expressions.
+- Attach source_sentence only when a clear visible example belongs to that expression, but do not change the type to provided_example.
+- Skip footers, websites, emails, tutor IDs, page numbers, image filenames, questions and exercise instructions.
 
 Grammar rules:
 - target must be the grammar/discourse marker/source focus, not a broad textbook heading.
