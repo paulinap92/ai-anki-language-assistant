@@ -2484,6 +2484,12 @@ class ModernVocabularyGui:
                 meta_bits.append(f"Strategy: {strategy.replace('_', ' ')}")
             if reason:
                 meta_bits.append(f"Why: {reason}")
+            example_origin = str(item.get("example_origin") or "").strip()
+            needs_review = str(item.get("needs_review") or "").strip()
+            if example_origin:
+                meta_bits.append(f"Example origin: {example_origin.replace('_', ' ')}")
+            if needs_review in {"true", "yes", "1"}:
+                meta_bits.append("Needs review: yes")
             if source_rule:
                 meta_bits.append(f"Rule/source note: {source_rule}")
             if meta_bits:
@@ -2855,11 +2861,11 @@ class ModernVocabularyGui:
         if not text:
             return False
         lowered = text.strip().casefold().strip(',')
-        if lowered in {"{", "}", "[", "]", "type", "target", "sentence", "source_type", "strategy", "candidates"}:
+        if lowered in {"{", "}", "[", "]", "type", "target", "sentence", "source_type", "strategy", "source_role", "example_origin", "needs_review", "candidates"}:
             return True
-        if re.fullmatch(r'"?(type|target|sentence|source_type|strategy|reason|candidates|source_rule)"?\s*:\s*"?[^"{}\[\]]*"?,?', lowered):
+        if re.fullmatch(r'"?(type|target|sentence|source_type|strategy|source_role|example_origin|needs_review|reason|candidates|source_rule)"?\s*:\s*"?[^"{}\[\]]*"?,?', lowered):
             return True
-        if re.match(r'^"?(type|source_type|strategy|target|sentence|reason|source_rule)"?\s*:', lowered):
+        if re.match(r'^"?(type|source_type|strategy|source_role|example_origin|needs_review|target|sentence|reason|source_rule)"?\s*:', lowered):
             return True
         if lowered.startswith('{') or lowered.endswith('}'):
             return True
@@ -3544,8 +3550,12 @@ class ModernVocabularyGui:
             "structure_example": "structure_sentence",
             "structure_sentence": "structure_sentence",
             "pattern_sentence": "structure_sentence",
+            "usage_example": "structure_sentence",
+            "grammar_rule_with_example": "structure_sentence",
             "rule": "rule",
             "grammar_rule": "rule",
+            "source_rule": "rule",
+            "definition": "rule",
             "explanation": "rule",
             "transformation": "transformation",
             "word_form": "transformation",
@@ -3648,9 +3658,19 @@ class ModernVocabularyGui:
                 source_rule = str(
                     candidate.get("source_rule")
                     or candidate.get("rule")
+                    or candidate.get("source_note")
+                    or candidate.get("use_note")
                     or candidate.get("exercise")
                     or ""
                 ).strip()
+                source_role = str(candidate.get("source_role") or "").strip()
+                example_origin = str(candidate.get("example_origin") or "").strip()
+                needs_review_value = candidate.get("needs_review", "")
+                needs_review = ""
+                if isinstance(needs_review_value, bool):
+                    needs_review = "true" if needs_review_value else "false"
+                elif needs_review_value not in (None, ""):
+                    needs_review = str(needs_review_value).strip().casefold()
 
                 if self._looks_like_json_fragment(target):
                     target = ""
@@ -3658,12 +3678,26 @@ class ModernVocabularyGui:
                     sentence = ""
                 if self._looks_like_json_fragment(source_rule):
                     source_rule = ""
+                if self._looks_like_json_fragment(source_role):
+                    source_role = ""
+                if self._looks_like_json_fragment(example_origin):
+                    example_origin = ""
                 if not target and not sentence and not source_rule:
                     continue
 
-                # A rule/exercise must never become the audio sentence. If the
-                # provider still put a rule into sentence, keep it as metadata.
-                if candidate_type == "grammar" and sentence and self._ocr_looks_like_rule_explanation(sentence):
+                normalized_role = self._normalize_smart_grammar_source_type(source_role)
+                if candidate_type == "grammar" and normalized_role:
+                    if not candidate.get("source_type") and normalized_role in {"structure_sentence", "rule", "transformation", "exercise", "sentence_only"}:
+                        candidate["source_type"] = normalized_role
+
+                # A rule/exercise must never become the audio sentence. The new
+                # Smart Grammar contract relies on model-declared source_role and
+                # example_origin instead of language-specific rule markers.
+                if candidate_type == "grammar" and normalized_role == "rule" and example_origin != "generated_from_rule":
+                    source_rule = source_rule or sentence
+                    sentence = ""
+                elif candidate_type == "grammar" and sentence and self._ocr_looks_like_rule_explanation(sentence):
+                    # Backward-compatible safety for older prompts/provider output.
                     source_rule = source_rule or sentence
                     sentence = ""
 
@@ -3671,7 +3705,7 @@ class ModernVocabularyGui:
                 if item is None:
                     continue
                 source_type = self._normalize_smart_grammar_source_type(
-                    str(candidate.get("source_type") or candidate.get("detected_as") or "")
+                    str(candidate.get("source_type") or candidate.get("source_role") or candidate.get("detected_as") or "")
                 )
                 # If the provider claimed structure_sentence but the alleged
                 # sentence was actually a textbook rule, downgrade to rule.
@@ -3684,6 +3718,18 @@ class ModernVocabularyGui:
                 strategy = str(candidate.get("strategy") or "").strip() or self._smart_grammar_strategy_for_source_type(source_type)
                 if candidate_type == "grammar" and source_type == "rule" and strategy == "preserve_source_sentence":
                     strategy = "generated_example_from_rule"
+                if (
+                    candidate_type == "grammar"
+                    and source_type == "rule"
+                    and strategy == "generated_example_from_rule"
+                    and example_origin != "generated_from_rule"
+                    and item.get("sentence")
+                ):
+                    # The model classified this as a rule but did not explicitly
+                    # mark the sentence as a generated learner example. Keep the
+                    # text as rule/context instead of showing it as audio.
+                    source_rule = source_rule or str(item.get("sentence") or "")
+                    item["sentence"] = ""
                 reason = str(candidate.get("reason") or "").strip()
                 confidence = str(candidate.get("confidence") or "").strip()
                 answer = str(candidate.get("answer") or candidate.get("completed_answer") or "").strip()
@@ -3696,6 +3742,10 @@ class ModernVocabularyGui:
                     item["source_rule"] = clean_ocr_text(source_rule).replace("\n", " ").strip()
                 if reason:
                     item["reason"] = clean_ocr_text(reason).replace("\n", " ").strip()
+                if example_origin:
+                    item["example_origin"] = example_origin
+                if needs_review:
+                    item["needs_review"] = needs_review
                 if confidence:
                     item["confidence"] = confidence
                 if answer:
@@ -3871,12 +3921,18 @@ class ModernVocabularyGui:
             item_extra: dict[str, object] = {}
             source_type = str(candidate.get("source_type") or "").strip()
             strategy = str(candidate.get("strategy") or "").strip()
+            example_origin = str(candidate.get("example_origin") or "").strip()
+            needs_review = str(candidate.get("needs_review") or "").strip()
             source_rule_meta = str(candidate.get("source_rule") or "").strip()
             reason_meta = str(candidate.get("reason") or "").strip()
             if source_type:
                 item_extra["source_type"] = source_type
             if strategy:
                 item_extra["strategy"] = strategy
+            if example_origin:
+                item_extra["example_origin"] = example_origin
+            if needs_review:
+                item_extra["needs_review"] = needs_review
             if source_rule_meta:
                 item_extra["source_rule"] = source_rule_meta
             if reason_meta:
@@ -3895,7 +3951,28 @@ class ModernVocabularyGui:
                 if source_type == "exercise" and not self._looks_like_complete_sentence(sentence):
                     item_extra["source_focus_warning"] = "Exercise draft: verify or complete the answer before generation."
 
-                if target and sentence and not sentence_is_rule and not target_is_sentence:
+                rule_generated_example = (
+                    source_type == "rule"
+                    and strategy == "generated_example_from_rule"
+                    and example_origin == "generated_from_rule"
+                    and bool(sentence)
+                )
+
+                if rule_generated_example and target and not target_is_sentence:
+                    # Smart Grammar rule candidate with a model-generated usage example.
+                    word = f"{target} | {sentence}"
+                    item_extra["grammar_target"] = target
+                    item_extra["provided_sentence"] = sentence
+                elif source_type == "rule" and strategy == "generated_example_from_rule" and target:
+                    # Do not trust a rule candidate's sentence unless the Smart
+                    # Grammar contract explicitly marks it as generated_from_rule.
+                    # Batch will generate the natural example from target + source_rule.
+                    word = target
+                    item_extra["grammar_target"] = target
+                    if sentence and not source_rule_meta:
+                        item_extra["source_rule"] = sentence
+                    item_extra.setdefault("source_focus_warning", "Rule-only candidate: Batch must generate the learner example/audio sentence.")
+                elif target and sentence and not sentence_is_rule and not target_is_sentence:
                     # Best case: explicit grammar pattern + one real sentence.
                     word = f"{target} | {sentence}"
                     item_extra["grammar_target"] = target
@@ -5574,6 +5651,8 @@ class ModernVocabularyGui:
         source_rule = str(item.get("source_rule") or "").strip()
         source_type = str(item.get("source_type") or "").strip()
         strategy = str(item.get("strategy") or "").strip()
+        example_origin = str(item.get("example_origin") or "").strip()
+        needs_review = str(item.get("needs_review") or "").strip()
         source_reason = str(item.get("source_reason") or "").strip()
         if grammar_target:
             pieces.append(f"Source grammar target/focus: {grammar_target}")
@@ -5585,6 +5664,10 @@ class ModernVocabularyGui:
             pieces.append(f"Smart import detected source type: {source_type}")
         if strategy:
             pieces.append(f"Smart import card strategy: {strategy}")
+        if example_origin:
+            pieces.append(f"Smart import example origin: {example_origin}")
+        if needs_review:
+            pieces.append(f"Smart import needs review: {needs_review}")
         if source_reason:
             pieces.append(f"Smart import reason: {source_reason}")
         return "\n".join(pieces)

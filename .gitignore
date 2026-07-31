@@ -105,8 +105,15 @@ ver 4/
 .audio_cache/
 .import_cache/
 
-# Local batch autosaves
+# Local environment / API keys
+.env
+.env.local
+.env.production
+.env.test.local
+
+# Local runtime autosaves/progress
 batch_autosaves/
 batch_autosave_*.json
-batch_autosaves/audio_progress_*.json
-
+audio_progress.json
+audio_progress*.json
+audio_progress/

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 
 VOCABULARY_PROMPT_VERSION = "v10-lesson-context-validation"
-GRAMMAR_BATCH_PROMPT_VERSION = "v2-topic-variety-grammar"
+GRAMMAR_BATCH_PROMPT_VERSION = "v3-smart-grammar-generated-example-contract"
 SENTENCE_BASED_CARD_PROMPT_VERSION = "v1-provided-example-card"
 EXPLANATION_LANGUAGES = ["Polish", "English", "Spanish", "German", "Italian", "Same as target", "No translation"]
 
@@ -373,9 +373,12 @@ Requirements:
 - In "grammar target | source sentence" rows, the right side is the sentence/audio target. Never use a textbook rule, explanation, or abstract heading as the sentence/audio field.
 - If the left side is a concrete structure such as "used to + base verb", "Can I + base verb", "should have + past participle", or a word-form transformation such as "un hippi -> hippies", the card must visibly teach that exact target.
 - For word-form or transformation targets, keep the transformation in "structure" and use/generate a sentence that contains the transformed form.
-- If the input is only a sentence, preserve that sentence exactly in the "sentence" field and infer the most useful structure.
+- If the input is only a real learner example sentence, preserve that sentence exactly in the "sentence" field and infer the most useful structure.
+- If the input is a grammar rule, definition, explanation, textbook note, or meta-sentence about the grammar structure, do NOT preserve it as the "sentence" field. Instead, infer the grammar structure, generate ONE short natural learner example that uses it, and explain the original rule in meaning/usage.
 - If the input is only a connector/discourse word such as "therefore", the "sentence" field may be that connector itself, and "structure" should describe its writing/connector function.
-- If the input is only a grammar pattern with no source sentence, create ONE natural example sentence for the "sentence" field and put the pattern itself in "structure"; otherwise a natural example sentence using the grammar item is required. Do not put abstract titles like "repeated actions in the past" in the sentence field unless that exact phrase is the target being learned.
+- If the input is only a grammar pattern with no source sentence, create ONE natural example sentence for the "sentence" field and put the pattern itself in "structure".
+- If the input includes source context such as "Source rule/note, not audio", use it only to understand the target. Do not copy that source rule into "sentence" or "context_example".
+- A natural example sentence using the grammar item is always required unless the target itself is a connector/discourse word to be learned.
 - Identify the useful grammar structure or writing function.
 - Explain the meaning/use in simple {target_language}.
 - Keep it practical for learners, not a long academic lesson.
@@ -386,6 +389,14 @@ Requirements:
 - Include 1-3 contrasts with similar structures or common alternatives.
 - Include 1-3 common mistakes with corrected forms.
 - For DELE/writing topics, vary contexts: letters, emails, arguments, reports, opinions, complaints, applications, and written communication. Do not overuse one noun such as "ensayo".
+
+Final sentence/audio contract:
+- The "sentence" field is the learner-visible/audio sentence.
+- It must be a natural example that uses the structure in communication.
+- It must not define, explain, describe, or teach the grammar item.
+- It must not be a textbook rule, exercise instruction, abstract heading, or meta-sentence about the grammar item itself.
+- If the current candidate sentence is a rule/definition, replace it with a generated natural example and keep the rule information in meaning/usage.
+- context_example must be the same sentence or contain that exact sentence unchanged.
 {topic_rules}
 Return ONLY valid JSON. Do not use markdown or comments outside JSON.
 
@@ -518,6 +529,158 @@ Return this exact JSON structure:
 """
 
 
+
+def build_smart_grammar_candidate_extraction_prompt(
+    extracted_text: str,
+    target_language: str,
+    explanation_language: str,
+    topic_context: str = "",
+    max_candidates: int = 35,
+) -> str:
+    """Build a focused Smart Grammar extraction prompt.
+
+    This prompt is intentionally separate from the general OCR candidate prompt.
+    It makes the model decide the semantic source role before filling fields,
+    so rule/definition text cannot become the learner-visible audio sentence.
+    """
+    effective_explanation_language = target_language if explanation_language == "Same as target" else explanation_language
+    topic_hint = f'User topic/context: "{topic_context}".' if topic_context.strip() else "No user topic/context was provided."
+    return f"""
+You are extracting Smart Grammar candidate drafts from OCR / imported lesson text.
+
+Target language: {target_language}
+Explanation language for later cards: {effective_explanation_language}
+Extraction mode: Smart grammar import
+{topic_hint}
+
+OCR / imported text:
+<<<TEXT
+{extracted_text}
+TEXT>>>
+
+Your task:
+- Do NOT generate final Anki cards.
+- Return grammar candidate drafts only.
+- Keep at most {max_candidates} candidates.
+- Preserve useful source focus exactly: grammar pattern, connector, word form, transformation, or lesson structure.
+- Preserve slash alternatives such as "Actually / Incidentally" as one visible target unless the source clearly separates them.
+- Skip OCR garbage, page numbers, isolated headers, and duplicate items.
+
+Core field contract:
+- target = the grammar focus/pattern/source target to learn.
+- sentence = ONLY a learner-visible example sentence suitable for audio.
+- source_rule = ONLY the original rule, definition, explanation, use note, or exercise instruction.
+- reason = short reason why this candidate was extracted.
+- sentence must never be a grammar definition, textbook rule, exercise instruction, heading, or meta-sentence about the grammar item.
+- source_rule must never be used as the audio sentence.
+
+First classify each useful source fragment semantically.
+
+Allowed source_role values:
+- usage_example: a natural sentence that uses the target structure in communication.
+- grammar_rule: a rule, definition, explanation, use note, or sentence about the grammar structure itself.
+- grammar_rule_with_example: a rule/use note plus a separate real example sentence.
+- transformation: a word-form or grammar transformation.
+- exercise: a gap-fill, multiple-choice item, or task instruction.
+- sentence_only: a useful source sentence where the grammar focus is unclear.
+- unknown: unclear or risky fragment.
+
+Routing contract:
+1. usage_example
+   - type="grammar"
+   - source_role="usage_example"
+   - source_type="structure_sentence"
+   - strategy="preserve_source_sentence"
+   - target = the grammar focus if clear, otherwise ""
+   - sentence = the exact source example sentence
+   - source_rule = ""
+   - example_origin="preserved_from_source"
+   - needs_review=false when target and sentence are both clear
+
+2. grammar_rule
+   - type="grammar"
+   - source_role="grammar_rule"
+   - source_type="rule"
+   - strategy="generated_example_from_rule"
+   - target = the concrete grammar structure/use being taught
+   - source_rule = the original rule/definition/use note from the source
+   - sentence = ONE newly generated natural learner example that actually uses the target grammar
+   - example_origin="generated_from_rule"
+   - needs_review=true
+
+3. grammar_rule_with_example
+   - type="grammar"
+   - source_role="grammar_rule_with_example"
+   - source_type="structure_sentence"
+   - strategy="preserve_source_sentence"
+   - target = the grammar focus
+   - source_rule = the original rule/use note
+   - sentence = the separate real example sentence from the source
+   - example_origin="preserved_from_source"
+   - needs_review=true unless the mapping is obvious
+
+4. transformation
+   - type="grammar"
+   - source_role="transformation"
+   - source_type="transformation"
+   - strategy="word_form_example"
+   - target = the exact transformation
+   - source_rule = original transformation text if useful
+   - sentence = a natural example using the transformed form
+   - example_origin="generated_from_rule" or "preserved_from_source"
+   - needs_review=true
+
+5. exercise
+   - type="grammar"
+   - source_role="exercise"
+   - source_type="exercise"
+   - strategy="exercise_draft_review_answer"
+   - target = grammar focus if clear
+   - source_rule = raw exercise/instruction
+   - sentence = completed answer only if clearly available, otherwise ""
+   - example_origin="missing" when no completed answer is available
+   - needs_review=true
+
+6. sentence_only
+   - type="grammar"
+   - source_role="sentence_only"
+   - source_type="sentence_only"
+   - strategy="infer_later"
+   - target=""
+   - sentence = exact source sentence
+   - source_rule=""
+   - example_origin="preserved_from_source"
+   - needs_review=true
+
+Final self-check before returning JSON:
+- If source_role="grammar_rule", sentence MUST be newly generated, not copied from source_rule.
+- If source_type="rule" and strategy="generated_example_from_rule", sentence MUST NOT equal source_rule.
+- If sentence defines, explains, describes, names, or teaches the grammar item, it belongs in source_rule, not sentence.
+- If you cannot create a natural example for a rule, leave sentence empty, set example_origin="missing", needs_review=true, confidence="low".
+- The audio sentence must be a real usage example, not a sentence about grammar.
+
+Return ONLY valid JSON, no markdown, no comments.
+
+Return this exact structure:
+{{
+  "candidates": [
+    {{
+      "type": "grammar",
+      "target": "string",
+      "source_role": "usage_example | grammar_rule | grammar_rule_with_example | transformation | exercise | sentence_only | unknown",
+      "sentence": "learner-visible example sentence for audio; empty only when review is needed",
+      "source_rule": "original rule/definition/use note/exercise instruction when relevant",
+      "example_origin": "preserved_from_source | generated_from_rule | extracted_from_table | missing",
+      "needs_review": true,
+      "reason": "short reason",
+      "source_type": "structure_sentence | rule | transformation | exercise | sentence_only",
+      "strategy": "preserve_source_sentence | generated_example_from_rule | word_form_example | exercise_draft_review_answer | infer_later",
+      "confidence": "high | medium | low"
+    }}
+  ]
+}}
+"""
+
 def build_ocr_candidate_extraction_prompt(
     extracted_text: str,
     target_language: str,
@@ -534,6 +697,14 @@ def build_ocr_candidate_extraction_prompt(
     mode = (extraction_mode or "Provided examples").strip()
     effective_explanation_language = target_language if explanation_language == "Same as target" else explanation_language
     topic_hint = f'User topic/context: "{topic_context}".' if topic_context.strip() else "No user topic/context was provided."
+    if mode.casefold() == "smart grammar import":
+        return build_smart_grammar_candidate_extraction_prompt(
+            extracted_text=extracted_text,
+            target_language=target_language,
+            explanation_language=explanation_language,
+            topic_context=topic_context,
+            max_candidates=max_candidates,
+        )
     return f"""
 You are extracting language-learning candidates from OCR / imported lesson text.
 
@@ -673,6 +844,16 @@ Grammar rules:
 - If the source gives only a grammar rule and no example, create one short natural example sentence and keep the original rule in source_rule.
 - For word-form transformations such as "un hippi -> hippies", preserve the transformation as target and create/preserve a sentence using the transformed form.
 
+Smart grammar image contract:
+- Before creating a grammar candidate, classify the visible fragment semantically as source_role.
+- source_role values: usage_example, grammar_rule, grammar_rule_with_example, transformation, exercise, sentence_only, unknown.
+- sentence = only a real learner example suitable for audio.
+- source_rule = only the visible rule/use note/definition/instruction.
+- If source_role="grammar_rule", return source_type="rule", strategy="generated_example_from_rule", source_rule=the visible rule, sentence=ONE newly generated natural example, example_origin="generated_from_rule", needs_review=true.
+- If source_role="usage_example", preserve the visible source sentence as sentence and set example_origin="preserved_from_source".
+- If the page has a table row with a real Example cell, sentence = Example cell and source_rule = Use/Note cell.
+- Never put a visible grammar definition or use note into sentence/audio.
+
 Return ONLY valid JSON, no markdown and no comments. Never output schema fragments as candidate text.
 
 Return this exact structure:
@@ -681,11 +862,14 @@ Return this exact structure:
     {{
       "type": "vocabulary | provided_example | grammar",
       "target": "string",
-      "sentence": "string",
+      "source_role": "usage_example | grammar_rule | grammar_rule_with_example | transformation | exercise | sentence_only | table_row | highlighted_item | vocabulary | unknown",
+      "sentence": "learner-visible example sentence for audio",
+      "source_rule": "short original rule/use/exercise text when relevant",
+      "example_origin": "preserved_from_source | generated_from_rule | extracted_from_table | highlighted_source_sentence | missing",
+      "needs_review": true,
       "reason": "short reason or source/use note",
       "source_type": "vocabulary | provided_example | structure_sentence | rule | transformation | exercise | sentence_only | table_row | highlighted_item",
       "strategy": "preserve_source_sentence | generated_example_from_rule | word_form_example | exercise_draft_review_answer | infer_later | vocabulary_candidate | preserve_table_row | highlighted_source_sentence",
-      "source_rule": "short original rule/use/exercise text when relevant",
       "confidence": "high | medium | low"
     }}
   ]
