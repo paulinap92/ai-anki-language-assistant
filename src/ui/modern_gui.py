@@ -2711,7 +2711,7 @@ class ModernVocabularyGui:
             return
         selected = sum(1 for var in self._ocr_candidate_vars if var.get())
         self._ocr_candidate_status_var.set(
-            f"Candidate drafts: {selected}/{total} selected. Cherry-pick, then send to Batch."
+            f"Candidate drafts: {selected}/{total} selected · visible: {total}. Cherry-pick, then send to Batch."
         )
 
     def _select_all_ocr_candidates(self) -> None:
@@ -2853,8 +2853,8 @@ class ModernVocabularyGui:
     def _normalize_ocr_candidate_type(candidate_type: str, default_mode: str = "Vocabulary") -> str:
         raw = (candidate_type or default_mode or "vocabulary").strip().casefold().replace("_", " ")
         default_raw = (default_mode or "").strip().casefold().replace("_", " ")
-        if default_raw in {"vocabulary", "vocabulary + source examples", "smart vocabulary"}:
-            # Vocabulary extraction modes must stay vocabulary-only. Source
+        if default_raw in {"vocabulary", "vocabulary + source examples"}:
+            # Strict vocabulary modes must stay vocabulary-only. Source
             # examples are context metadata, not Provided Examples mode.
             return "vocabulary"
         if raw in {"smart grammar import", "smart grammar", "grammar import"}:
@@ -3539,14 +3539,13 @@ class ModernVocabularyGui:
             self._set_ocr_candidate_items([])
             return
         total = len(items)
-        max_render = 80
-        if total > max_render:
-            items = items[:max_render]
-            self._ocr_status_var.set(f"AI returned {total} candidates; rendering first {max_render}. Split the source text into smaller chunks.")
         # AI extraction replaces previous AI output instead of appending silently.
+        # Do not truncate the visible candidate list: vocabulary lessons can
+        # legitimately contain 100+ explicit words/phrases, and hidden truncation
+        # makes Select all look broken.
         self._set_ocr_candidate_items(items)
         self._ocr_candidate_status_var.set(
-            f"AI found {total} candidate draft(s); showing {len(items)}. Review detected type/strategy before Batch."
+            f"AI found {total} candidate draft(s); all {len(items)} are visible and selected by default."
         )
         self._record_activity(f"OCR candidates: {len(items)}")
 
@@ -3664,7 +3663,14 @@ class ModernVocabularyGui:
                     continue
                 raw_type = str(candidate.get("type") or default_mode or "vocabulary")
                 candidate_type = self._normalize_ocr_candidate_type(raw_type, default_mode)
-                if self._is_vocabulary_import_mode(default_mode):
+                default_mode_key = (default_mode or "").strip().casefold()
+                if default_mode_key in {"vocabulary", "vocabulary + source examples"}:
+                    # Strict vocabulary modes never produce Provided Examples.
+                    # Any source sentence stays attached as context metadata.
+                    candidate_type = "vocabulary"
+                elif default_mode_key == "smart vocabulary" and candidate_type == "grammar":
+                    # Smart Vocabulary may mix vocabulary and provided_example,
+                    # but grammar belongs only to Grammar/Smart Grammar/Mixed.
                     candidate_type = "vocabulary"
                 elif self._is_grammar_import_mode(default_mode) and candidate_type == "provided_example":
                     candidate_type = "grammar"
@@ -3821,7 +3827,14 @@ class ModernVocabularyGui:
                     continue
                 raw_type = str(candidate.get("type") or default_mode or "vocabulary")
                 candidate_type = self._normalize_ocr_candidate_type(raw_type, default_mode)
-                if self._is_vocabulary_import_mode(default_mode):
+                default_mode_key = (default_mode or "").strip().casefold()
+                if default_mode_key in {"vocabulary", "vocabulary + source examples"}:
+                    # Strict vocabulary modes never produce Provided Examples.
+                    # Any source sentence stays attached as context metadata.
+                    candidate_type = "vocabulary"
+                elif default_mode_key == "smart vocabulary" and candidate_type == "grammar":
+                    # Smart Vocabulary may mix vocabulary and provided_example,
+                    # but grammar belongs only to Grammar/Smart Grammar/Mixed.
                     candidate_type = "vocabulary"
                 elif self._is_grammar_import_mode(default_mode) and candidate_type == "provided_example":
                     candidate_type = "grammar"

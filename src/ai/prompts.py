@@ -689,21 +689,87 @@ def build_vocabulary_candidate_extraction_prompt(
     extraction_mode: str,
     topic_context: str = "",
 ) -> str:
-    """Build a focused vocabulary-only extraction prompt for OCR/imported lessons.
+    """Build a focused vocabulary extraction prompt for OCR/imported lessons.
 
-    The generic OCR prompt is intentionally not used for Vocabulary mode because
-    lesson vocabulary lists need recall, not "top N" selection. This prompt keeps
-    the output type stable and lets Batch decide how to generate final cards.
+    Vocabulary has three deliberately separate modes:
+    - Vocabulary: only target words/phrases, no examples.
+    - Vocabulary + source examples: vocabulary candidates with optional source sentences.
+    - Smart vocabulary: may mix vocabulary candidates and provided_example candidates,
+      but still never returns grammar unless the user selected Mixed outside this prompt.
     """
     mode = (extraction_mode or "Vocabulary").strip()
+    mode_key = mode.casefold()
     effective_explanation_language = target_language if explanation_language == "Same as target" else explanation_language
     topic_hint = f'User topic/context: "{topic_context}".' if topic_context.strip() else "No user topic/context was provided."
-    include_examples = mode.casefold() in {"vocabulary + source examples", "smart vocabulary"}
-    example_rule = (
-        "- Attach source_sentence when a clear source example is available, but keep type=\"vocabulary\".\n"
-        if include_examples else
-        "- Do not attach source sentences unless they are short and directly tied to an explicit expression.\n"
-    )
+
+    if mode_key == "smart vocabulary":
+        allowed_types = "- vocabulary\n- provided_example"
+        mode_contract = """
+SMART VOCABULARY CONTRACT
+
+This mode may mix vocabulary candidates and provided_example candidates.
+
+Use type="vocabulary" for:
+- words, terms, phrases, idioms, collocations, specialist vocabulary, expression headings, and explicit vocabulary-list items.
+- vocabulary items that optionally have a useful source sentence/context.
+
+Use type="provided_example" only when:
+- the source contains a complete useful sentence that is worth preserving as the learning context,
+- the sentence clearly contains the selected target phrase/idiom/collocation,
+- the sentence is better learned as target + exact source sentence than as a word-only item.
+
+Never return type="grammar" in Smart vocabulary mode.
+Do not turn exercises/questions/tasks into provided examples.
+"""
+        source_example_rule = """
+Source example rules:
+- For vocabulary candidates, put a clear source context sentence in source_sentence when useful.
+- For provided_example candidates, put the exact source sentence in sentence and the target phrase in target.
+- Do not invent examples during extraction. Final Batch generation can create examples later.
+"""
+        output_type_schema = "vocabulary | provided_example"
+        sentence_schema = '"sentence": "exact source sentence only for provided_example; empty for vocabulary unless the model uses source_sentence",\n      "source_sentence": "optional exact source context for vocabulary candidates",'
+    elif mode_key == "vocabulary + source examples":
+        allowed_types = "- vocabulary"
+        mode_contract = """
+VOCABULARY + SOURCE EXAMPLES CONTRACT
+
+This mode returns vocabulary candidates only, but it should attach source examples when they are clearly available.
+
+Use type="vocabulary" for every candidate.
+Never return type="provided_example" or type="grammar" in this mode.
+
+A source example is optional context for the vocabulary item; it does not change the candidate type.
+"""
+        source_example_rule = """
+Source example rules:
+- If a clear source sentence from the material contains the exact target or a normal inflected form, put it in source_sentence.
+- If no clear source sentence exists, leave source_sentence empty.
+- For dialogues under idioms/expressions, attach the best short source sentence that demonstrates the idiom.
+- Do not invent examples during extraction. Final Batch generation can create examples later.
+"""
+        output_type_schema = "vocabulary"
+        sentence_schema = '"source_sentence": "optional exact source example/context",'
+    else:
+        allowed_types = "- vocabulary"
+        mode_contract = """
+VOCABULARY CONTRACT
+
+This mode returns vocabulary candidates only.
+Use type="vocabulary" for every candidate.
+Never return type="provided_example" or type="grammar" in this mode.
+
+The goal is a clean list of targets for Batch.
+"""
+        source_example_rule = """
+Source example rules:
+- Do not attach examples by default.
+- If an explicit expression heading has a very short directly attached example, you may put it in source_sentence, but keep type="vocabulary".
+- Do not invent examples during extraction. Final Batch generation can create examples later.
+"""
+        output_type_schema = "vocabulary"
+        sentence_schema = '"source_sentence": "usually empty; optional short source context only",'
+
     return f"""
 You are extracting vocabulary candidate drafts from OCR / imported lesson text.
 
@@ -717,22 +783,17 @@ OCR / imported text:
 {extracted_text}
 TEXT>>>
 
-VOCABULARY EXTRACTION CONTRACT
+ALLOWED OUTPUT TYPES
+{allowed_types}
 
-This mode extracts vocabulary candidates only.
+{mode_contract}
 
-Allowed output type:
-- vocabulary
-
-Never return:
-- provided_example
-- grammar
-
-Your job is recall, not selection:
+Your job is recall, not top-N selection:
 - Do NOT choose only the best 30 items.
 - Extract every explicit vocabulary item from lesson vocabulary lists.
 - Extract every explicit idiom/expression from expression sections.
-- If there are many candidates, return all explicit lesson items you can fit in valid JSON; do not silently omit items just because there are more than 35.
+- Do not silently drop items because there are more than 35.
+- If the source is extremely long, prioritize explicit vocabulary/expression sections before optional reading-text collocations.
 
 Priority order:
 1. Extract every explicit bullet/list item under headings such as Vocabulario, Vocabulary, Léxico, Lexique, Wortschatz, Expresiones, Expresiones coloquiales, Idioms, Expressions.
@@ -750,10 +811,7 @@ Slash and parenthesis rules:
   - "batido (de proteínas / de frutas)" -> "batido", "batido de proteínas", "batido de frutas".
   - "amputar (un brazo / una pierna)" -> "amputar", "amputar un brazo", "amputar una pierna".
 
-Source example rules:
-{example_rule}- For vocabulary with a source example, source_sentence is context only; it does NOT change type to provided_example.
-- If a dialogue under an idiom clearly demonstrates the idiom, attach the best short source_sentence.
-- Do not invent examples here. Final card generation can create examples later.
+{source_example_rule}
 
 Candidate metadata:
 - candidate_kind = word | phrase | idiom | collocation | specialist_term | expression | body_part | disease | profession | medication | other
@@ -768,14 +826,14 @@ Return this exact structure:
 {{
   "candidates": [
     {{
-      "type": "vocabulary",
+      "type": "{output_type_schema}",
       "target": "string",
+      {sentence_schema}
       "candidate_kind": "word | phrase | idiom | collocation | specialist_term | expression | body_part | disease | profession | medication | other",
       "source_section": "vocabulary_list | colloquial_expressions | reading_text | dialogue | table | highlighted_item | other",
-      "source_sentence": "optional exact source example/context",
       "reason": "short reason or source heading",
-      "source_type": "vocabulary_list | colloquial_expression | reading_text_collocation | dialogue_example | highlighted_item | table_row | expanded_variant",
-      "strategy": "vocabulary_candidate | vocabulary_with_source_sentence | expanded_vocabulary_variant",
+      "source_type": "vocabulary_list | colloquial_expression | reading_text_collocation | dialogue_example | highlighted_item | table_row | expanded_variant | provided_example",
+      "strategy": "vocabulary_candidate | vocabulary_with_source_sentence | expanded_vocabulary_variant | preserve_source_sentence",
       "needs_review": false,
       "confidence": "high | medium | low"
     }}
@@ -949,11 +1007,12 @@ Mode-specific rules:
 - Mixed: return vocabulary and grammar candidates, but preserve per-item type.
 
 Vocabulary image contract:
-- In Vocabulary, Vocabulary + source examples, or Smart vocabulary mode, return vocabulary candidates only.
+- In Vocabulary mode, return type="vocabulary" only. Do not return provided_example or grammar.
+- In Vocabulary + source examples mode, return type="vocabulary" only, but attach source_sentence when a clear visible example belongs to that expression.
+- In Smart vocabulary mode, you may return type="vocabulary" and type="provided_example". Use provided_example only for complete useful source sentences with a clear target; never return grammar in Smart vocabulary mode.
 - Extract all explicit list items from visible Vocabulario/Vocabulary/Léxico/Expresiones sections before extracting anything from prose.
 - Extract numbered idiom/expression headings as vocabulary/idiom candidates.
 - Split slash-separated word lists into separate candidates; preserve or expand slash alternatives inside fixed expressions.
-- Attach source_sentence only when a clear visible example belongs to that expression, but do not change the type to provided_example.
 - Skip footers, websites, emails, tutor IDs, page numbers, image filenames, questions and exercise instructions.
 
 Grammar rules:
