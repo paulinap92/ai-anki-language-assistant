@@ -725,6 +725,8 @@ Do not turn exercises/questions/tasks into provided examples.
 Source example rules:
 - For vocabulary candidates, put a clear source context sentence in source_sentence when useful.
 - For provided_example candidates, put the exact source sentence in sentence and the target phrase in target.
+- If a useful context sentence contains blanks/underscores and the missing answer is obvious, return the completed clean sentence, set strategy="completed_gap_source_sentence", needs_review=true, and mention the filled gap in reason.
+- If the gap is not obvious, do not use the incomplete sentence as sentence/source_sentence.
 - Do not invent examples during extraction. Final Batch generation can create examples later.
 """
         output_type_schema = "vocabulary | provided_example"
@@ -746,6 +748,8 @@ Source example rules:
 - If a clear source sentence from the material contains the exact target or a normal inflected form, put it in source_sentence.
 - If no clear source sentence exists, leave source_sentence empty.
 - For dialogues under idioms/expressions, attach the best short source sentence that demonstrates the idiom.
+- If the only available context is a gap-fill sentence with blanks/underscores and the missing word is obvious, return the completed clean sentence in source_sentence, set strategy="completed_gap_source_sentence", needs_review=true, and mention the filled gap in reason.
+- If the gap is not obvious, do not use that sentence as source_sentence; leave source_sentence empty or return it only as source_rule/reason for review.
 - Do not invent examples during extraction. Final Batch generation can create examples later.
 """
         output_type_schema = "vocabulary"
@@ -788,18 +792,24 @@ ALLOWED OUTPUT TYPES
 
 {mode_contract}
 
-Your job is recall, not top-N selection:
-- Do NOT choose only the best 30 items.
-- Extract every explicit vocabulary item from lesson vocabulary lists.
-- Extract every explicit idiom/expression from expression sections.
-- Do not silently drop items because there are more than 35.
-- If the source is extremely long, prioritize explicit vocabulary/expression sections before optional reading-text collocations.
+Your job is controlled recall, not runaway word mining:
+- Do NOT choose only the best 30 items from explicit lesson vocabulary lists.
+- Extract every explicit vocabulary item from clearly marked lesson vocabulary lists when they are present.
+- Extract every explicit idiom/expression from clearly marked expression sections when they are present.
+- Do NOT extract every possible word from continuous prose.
+- Do NOT create one candidate for every noun, verb, adjective, symptom, body part, or repeated word in ordinary paragraphs.
+- If the source contains explicit vocabulary/expression sections, process those sections first and keep reading-text mining minimal.
+- If the source is mostly continuous prose, return only high-value reusable items: idioms, collocations, specialist terms, and lesson-relevant phrases.
+- Hard output budgets: Vocabulary <= 300, Vocabulary + source examples <= 250, Smart vocabulary <= 180.
+- For continuous prose without explicit vocabulary lists, keep Vocabulary + source examples <= 60 and Smart vocabulary <= 80.
+- If there are more possible items than the budget, prioritize explicit list items, idioms, collocations, and repeated lesson-relevant expressions.
 
 Priority order:
 1. Extract every explicit bullet/list item under headings such as Vocabulario, Vocabulary, Léxico, Lexique, Wortschatz, Expresiones, Expresiones coloquiales, Idioms, Expressions.
 2. Extract every numbered idiom/expression heading from expression sections.
-3. Extract useful collocations from reading text only after explicit lists and expression headings are complete.
+3. Extract a small, selective set of useful collocations from reading text only after explicit lists and expression headings are complete.
 4. Skip exercises, questions, tasks, page footers, emails, websites, image filenames, copyright/footer text, tutor IDs, and page numbers.
+5. When in doubt, prefer fewer high-quality reusable candidates over a massive list.
 
 Slash and parenthesis rules:
 - If a slash-separated item is a list of separate words, split it into separate vocabulary candidates.
@@ -980,7 +990,9 @@ Important:
 - Do NOT generate final Anki cards.
 - Do NOT translate unless translation is explicitly present in the source.
 - Return candidate drafts only. The app will review/edit/send them to Batch later.
-- Keep at most {max_candidates} candidates.
+- Keep at most {max_candidates} candidates unless the source is a clearly marked vocabulary list; even then do not exceed the app safety budget.
+- Do NOT extract every word from continuous prose. For ordinary paragraphs, return only high-value lesson vocabulary, idioms, collocations, and clearly marked/highlighted items.
+- If the page has explicit lists/tables, extract those first. If it is mostly prose, be selective.
 
 Table-aware rules:
 - If the page contains a table, preserve row relationships. Never mix cells from different rows.

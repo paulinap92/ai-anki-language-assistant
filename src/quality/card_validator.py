@@ -294,10 +294,16 @@ def _check_example_uses_target_item(card: VocabularyCard, warnings: list[str], *
     hits = [anchor for anchor in anchors if _anchor_hits_example(anchor, example_tokens, example_norm)]
 
     if not hits:
-        warnings.append(
-            "HARD: example does not use the target word/phrase or a valid-looking inflected form; "
-            "do not replace the target with a synonym, typo, or visually similar word."
-        )
+        if _looks_like_pattern_target(target):
+            warnings.append(
+                "SOFT: pattern target was not found by the local exact matcher; "
+                "verify that the example uses a valid inflected form of the pattern."
+            )
+        else:
+            warnings.append(
+                "HARD: example does not use the target word/phrase or a valid-looking inflected form; "
+                "do not replace the target with a synonym, typo, or visually similar word."
+            )
         return
 
     # Multi-word expressions can be discontinuous or inflected. Anchor variants
@@ -314,6 +320,24 @@ def _check_example_uses_target_item(card: VocabularyCard, warnings: list[str], *
             "SOFT: example only partially matches the target phrase; check that it teaches the requested expression."
         )
 
+
+
+
+def _looks_like_pattern_target(target: str) -> bool:
+    """Return True for lexical/grammar patterns with placeholders.
+
+    Examples: ``pensar en (alguien/algo)``, ``encargarse de algo``,
+    ``acordarse de alguien``. These should not receive a HARD exact-match
+    warning merely because the example uses an inflected form such as
+    ``pienso en``.
+    """
+    text = _normalize_letters(str(target or "")).casefold()
+    if not text:
+        return False
+    if any(marker in text for marker in ("(", ")", "alguien", "algo", "someone", "something", "sb", "sth")):
+        return True
+    # Short verb/preposition patterns without a concrete object.
+    return bool(re.search(r"\b[a-záéíóúüñ]{3,}\s+(?:a|de|en|con|por|para|sobre)\s+(?:alguien|algo|someone|something)\b", text))
 
 def _target_anchors(target: str) -> list[str]:
     text = _prepare_lexical_text(target)

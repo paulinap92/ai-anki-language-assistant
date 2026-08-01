@@ -48,6 +48,21 @@ BATCH_MODES = ["Vocabulary", "Grammar", "Mixed", "Provided examples"]
 OCR_EXTRACTION_MODES = ["Provided examples", "Vocabulary", "Vocabulary + source examples", "Smart vocabulary", "Grammar", "Smart grammar import", "Mixed"]
 OCR_IMPORT_METHODS = ["Local extraction (free)", "Mistral OCR (cloud text only)", "OpenAI multimodal import", "Gemini multimodal import"]
 
+# Safety caps for AI candidate extraction. Prompting helps, but providers can
+# still over-extract from long continuous prose. These caps protect Tkinter from
+# trying to render thousands of candidate cards and protect the user from
+# accidentally sending runaway outputs to Batch.
+OCR_AI_CANDIDATE_HARD_LIMITS = {
+    "vocabulary": 300,
+    "vocabulary + source examples": 250,
+    "smart vocabulary": 180,
+    "provided examples": 160,
+    "grammar": 140,
+    "smart grammar import": 140,
+    "mixed": 180,
+}
+OCR_CANDIDATE_AUTOSELECT_LIMIT = 120
+
 TOPIC_PRESETS = [
     "",
     "character / personality traits",
@@ -2153,9 +2168,15 @@ class ModernVocabularyGui:
         # showing duplicate candidates.
         items = self._merge_ocr_grammar_candidate_items(items)
         self._ocr_candidate_items = items
-        self._ocr_candidate_vars = [ctk.BooleanVar(value=True) for _ in items]
+        auto_select = len(items) <= OCR_CANDIDATE_AUTOSELECT_LIMIT
+        self._ocr_candidate_vars = [ctk.BooleanVar(value=auto_select) for _ in items]
         self._render_ocr_candidate_cards()
         self._update_ocr_candidate_status()
+        if items and not auto_select:
+            self._ocr_candidate_status_var.set(
+                f"Extracted {len(items)} candidate draft(s). Large import: nothing selected by default. "
+                "Review, then use Select all or select only the useful items."
+            )
 
     def _make_ocr_candidate_item(
         self,
@@ -2900,6 +2921,12 @@ class ModernVocabularyGui:
             if target and sentence:
                 return f"grammar | {target} | {sentence}"
             return f"grammar | {target or sentence}"
+        if target and sentence:
+            # Vocabulary + source examples must keep the source sentence when
+            # candidates are serialized/reparsed. Older versions returned only
+            # the target here, so Batch later regenerated a new example and
+            # wasted a provider call.
+            return f"{label} | {target} | {sentence}"
         return f"{label} | {target or sentence}"
 
     def _ocr_append_candidate(self, candidate_type: str, target: str = "", sentence: str = "") -> None:
@@ -2924,6 +2951,49 @@ class ModernVocabularyGui:
         if selected:
             return selected, "selection"
         return self._get_ocr_text(), "all text"
+
+    @staticmethod
+    def _ocr_candidate_hard_limit(mode: str) -> int:
+        """Return the maximum AI candidates allowed before refusing to render.
+
+        Explicit vocabulary lists can be legitimately large, but continuous
+        prose should never become hundreds or thousands of cards. This is a
+        runtime safety net independent of prompt wording.
+        """
+        key = (mode or "").strip().casefold()
+        return OCR_AI_CANDIDATE_HARD_LIMITS.get(key, 180)
+
+    @staticmethod
+    def _count_ai_json_candidates(raw_text: str) -> int | None:
+        """Count JSON candidates without fully rendering them.
+
+        Returns None when the provider did not return parseable JSON. The
+        caller still runs the normal parser fallback, which has its own cap.
+        """
+        try:
+            cleaned = ModernVocabularyGui._ocr_clean_json_text(raw_text)
+            data = json.loads(cleaned)
+            candidates = data.get("candidates", data) if isinstance(data, dict) else data
+            if isinstance(candidates, list):
+                return len(candidates)
+        except Exception:
+            return None
+        return None
+
+    def _reject_runaway_ai_candidates(self, count: int, limit: int, mode: str, source: str) -> None:
+        """Refuse a runaway AI extraction result before it breaks the UI."""
+        message = (
+            f"AI returned {count} candidate draft(s), above the safety limit of {limit} for {mode}. "
+            "Nothing was imported. Use a smaller selected section, explicit Vocabulary mode, or split the lesson."
+        )
+        self._ocr_status_var.set("Large extraction blocked to protect the UI.")
+        self._ocr_candidate_status_var.set(message)
+        LOGGER.warning("Blocked runaway OCR candidate extraction: count=%s limit=%s mode=%s source=%s", count, limit, mode, source)
+        try:
+            messagebox.showwarning("Large extraction blocked", message)
+        except Exception:
+            pass
+        self._record_activity(f"OCR candidate extraction blocked: {count}>{limit}")
 
     def _add_ocr_candidate_items(self, items: list[dict[str, str]]) -> int:
         """Append new candidates while avoiding exact duplicates."""
@@ -3391,9 +3461,17 @@ class ModernVocabularyGui:
                 provider=provider,
                 prompt=prompt,
             )
+            raw_count = self._count_ai_json_candidates(raw_text)
+            hard_limit = self._ocr_candidate_hard_limit(mode)
+            if raw_count is not None and raw_count > hard_limit:
+                self._reject_runaway_ai_candidates(raw_count, hard_limit, mode, f"{provider} multimodal")
+                return
             items = self._ocr_candidate_items_from_ai_response(
                 raw_text, default_mode=mode, source=f"{provider} multimodal"
             )
+            if len(items) > hard_limit:
+                self._reject_runaway_ai_candidates(len(items), hard_limit, mode, f"{provider} multimodal")
+                return
         except OcrExtractionError as exc:
             LOGGER.exception("Multimodal import failed")
             self._ocr_status_var.set(f"{provider} multimodal import failed.")
@@ -3421,16 +3499,12 @@ class ModernVocabularyGui:
             return
 
         total = len(items)
-        max_render = 80
-        if total > max_render:
-            items = items[:max_render]
-            self._ocr_status_var.set(f"{provider} returned {total} candidates; rendering first {max_render}.")
-        else:
-            self._ocr_status_var.set(f"{provider} multimodal extracted {total} candidate draft(s).")
+        self._ocr_status_var.set(f"{provider} multimodal extracted {total} candidate draft(s).")
         self._set_ocr_text(self._ocr_review_text_from_candidate_items(items, provider=provider))
         self._set_ocr_candidate_items(items)
+        selected_note = "selected by default" if total <= OCR_CANDIDATE_AUTOSELECT_LIMIT else "not selected by default"
         self._ocr_candidate_status_var.set(
-            f"{provider} multimodal found {total} candidate draft(s); showing {len(items)}. Review/cherry-pick before Batch."
+            f"{provider} multimodal found {total} candidate draft(s); all visible, {selected_note}. Review/cherry-pick before Batch."
         )
         self._record_activity(f"{provider} multimodal import candidates: {len(items)}")
 
@@ -3523,7 +3597,15 @@ class ModernVocabularyGui:
                 messagebox.showerror("Import Material", f"{provider_name} client does not expose text generation.")
                 return
             raw_text = generate_text(prompt)
+            raw_count = self._count_ai_json_candidates(raw_text)
+            hard_limit = self._ocr_candidate_hard_limit(mode)
+            if raw_count is not None and raw_count > hard_limit:
+                self._reject_runaway_ai_candidates(raw_count, hard_limit, mode, source)
+                return
             items = self._ocr_candidate_items_from_ai_response(raw_text, default_mode=mode, source=source)
+            if len(items) > hard_limit:
+                self._reject_runaway_ai_candidates(len(items), hard_limit, mode, source)
+                return
         except Exception as exc:
             LOGGER.exception("Candidate extraction failed")
             self._ocr_candidate_status_var.set("Candidate extraction failed.")
@@ -4056,11 +4138,22 @@ class ModernVocabularyGui:
                     if sentence and self._looks_like_complete_sentence(sentence):
                         item_extra["provided_sentence"] = sentence
             else:
-                word = target or sentence
-                batch_mode = "Vocabulary"
                 if sentence and target:
+                    # Vocabulary + source examples / Smart Vocabulary may keep a
+                    # real source sentence without changing the visible candidate
+                    # type in Import Material. Once the user sends it to Batch,
+                    # however, this must be generated with the sentence-based
+                    # prompt so the provider preserves the example instead of
+                    # spending tokens inventing a new one.
+                    word = f"{target} | {sentence}"
+                    batch_mode = "Provided examples"
+                    item_extra["provided_target"] = target
+                    item_extra["provided_sentence"] = sentence
                     item_extra["source_sentence"] = sentence
-                    item_extra.setdefault("source_reason", reason_meta or "Vocabulary source example kept as context, not Provided Examples mode.")
+                    item_extra.setdefault("source_reason", reason_meta or "Vocabulary source example routed to sentence-based Batch to preserve the imported example.")
+                else:
+                    word = target or sentence
+                    batch_mode = "Vocabulary"
             word = word.strip()
             if not word:
                 continue
@@ -5770,10 +5863,10 @@ class ModernVocabularyGui:
         """
         mode = str(item.get("resolved_mode") or item.get("batch_mode") or "").strip()
         raw_word = str(item.get("word") or "").strip()
+        provided_target = str(item.get("provided_target") or "").strip()
+        if provided_target:
+            return provided_target
         if mode == "Provided examples":
-            provided_target = str(item.get("provided_target") or "").strip()
-            if provided_target:
-                return provided_target
             parsed_target, _provided_sentence = self._parse_provided_example_item(raw_word)
             if parsed_target:
                 item["provided_target"] = parsed_target
