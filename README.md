@@ -7,13 +7,14 @@ The app is built around a human-in-the-loop process: AI drafts the learning cont
 ## What it does
 
 - Generates vocabulary and grammar cards with Gemini, OpenAI or Claude.
-- Imports text, images and PDFs through OCR/import workflows.
+- Imports text, images and PDFs through explicit OCR/import workflows.
 - Extracts candidate vocabulary, grammar structures and example sentences from learning material.
 - Supports Batch / Queue review before adding cards to Anki.
 - Exports reviewed cards to Anki through AnkiConnect.
-- Supports example audio / TTS and existing-card audio backfill.
+- Supports example audio / TTS and existing-card audio backfill, including hidden Anki metadata for TTS provider/model/voice/source tracking.
 - Supports a small local Whisper STT trial for Conversation Practice.
 - Tracks optional LangSmith / LLMOps quality metadata for generation, validation, review, audio and Anki outcomes.
+- Keeps Import Material actions explicit: loading a screenshot/image/PDF stages it only; OCR/import runs only after the user clicks the chosen action. Vision OCR returns text only; candidate extraction is a separate review step.
 
 ## Main workflow
 
@@ -94,7 +95,7 @@ The app can use different providers for different jobs.
 | Provider type | Examples | Used for |
 |---|---|---|
 | Card AI provider | Gemini, OpenAI, Claude | Vocabulary, grammar, conversation, candidate extraction. |
-| OCR provider | Local Tesseract, Mistral OCR | Image/PDF/text extraction. |
+| OCR provider | Local Tesseract, Mistral OCR, OpenAI/Gemini Vision OCR | Image/PDF/text extraction only. Vision OCR does not create candidates directly. |
 | Audio provider | ElevenLabs, OpenAI TTS, Gemini TTS, Piper local | Example audio and audio repair. |
 | STT provider | Local Whisper / faster-whisper | Conversation speech-to-text trial. |
 

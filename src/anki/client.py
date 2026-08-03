@@ -10,7 +10,11 @@ from typing import Any
 
 import requests
 
-from src.anki.field_builder import GrammarFieldBuilder, VocabularyFieldBuilder
+from src.anki.field_builder import (
+    AUDIO_METADATA_FIELD_NAMES,
+    GrammarFieldBuilder,
+    VocabularyFieldBuilder,
+)
 from src.anki.templates import (
     BACK_TEMPLATE,
     CARD_CSS,
@@ -174,7 +178,13 @@ class AnkiClient:
         ) or []
         return len(old_cards)
 
-    def add_card(self, card: VocabularyCard, provider_name: str, extra_tags: list[str] | None = None) -> None:
+    def add_card(
+        self,
+        card: VocabularyCard,
+        provider_name: str,
+        extra_tags: list[str] | None = None,
+        audio_metadata: dict[str, str] | None = None,
+    ) -> None:
         """Add one vocabulary card to the active Anki deck.
 
         Args:
@@ -189,7 +199,7 @@ class AnkiClient:
         note = {
             "deckName": self._deck_name,
             "modelName": MODEL_NAME,
-            "fields": VocabularyFieldBuilder.build_fields(card),
+            "fields": VocabularyFieldBuilder.build_fields(card, audio_metadata),
             "options": {"allowDuplicate": False},
             "tags": [
                 "ai_vocabulary",
@@ -211,14 +221,20 @@ class AnkiClient:
         if result is None:
             raise ValueError(f"Could not add card: {card.word_or_phrase}")
 
-    def add_grammar_card(self, card: GrammarAnalysis, provider_name: str, extra_tags: list[str] | None = None) -> None:
+    def add_grammar_card(
+        self,
+        card: GrammarAnalysis,
+        provider_name: str,
+        extra_tags: list[str] | None = None,
+        audio_metadata: dict[str, str] | None = None,
+    ) -> None:
         """Add one sentence-first grammar card to the active Anki deck."""
         self.ensure_grammar_model_exists()
         language_tag = get_language_tag(card.target_language)
         note = {
             "deckName": self._deck_name,
             "modelName": GRAMMAR_MODEL_NAME,
-            "fields": GrammarFieldBuilder.build_fields(card),
+            "fields": GrammarFieldBuilder.build_fields(card, audio_metadata),
             # Grammar cards are sentence-first. We do an exact Sentence-field
             # duplicate precheck below, then allow Anki to add the note so
             # repeated grammar structures with different sentences are not
@@ -312,7 +328,11 @@ class AnkiClient:
         return result
 
     def add_card_without_duplicate_scan(
-        self, card: VocabularyCard, provider_name: str, extra_tags: list[str] | None = None
+        self,
+        card: VocabularyCard,
+        provider_name: str,
+        extra_tags: list[str] | None = None,
+        audio_metadata: dict[str, str] | None = None,
     ) -> None:
         """Add one vocabulary card without an extra exact-match deck scan."""
         self.ensure_vocabulary_model_exists()
@@ -320,7 +340,7 @@ class AnkiClient:
         note = {
             "deckName": self._deck_name,
             "modelName": MODEL_NAME,
-            "fields": VocabularyFieldBuilder.build_fields(card),
+            "fields": VocabularyFieldBuilder.build_fields(card, audio_metadata),
             "options": {"allowDuplicate": False},
             "tags": [
                 "ai_vocabulary",
@@ -335,15 +355,18 @@ class AnkiClient:
             raise ValueError(f"Could not add card: {card.word_or_phrase}")
 
     def update_card_by_note_id(
-        self, note_id: int, card: VocabularyCard, provider_name: str, extra_tags: list[str] | None = None
+        self,
+        note_id: int,
+        card: VocabularyCard,
+        provider_name: str,
+        extra_tags: list[str] | None = None,
+        audio_metadata: dict[str, str] | None = None,
     ) -> int:
         """Replace fields of an existing vocabulary note by known note ID."""
         self.ensure_vocabulary_model_exists()
-        fields = VocabularyFieldBuilder.build_fields(card)
-        if not fields.get("Audio"):
-            existing = self._invoke(action="notesInfo", params={"notes": [note_id]}) or []
-            if existing:
-                fields["Audio"] = (existing[0].get("fields", {}).get("Audio", {}) or {}).get("value", "")
+        fields = VocabularyFieldBuilder.build_fields(card, audio_metadata)
+        if audio_metadata is None:
+            self._preserve_existing_audio_data(note_id, fields, audio_field_names=("Audio",))
         self._invoke(
             action="updateNoteFields",
             params={"note": {"id": note_id, "fields": fields}},
@@ -357,17 +380,21 @@ class AnkiClient:
         )
         return note_id
 
-    def update_card(self, card: VocabularyCard, provider_name: str, extra_tags: list[str] | None = None) -> int:
+    def update_card(
+        self,
+        card: VocabularyCard,
+        provider_name: str,
+        extra_tags: list[str] | None = None,
+        audio_metadata: dict[str, str] | None = None,
+    ) -> int:
         """Replace fields of an existing vocabulary note and return its ID."""
         self.ensure_vocabulary_model_exists()
         note_id = self.find_existing_vocabulary_note_id(card.word_or_phrase)
         if note_id is None:
             raise ValueError(f"No existing card found for: {card.word_or_phrase}")
-        fields = VocabularyFieldBuilder.build_fields(card)
-        if not fields.get("Audio"):
-            existing = self._invoke(action="notesInfo", params={"notes": [note_id]}) or []
-            if existing:
-                fields["Audio"] = (existing[0].get("fields", {}).get("Audio", {}) or {}).get("value", "")
+        fields = VocabularyFieldBuilder.build_fields(card, audio_metadata)
+        if audio_metadata is None:
+            self._preserve_existing_audio_data(note_id, fields, audio_field_names=("Audio",))
         self._invoke(
             action="updateNoteFields",
             params={"note": {"id": note_id, "fields": fields}},
@@ -381,7 +408,13 @@ class AnkiClient:
         )
         return note_id
 
-    def update_grammar_card(self, card: GrammarAnalysis, provider_name: str, extra_tags: list[str] | None = None) -> int:
+    def update_grammar_card(
+        self,
+        card: GrammarAnalysis,
+        provider_name: str,
+        extra_tags: list[str] | None = None,
+        audio_metadata: dict[str, str] | None = None,
+    ) -> int:
         """Replace fields of an existing grammar note and return its ID."""
         self.ensure_grammar_model_exists()
         note_id = self.find_existing_grammar_note_id(card.sentence)
@@ -392,7 +425,7 @@ class AnkiClient:
             params={
                 "note": {
                     "id": note_id,
-                    "fields": GrammarFieldBuilder.build_fields(card),
+                    "fields": self._grammar_fields_for_update(note_id, card, audio_metadata),
                 }
             },
         )
@@ -404,6 +437,49 @@ class AnkiClient:
             },
         )
         return note_id
+
+    def _grammar_fields_for_update(
+        self,
+        note_id: int,
+        card: GrammarAnalysis,
+        audio_metadata: dict[str, str] | None = None,
+    ) -> dict[str, str]:
+        """Build grammar fields while preserving existing audio metadata on non-audio updates."""
+        fields = GrammarFieldBuilder.build_fields(card, audio_metadata)
+        if audio_metadata is None:
+            self._preserve_existing_audio_data(note_id, fields, audio_field_names=("Audio", "ExampleAudio"))
+        return fields
+
+    def _preserve_existing_audio_data(
+        self,
+        note_id: int,
+        fields: dict[str, str],
+        audio_field_names: tuple[str, ...] = ("Audio",),
+    ) -> None:
+        """Keep existing sound references and hidden TTS metadata during text-only updates."""
+        existing = self._invoke(action="notesInfo", params={"notes": [note_id]}) or []
+        if not existing:
+            return
+        existing_fields = existing[0].get("fields", {}) or {}
+        for field_name in (*audio_field_names, *AUDIO_METADATA_FIELD_NAMES):
+            if fields.get(field_name):
+                continue
+            value = (existing_fields.get(field_name, {}) or {}).get("value", "")
+            if value:
+                fields[field_name] = value
+
+    def _filter_existing_note_fields(self, note_id: int, fields: dict[str, str]) -> dict[str, str]:
+        """Keep only fields exposed by a specific note type.
+
+        Existing-card audio repair can target arbitrary legacy/user note types.
+        Those notes usually do not have our hidden AudioProvider/AudioModel fields,
+        so metadata is written only when the note type supports it.
+        """
+        notes = self._invoke(action="notesInfo", params={"notes": [note_id]}) or []
+        if not notes:
+            return fields
+        existing_names = set((notes[0].get("fields") or {}).keys())
+        return {name: value for name, value in fields.items() if name in existing_names}
 
     def store_media_file(self, file_path: Path) -> str:
         """Copy a local audio file into Anki media and return its media filename."""
@@ -486,21 +562,30 @@ class AnkiClient:
         )
 
     def attach_audio_to_note(
-        self, note_id: int, media_filename: str, field_name: str = "Audio"
+        self,
+        note_id: int,
+        media_filename: str,
+        field_name: str = "Audio",
+        audio_metadata: dict[str, str] | None = None,
     ) -> None:
-        """Set an Anki sound reference on an existing note audio field."""
+        """Set an Anki sound reference and hidden TTS metadata on an existing note."""
+        target_field = field_name or "Audio"
+        fields = {target_field: f"[sound:{media_filename}]"}
+        fields.update(VocabularyFieldBuilder.audio_metadata_fields(audio_metadata))
+        fields = self._filter_existing_note_fields(note_id, fields)
+        if target_field not in fields:
+            raise ValueError(f"Field '{target_field}' does not exist on note {note_id}.")
         self._invoke(
             action="updateNoteFields",
-            params={
-                "note": {
-                    "id": note_id,
-                    "fields": {field_name or "Audio": f"[sound:{media_filename}]"},
-                }
-            },
+            params={"note": {"id": note_id, "fields": fields}},
         )
 
     def append_audio_to_note(
-        self, note_id: int, media_filename: str, field_name: str
+        self,
+        note_id: int,
+        media_filename: str,
+        field_name: str,
+        audio_metadata: dict[str, str] | None = None,
     ) -> None:
         """Append an Anki sound reference to an existing text field.
 
@@ -523,9 +608,12 @@ class AnkiClient:
             updated_value = f"{current_value}<br>{sound}"
         else:
             updated_value = sound
+        update_fields = {field_name: updated_value}
+        update_fields.update(VocabularyFieldBuilder.audio_metadata_fields(audio_metadata))
+        update_fields = self._filter_existing_note_fields(note_id, update_fields)
         self._invoke(
             action="updateNoteFields",
-            params={"note": {"id": note_id, "fields": {field_name: updated_value}}},
+            params={"note": {"id": note_id, "fields": update_fields}},
         )
 
     def _summarise_note(self, note: dict[str, Any]) -> dict[str, Any]:
@@ -558,6 +646,15 @@ class AnkiClient:
             "language": self._plain_field_value(field_values.get("Language", "")),
             "audio": audio_value,
             "audio_status": audio_status,
+            "audio_provider": self._plain_field_value(field_values.get("AudioProvider", "")),
+            "audio_model": self._plain_field_value(field_values.get("AudioModel", "")),
+            "audio_voice": self._plain_field_value(field_values.get("AudioVoice", "")),
+            "audio_voice_label": self._plain_field_value(field_values.get("AudioVoiceLabel", "")),
+            "audio_source_text": self._plain_field_value(field_values.get("AudioSourceText", "")),
+            "audio_generated_at": self._plain_field_value(field_values.get("AudioGeneratedAt", "")),
+            "audio_cache_key": self._plain_field_value(field_values.get("AudioCacheKey", "")),
+            "audio_cached": self._plain_field_value(field_values.get("AudioCached", "")),
+            "audio_file": self._plain_field_value(field_values.get("AudioFile", "")),
         }
 
     @classmethod

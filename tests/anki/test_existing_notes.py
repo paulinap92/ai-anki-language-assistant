@@ -215,3 +215,120 @@ def test_grammar_field_builder_includes_audio_fields() -> None:
 
     assert fields["Audio"] == "[sound:test.mp3]"
     assert fields["ExampleAudio"] == "[sound:test.mp3]"
+
+
+def test_vocabulary_field_builder_includes_hidden_audio_metadata() -> None:
+    from src.anki.field_builder import VocabularyFieldBuilder
+    from src.domain.models import VocabularyCard
+
+    card = VocabularyCard(
+        word_or_phrase="short fuse",
+        target_language="English",
+        part_of_speech="idiom",
+        definition="To become angry quickly.",
+        translation="łatwo się denerwować",
+        example="He has a short fuse when he is tired.",
+        example_translation="Łatwo się denerwuje, kiedy jest zmęczony.",
+        synonyms=[],
+        collocations=[],
+        grammar_note="",
+        audio="[sound:short_fuse.mp3]",
+    )
+
+    fields = VocabularyFieldBuilder.build_fields(
+        card,
+        {
+            "AudioProvider": "OpenAI",
+            "AudioModel": "gpt-4o-mini-tts",
+            "AudioVoice": "coral",
+            "AudioVoiceLabel": "Coral",
+            "AudioSourceText": "He has a short fuse when he is tired.",
+            "AudioGeneratedAt": "2026-08-03T10:48:00",
+            "AudioCacheKey": "anki_tts_abc",
+            "AudioCached": "false",
+            "AudioFile": "short_fuse.mp3",
+        },
+    )
+
+    assert fields["Audio"] == "[sound:short_fuse.mp3]"
+    assert fields["AudioProvider"] == "OpenAI"
+    assert fields["AudioModel"] == "gpt-4o-mini-tts"
+    assert fields["AudioVoice"] == "coral"
+    assert fields["AudioVoiceLabel"] == "Coral"
+    assert fields["AudioSourceText"] == "He has a short fuse when he is tired."
+    assert fields["AudioCacheKey"] == "anki_tts_abc"
+    assert fields["AudioCached"] == "false"
+    assert fields["AudioFile"] == "short_fuse.mp3"
+
+
+def test_attach_audio_to_note_writes_metadata_only_when_fields_exist() -> None:
+    class FakeAnkiClient(AnkiClient):
+        def __init__(self) -> None:
+            super().__init__("http://localhost:8765", "Deck")
+            self.updated_fields = None
+
+        def _invoke(self, action, params=None):  # type: ignore[override]
+            if action == "notesInfo":
+                return [
+                    {
+                        "fields": {
+                            "Audio": {"value": ""},
+                            "AudioProvider": {"value": ""},
+                            "AudioModel": {"value": ""},
+                            "AudioVoice": {"value": ""},
+                        }
+                    }
+                ]
+            if action == "updateNoteFields":
+                self.updated_fields = params["note"]["fields"]
+                return None
+            return None
+
+    client = FakeAnkiClient()
+
+    client.attach_audio_to_note(
+        123,
+        "short_fuse.mp3",
+        "Audio",
+        audio_metadata={
+            "AudioProvider": "OpenAI",
+            "AudioModel": "gpt-4o-mini-tts",
+            "AudioVoice": "coral",
+            "AudioVoiceLabel": "Coral",
+        },
+    )
+
+    assert client.updated_fields == {
+        "Audio": "[sound:short_fuse.mp3]",
+        "AudioProvider": "OpenAI",
+        "AudioModel": "gpt-4o-mini-tts",
+        "AudioVoice": "coral",
+    }
+
+
+def test_summarise_note_exposes_audio_metadata_for_preview() -> None:
+    client = AnkiClient("http://localhost:8765", "Deck")
+    note = {
+        "noteId": 987,
+        "modelName": "AI Vocabulary Light Card",
+        "tags": [],
+        "fields": {
+            "Word": {"value": "short fuse"},
+            "Example": {"value": "He has a short fuse when he is tired."},
+            "Audio": {"value": "[sound:short_fuse.mp3]"},
+            "AudioProvider": {"value": "OpenAI"},
+            "AudioModel": {"value": "gpt-4o-mini-tts"},
+            "AudioVoice": {"value": "coral"},
+            "AudioVoiceLabel": {"value": "Coral"},
+            "AudioGeneratedAt": {"value": "2026-08-03T10:48:00"},
+        },
+    }
+
+    summary = client._summarise_note(note)
+
+    assert summary["audio_status"] == "has_audio"
+    assert summary["audio_provider"] == "OpenAI"
+    assert summary["audio_model"] == "gpt-4o-mini-tts"
+    assert summary["audio_voice"] == "coral"
+    assert summary["audio_voice_label"] == "Coral"
+    assert summary["audio_generated_at"] == "2026-08-03T10:48:00"

@@ -1,4 +1,19 @@
 
+## v11.5.11 — Separate Vision OCR from Image Candidate Extraction
+
+- OpenAI/Gemini Vision OCR now transcribes image/PDF material into the reviewed text box only.
+- Vision OCR no longer creates candidate drafts, Batch rows, grammar analyses or direct imports.
+- Added a strict multimodal OCR prompt that preserves visible text, headings, bullets and tables while forbidding JSON/candidate generation.
+- Candidate extraction remains a separate explicit `Find candidates with selected strategy` step after the user reviews/cleans OCR text.
+- Direct image-to-candidate extraction is kept as an advanced compatibility helper, but it is no longer the normal OCR button path.
+
+## v11.5.10 — UI and Import Interaction Fixes
+
+- Screenshot/image staging is now passive; loading or pasting a screenshot no longer auto-runs OCR or multimodal import.
+- Import Material text/candidate panels and Batch preview reset scroll position after repeated actions so new results are visible immediately.
+- Added a Batch `Remove item` action with debounced autosave for faster repeated deletes.
+- Status messages now distinguish loaded/staged sources from explicit OCR/API calls.
+
 ## v11.5.9 — Workflow-specific model selection
 
 - Added workflow-specific model roles for card generation, Import/OCR extraction, multimodal import, and review/fix workflows.
@@ -19,6 +34,10 @@
 This file keeps version history out of the main README. Detailed notes live in `releases/`.
 
 ## Current project line
+
+### v11.5.12 — Audio Metadata Fields
+
+Stored hidden TTS provider/model/voice/source metadata on Anki notes for new audio generation, Fix Cards audio repair and existing-card audio backfill.
 
 ### v11.3.3 — LLMOps Audio, Import and Review Traces
 

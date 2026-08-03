@@ -1,8 +1,8 @@
-"""Multimodal import extraction for screenshots/book photos/table images.
+"""Multimodal OCR/import helpers for screenshots/book photos/table images.
 
-This module is intentionally separate from normal card generation. It asks a
-vision-capable model to extract structured candidate rows from an image/PDF page
-and returns JSON text that the Import Material candidate parser can review.
+The default UI path uses vision models for OCR only: image/PDF -> transcribed
+text in the Import Material text box. Direct image-to-candidate extraction is
+kept as an advanced compatibility helper, but it is not the normal OCR flow.
 """
 
 from __future__ import annotations
@@ -62,7 +62,7 @@ def _render_pdf_pages_to_png(path: Path, *, max_pages: int = 5) -> list[Path]:
         import fitz  # type: ignore[import-not-found]
     except ImportError as exc:
         raise OcrExtractionError(
-            "PDF multimodal import needs PyMuPDF installed. Install PyMuPDF or use Mistral OCR for PDFs."
+            "PDF multimodal OCR/import needs PyMuPDF installed. Install PyMuPDF or use Mistral OCR for PDFs."
         ) from exc
 
     temp_dir = Path(tempfile.mkdtemp(prefix="ai_anki_multimodal_pdf_"))
@@ -76,7 +76,7 @@ def _render_pdf_pages_to_png(path: Path, *, max_pages: int = 5) -> list[Path]:
             pixmap.save(str(out_path))
             output_paths.append(out_path)
     except Exception as exc:
-        raise OcrExtractionError(f"Could not render PDF for multimodal import: {path.name}: {exc}") from exc
+        raise OcrExtractionError(f"Could not render PDF for multimodal OCR/import: {path.name}: {exc}") from exc
     return output_paths
 
 
@@ -93,22 +93,22 @@ def _image_paths_for_multimodal(paths: Iterable[str | Path], *, max_pdf_pages: i
             image_paths.extend(_render_pdf_pages_to_png(path, max_pages=max_pdf_pages))
         else:
             raise OcrExtractionError(
-                f"Multimodal import supports image/PDF files only; got {path.name}. Use Local extraction for TXT/HTML."
+                f"Multimodal OCR/import supports image/PDF files only; got {path.name}. Use Local extraction for TXT/HTML."
             )
     if not image_paths:
-        raise OcrExtractionError("No image/PDF pages available for multimodal import.")
+        raise OcrExtractionError("No image/PDF pages available for multimodal OCR/import.")
     return image_paths
 
 
 def _extract_with_openai(image_paths: list[Path], prompt: str, *, api_key: str | None, model: str | None) -> str:
     resolved_key = api_key or _clean_env_value(os.getenv("OPENAI_API_KEY"))
     if not resolved_key:
-        raise OcrExtractionError("OPENAI_API_KEY is missing. Add it to .env before using OpenAI multimodal import.")
+        raise OcrExtractionError("OPENAI_API_KEY is missing. Add it to .env before using OpenAI vision OCR/import.")
     resolved_model = model or _clean_env_value(os.getenv("OPENAI_MULTIMODAL_MODEL")) or _clean_env_value(os.getenv("OPENAI_MODEL")) or "gpt-4.1-mini"
     try:
         from openai import OpenAI  # type: ignore[import-not-found]
     except ImportError as exc:
-        raise OcrExtractionError("OpenAI multimodal import needs the openai package installed.") from exc
+        raise OcrExtractionError("OpenAI vision OCR/import needs the openai package installed.") from exc
 
     client = OpenAI(api_key=resolved_key)
     content: list[dict[str, object]] = [{"type": "input_text", "text": prompt}]
@@ -120,20 +120,20 @@ def _extract_with_openai(image_paths: list[Path], prompt: str, *, api_key: str |
             input=[{"role": "user", "content": content}],
         )
     except Exception as exc:
-        raise OcrExtractionError(f"OpenAI multimodal import failed: {exc}") from exc
+        raise OcrExtractionError(f"OpenAI vision OCR/import failed: {exc}") from exc
     return getattr(response, "output_text", "") or ""
 
 
 def _extract_with_gemini(image_paths: list[Path], prompt: str, *, api_key: str | None, model: str | None) -> str:
     resolved_key = api_key or _clean_env_value(os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY"))
     if not resolved_key:
-        raise OcrExtractionError("GEMINI_API_KEY is missing. Add it to .env before using Gemini multimodal import.")
+        raise OcrExtractionError("GEMINI_API_KEY is missing. Add it to .env before using Gemini vision OCR/import.")
     resolved_model = model or _clean_env_value(os.getenv("GEMINI_MULTIMODAL_MODEL")) or _clean_env_value(os.getenv("GEMINI_MODEL")) or "gemini-2.5-flash"
     try:
         from google import genai  # type: ignore[import-not-found]
         from google.genai import types  # type: ignore[import-not-found]
     except ImportError as exc:
-        raise OcrExtractionError("Gemini multimodal import needs the google-genai package installed.") from exc
+        raise OcrExtractionError("Gemini vision OCR/import needs the google-genai package installed.") from exc
 
     parts: list[object] = [prompt]
     for path in image_paths:
@@ -142,8 +142,51 @@ def _extract_with_gemini(image_paths: list[Path], prompt: str, *, api_key: str |
         client = genai.Client(api_key=resolved_key)
         response = client.models.generate_content(model=resolved_model, contents=parts)
     except Exception as exc:
-        raise OcrExtractionError(f"Gemini multimodal import failed: {exc}") from exc
+        raise OcrExtractionError(f"Gemini vision OCR/import failed: {exc}") from exc
     return getattr(response, "text", "") or ""
+
+
+def _run_multimodal_model(
+    paths: Iterable[str | Path],
+    *,
+    provider: str,
+    prompt: str,
+    api_key: str | None = None,
+    model: str | None = None,
+    max_pdf_pages: int = 5,
+) -> str:
+    """Run a vision-capable model over image/PDF pages with the supplied prompt."""
+    image_paths = _image_paths_for_multimodal(paths, max_pdf_pages=max_pdf_pages)
+    normalized_provider = (provider or "").strip().casefold()
+    if "openai" in normalized_provider or "chatgpt" in normalized_provider:
+        return _extract_with_openai(image_paths, prompt, api_key=api_key, model=model)
+    if "gemini" in normalized_provider or "google" in normalized_provider:
+        return _extract_with_gemini(image_paths, prompt, api_key=api_key, model=model)
+    raise OcrExtractionError(f"Unsupported multimodal OCR/import provider: {provider}")
+
+
+def extract_text_with_multimodal(
+    paths: Iterable[str | Path],
+    *,
+    provider: str,
+    prompt: str,
+    api_key: str | None = None,
+    model: str | None = None,
+    max_pdf_pages: int = 5,
+) -> str:
+    """Transcribe visible text from image/PDF material using a vision model.
+
+    This is OCR only. Callers should put the returned text into an editable text
+    box and require a separate explicit candidate-extraction action later.
+    """
+    return _run_multimodal_model(
+        paths,
+        provider=provider,
+        prompt=prompt,
+        api_key=api_key,
+        model=model,
+        max_pdf_pages=max_pdf_pages,
+    )
 
 
 def extract_candidates_with_multimodal(
@@ -155,11 +198,12 @@ def extract_candidates_with_multimodal(
     model: str | None = None,
     max_pdf_pages: int = 5,
 ) -> str:
-    """Extract structured candidate JSON from image/PDF material using a vision model."""
-    image_paths = _image_paths_for_multimodal(paths, max_pdf_pages=max_pdf_pages)
-    normalized_provider = (provider or "").strip().casefold()
-    if "openai" in normalized_provider or "chatgpt" in normalized_provider:
-        return _extract_with_openai(image_paths, prompt, api_key=api_key, model=model)
-    if "gemini" in normalized_provider or "google" in normalized_provider:
-        return _extract_with_gemini(image_paths, prompt, api_key=api_key, model=model)
-    raise OcrExtractionError(f"Unsupported multimodal import provider: {provider}")
+    """Advanced helper: extract structured candidate JSON directly from images/PDF pages."""
+    return _run_multimodal_model(
+        paths,
+        provider=provider,
+        prompt=prompt,
+        api_key=api_key,
+        model=model,
+        max_pdf_pages=max_pdf_pages,
+    )

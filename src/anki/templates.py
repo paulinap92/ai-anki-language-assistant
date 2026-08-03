@@ -7,6 +7,18 @@ layout evolve independently from AnkiConnect request logic.
 
 MODEL_NAME = "AI Vocabulary Light Card"
 
+AUDIO_METADATA_FIELDS = [
+    "AudioProvider",
+    "AudioModel",
+    "AudioVoice",
+    "AudioVoiceLabel",
+    "AudioSourceText",
+    "AudioGeneratedAt",
+    "AudioCacheKey",
+    "AudioCached",
+    "AudioFile",
+]
+
 MODEL_FIELDS = [
         "Word",
         "Language",
@@ -21,6 +33,7 @@ MODEL_FIELDS = [
         "Collocations",
         "GrammarNote",
         "Audio",
+        *AUDIO_METADATA_FIELDS,
     ]
 
 LEGACY_MODEL_NAME = "AI Vocabulary Light Card · Migrated"
@@ -358,6 +371,7 @@ GRAMMAR_MODEL_FIELDS = [
     "ExampleAudio",
     "Contrasts",
     "CommonMistakes",
+    *AUDIO_METADATA_FIELDS,
 ]
 
 GRAMMAR_FRONT_TEMPLATE = """

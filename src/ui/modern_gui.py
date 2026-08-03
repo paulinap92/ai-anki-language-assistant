@@ -28,14 +28,14 @@ from tkinter import filedialog, messagebox, ttk
 import customtkinter as ctk
 
 from src.ai.base import VocabularyAiClient
-from src.ai.prompts import build_ocr_candidate_extraction_prompt, build_multimodal_import_extraction_prompt
+from src.ai.prompts import build_ocr_candidate_extraction_prompt, build_multimodal_import_extraction_prompt, build_multimodal_ocr_prompt
 from src.anki.client import AnkiClient, DuplicateNoteError
 from src.anki.templates import MODEL_NAME
 from src.domain.languages import LANGUAGE_TAGS
 from src.domain.models import ConversationFeedback, GrammarAnalysis, VocabularyCard
 from src.practice import PracticeItem, PracticeQuestion, PracticeService
 from src.quality import validate_vocabulary_card
-from src.ocr import HTML_EXTENSIONS, TEXT_EXTENSIONS, OcrExtractionError, clean_ocr_text, extract_text_from_paths, extract_text_with_mistral, extract_candidates_with_multimodal
+from src.ocr import HTML_EXTENSIONS, TEXT_EXTENSIONS, OcrExtractionError, clean_ocr_text, extract_text_from_paths, extract_text_with_mistral, extract_candidates_with_multimodal, extract_text_with_multimodal
 from src.speech import LocalWhisperSttService, SpeechService
 from src.speech.models import TtsResult
 from src.speech.voice_presets import get_voice_by_label, get_voice_labels
@@ -46,7 +46,8 @@ EXPLANATION_LANGUAGES = ["Polish", "English", "Spanish", "German", "Italian", "S
 IMPROVEMENT_LEVELS = ["Natural B1/B2", "Strong B2/C1", "Professional / Interview"]
 BATCH_MODES = ["Vocabulary", "Grammar", "Mixed", "Provided examples"]
 OCR_EXTRACTION_MODES = ["Provided examples", "Vocabulary", "Vocabulary + source examples", "Smart vocabulary", "Grammar", "Smart grammar import", "Mixed"]
-OCR_IMPORT_METHODS = ["Local extraction (free)", "Mistral OCR (cloud text only)", "OpenAI multimodal import", "Gemini multimodal import"]
+OCR_IMPORT_METHODS = ["Local extraction (free)", "Mistral OCR (cloud text only)", "OpenAI Vision OCR (text only)", "Gemini Vision OCR (text only)"]
+OCR_IMAGE_EXTENSIONS = {".png", ".jpg", ".jpeg", ".webp", ".bmp", ".tif", ".tiff"}
 
 # Safety caps for AI candidate extraction. Prompting helps, but providers can
 # still over-extract from long continuous prose. These caps protect Tkinter from
@@ -183,6 +184,7 @@ class ModernVocabularyGui:
         self._batch_progress_var = ctk.StringVar(value="No list loaded.")
         self._batch_status_var = ctk.StringVar(value="Load a TXT/CSV file or paste a list.")
         self._batch_autosave_path: Path | None = None
+        self._batch_autosave_after_id: str | None = None
         self._batch_auto_generate_running = False
         self._batch_auto_generate_paused = False
         self._batch_auto_generate_stop_requested = False
@@ -1563,7 +1565,7 @@ class ModernVocabularyGui:
         )
         buttons = ctk.CTkFrame(right, fg_color="transparent")
         buttons.grid(row=6, column=0, sticky="ew", padx=18, pady=(0, 12))
-        buttons.grid_columnconfigure((0, 1, 2, 3, 4, 5, 6), weight=1)
+        buttons.grid_columnconfigure((0, 1, 2, 3, 4, 5, 6, 7), weight=1)
         ctk.CTkButton(buttons, text="Previous", command=self._batch_previous).grid(
             row=0, column=0, sticky="ew", padx=(0, 4)
         )
@@ -1588,8 +1590,13 @@ class ModernVocabularyGui:
             text="Approve warning",
             command=self._approve_current_quality_warning,
         ).grid(row=0, column=5, sticky="ew", padx=4)
+        ctk.CTkButton(
+            buttons,
+            text="Remove item",
+            command=self._remove_current_batch_item,
+        ).grid(row=0, column=6, sticky="ew", padx=4)
         ctk.CTkButton(buttons, text="Next", command=self._batch_next).grid(
-            row=0, column=6, sticky="ew", padx=(4, 0)
+            row=0, column=7, sticky="ew", padx=(4, 0)
         )
 
         ctk.CTkLabel(right, text="Batch actions", text_color=("gray35", "gray75")).grid(
@@ -1867,15 +1874,23 @@ class ModernVocabularyGui:
         if len(self._ocr_source_paths) > 3:
             names += f" + {len(self._ocr_source_paths) - 3} more"
         action = self._ocr_import_action_label()
-        self._ocr_status_var.set(f"Selected: {names}. Click {action}.")
+        suffixes = {path.suffix.casefold() for path in self._ocr_source_paths}
+        if suffixes and suffixes <= OCR_IMAGE_EXTENSIONS:
+            self._ocr_status_var.set(
+                f"Image loaded: {names}. No OCR has started. Choose an import method, then click {action}."
+            )
+        else:
+            self._ocr_status_var.set(f"Selected: {names}. No extraction has started. Click {action}.")
+        self._ocr_candidate_status_var.set("Source loaded only. Review settings, then run OCR/import explicitly.")
+        self._scroll_import_text_to_top()
 
     def _open_paste_material_dialog(self) -> None:
         """Paste raw text or a clipboard screenshot into the Import Material flow.
 
         Text is written directly to Reviewed source text. Clipboard images are
-        saved into .import_cache and then passed through the currently selected
-        extraction method, so the rest of the Import Material flow stays the
-        same: review text -> find candidates -> cherry-pick -> Batch / Queue.
+        saved into .import_cache and staged only. OCR/import must be started by
+        an explicit button click, so loading a screenshot never spends credits or
+        freezes the UI by surprise.
         """
         dialog = tk.Toplevel(self._root)
         dialog.title("Paste text or screenshot")
@@ -1991,8 +2006,7 @@ class ModernVocabularyGui:
             names = ", ".join(path.name for path in staged_paths[:3])
             if len(staged_paths) > 3:
                 names += f" + {len(staged_paths) - 3} more"
-            action = self._ocr_import_action_label()
-            info_var.set(f"Screenshot/file staged: {names}. Click Use this material to {action.lower()}.")
+            info_var.set(f"Screenshot/file staged: {names}. Click Use this material to load it; OCR will not run yet.")
 
         def open_file_for_material() -> None:
             filenames = filedialog.askopenfilenames(
@@ -2010,7 +2024,7 @@ class ModernVocabularyGui:
             names = ", ".join(path.name for path in staged_paths[:3])
             if len(staged_paths) > 3:
                 names += f" + {len(staged_paths) - 3} more"
-            info_var.set(f"File(s) staged: {names}. Click Use this material to extract text.")
+            info_var.set(f"File(s) staged: {names}. Click Use this material to load it; extraction will not run yet.")
 
         def clear_material() -> None:
             staged_paths.clear()
@@ -2037,13 +2051,17 @@ class ModernVocabularyGui:
                 return
 
             if staged_paths:
-                self._ocr_source_paths = list(staged_paths)
-                names = ", ".join(path.name for path in self._ocr_source_paths[:3])
-                if len(self._ocr_source_paths) > 3:
-                    names += f" + {len(self._ocr_source_paths) - 3} more"
-                self._ocr_status_var.set(f"Staged from paste/import: {names}. Extracting text...")
+                self._ocr_set_source_paths([str(path) for path in staged_paths])
+                names = ", ".join(path.name for path in staged_paths[:3])
+                if len(staged_paths) > 3:
+                    names += f" + {len(staged_paths) - 3} more"
+                action = self._ocr_import_action_label()
+                self._ocr_status_var.set(
+                    f"Staged from paste/import: {names}. No OCR has started. Click {action} when ready."
+                )
+                self._ocr_candidate_status_var.set("Screenshot/file loaded only. No API call or OCR was started.")
+                self._record_activity("Import material staged without auto OCR")
                 dialog.destroy()
-                self._root.after(50, self._run_ocr_import_pipeline)
                 return
 
             messagebox.showwarning("Paste material", "Paste text or stage a screenshot/file first.")
@@ -2056,6 +2074,46 @@ class ModernVocabularyGui:
         tk.Button(button_row, text="Clear", command=clear_material).pack(side="left", padx=(8, 0))
         tk.Button(button_row, text="Use this material", command=use_material).pack(side="right")
         tk.Button(button_row, text="Cancel", command=dialog.destroy).pack(side="right", padx=(0, 8))
+
+    def _scroll_widget_to_top(self, widget: object | None, *, delay_ms: int = 60) -> None:
+        """Best-effort reset for CTk/Tk scrollable widgets after new content appears."""
+        if widget is None:
+            return
+
+        def scroll_now() -> None:
+            try:
+                see = getattr(widget, "see", None)
+                if callable(see):
+                    see("1.0")
+            except Exception:
+                pass
+            try:
+                yview_moveto = getattr(widget, "yview_moveto", None)
+                if callable(yview_moveto):
+                    yview_moveto(0.0)
+            except Exception:
+                pass
+            try:
+                canvas = getattr(widget, "_parent_canvas", None)
+                if canvas is not None:
+                    canvas.yview_moveto(0.0)
+            except Exception:
+                pass
+
+        try:
+            self._root.after(delay_ms, scroll_now)
+            self._root.after(delay_ms + 120, scroll_now)
+        except Exception:
+            scroll_now()
+
+    def _scroll_import_text_to_top(self) -> None:
+        self._scroll_widget_to_top(getattr(self, "_ocr_textbox", None))
+
+    def _scroll_import_candidates_to_top(self) -> None:
+        self._scroll_widget_to_top(getattr(self, "_ocr_candidates_frame", None))
+
+    def _scroll_batch_preview_to_top(self) -> None:
+        self._scroll_widget_to_top(getattr(self, "_batch_preview", None))
 
     def _ocr_load_txt(self) -> None:
         filename = filedialog.askopenfilename(
@@ -2112,10 +2170,10 @@ class ModernVocabularyGui:
         method = self._ocr_method_var.get()
         if "Mistral" in method:
             return "Run Mistral OCR"
-        if "OpenAI multimodal" in method:
-            return "Run OpenAI multimodal import"
-        if "Gemini multimodal" in method:
-            return "Run Gemini multimodal import"
+        if "OpenAI" in method and ("Vision OCR" in method or "multimodal" in method):
+            return "Run OpenAI Vision OCR"
+        if "Gemini" in method and ("Vision OCR" in method or "multimodal" in method):
+            return "Run Gemini Vision OCR"
         return "Extract text locally"
 
     def _set_ocr_text(self, text: str) -> None:
@@ -2124,6 +2182,7 @@ class ModernVocabularyGui:
             return
         textbox.delete("1.0", "end")
         textbox.insert("1.0", text or "")
+        self._scroll_import_text_to_top()
 
     def _get_ocr_text(self) -> str:
         textbox = getattr(self, "_ocr_textbox", None)
@@ -2171,6 +2230,7 @@ class ModernVocabularyGui:
         auto_select = len(items) <= OCR_CANDIDATE_AUTOSELECT_LIMIT
         self._ocr_candidate_vars = [ctk.BooleanVar(value=auto_select) for _ in items]
         self._render_ocr_candidate_cards()
+        self._scroll_import_candidates_to_top()
         self._update_ocr_candidate_status()
         if items and not auto_select:
             self._ocr_candidate_status_var.set(
@@ -2843,6 +2903,7 @@ class ModernVocabularyGui:
             del self._ocr_candidate_vars[index]
         self._render_ocr_candidate_cards()
         self._update_ocr_candidate_status()
+        self._ocr_candidate_status_var.set("Removed candidate draft.")
 
     def _clear_ocr_candidates(self) -> None:
         self._ocr_candidate_items = []
@@ -3024,6 +3085,8 @@ class ModernVocabularyGui:
             self._ocr_candidate_items = self._merge_ocr_grammar_candidate_items(self._ocr_candidate_items)
             self._ocr_candidate_vars = [ctk.BooleanVar(value=True) for _ in self._ocr_candidate_items]
         self._render_ocr_candidate_cards()
+        if added:
+            self._scroll_import_candidates_to_top()
         self._update_ocr_candidate_status()
         return added
 
@@ -3306,11 +3369,11 @@ class ModernVocabularyGui:
         if "Mistral" in method:
             self._run_mistral_ocr_auto_candidates()
             return
-        if "OpenAI multimodal" in method:
-            self._run_multimodal_import_candidates("OpenAI")
+        if "OpenAI" in method and ("Vision OCR" in method or "multimodal" in method):
+            self._run_multimodal_ocr_text("OpenAI")
             return
-        if "Gemini multimodal" in method:
-            self._run_multimodal_import_candidates("Gemini")
+        if "Gemini" in method and ("Vision OCR" in method or "multimodal" in method):
+            self._run_multimodal_ocr_text("Gemini")
             return
         self._run_local_ocr_import()
 
@@ -3409,15 +3472,103 @@ class ModernVocabularyGui:
             f"Mistral extracted {len(text.split())} word(s). Click Look for words/phrases or Look for sentences."
         )
 
-    def _run_multimodal_import_candidates(self, provider: str) -> None:
-        """Use a vision-capable model to extract structured candidates directly from images/PDF pages."""
+    def _run_multimodal_ocr_text(self, provider: str) -> None:
+        """Use a vision-capable model as OCR only: image/PDF -> editable text box."""
         if self._ocr_ai_running:
-            self._ocr_candidate_status_var.set("Multimodal import is already running. Wait for it to finish.")
+            self._ocr_candidate_status_var.set("Vision OCR is already running. Wait for it to finish.")
             return
         if not self._ocr_source_paths:
             pasted = self._get_ocr_text()
             if pasted.strip():
-                self._ocr_status_var.set("Pasted text does not need multimodal import. Use Find candidates with selected strategy.")
+                self._ocr_status_var.set("Pasted text is already loaded. Click Find candidates with selected strategy if needed.")
+                return
+            messagebox.showwarning("Vision OCR", "Load an image or PDF first.")
+            return
+
+        text_like_paths = [
+            path for path in self._ocr_source_paths
+            if path.suffix.casefold() in (TEXT_EXTENSIONS | HTML_EXTENSIONS)
+        ]
+        if text_like_paths:
+            messagebox.showwarning(
+                "Vision OCR",
+                "Vision OCR is for image/PDF material. Use Local extraction for TXT/HTML files.",
+            )
+            return
+
+        self._ocr_ai_running = True
+        run_button = getattr(self, "_ocr_run_button", None)
+        ai_button = getattr(self, "_ocr_ai_button", None)
+        raw_text = ""
+        try:
+            if run_button is not None:
+                run_button.configure(state="disabled", text=f"Running {provider} Vision OCR...")
+            if ai_button is not None:
+                ai_button.configure(state="disabled")
+            names = ", ".join(path.name for path in self._ocr_source_paths[:3])
+            if len(self._ocr_source_paths) > 3:
+                names += f" + {len(self._ocr_source_paths) - 3} more"
+            self._ocr_status_var.set(f"Running {provider} Vision OCR on: {names}")
+            self._ocr_candidate_status_var.set(
+                f"{provider} Vision OCR will return text only. It will not create candidates or Batch items."
+            )
+            self._root.update_idletasks()
+            raw_text = extract_text_with_multimodal(
+                self._ocr_source_paths,
+                provider=provider,
+                prompt=build_multimodal_ocr_prompt(),
+                model=self._multimodal_model_name(provider),
+            )
+        except OcrExtractionError as exc:
+            LOGGER.exception("Vision OCR failed")
+            self._ocr_status_var.set(f"{provider} Vision OCR failed.")
+            self._ocr_candidate_status_var.set("Vision OCR failed; try Mistral OCR or crop the image.")
+            messagebox.showerror("Vision OCR", str(exc))
+            return
+        except Exception as exc:
+            LOGGER.exception("Unexpected Vision OCR failed")
+            self._ocr_status_var.set(f"{provider} Vision OCR failed.")
+            self._ocr_candidate_status_var.set("Vision OCR failed; try another OCR provider.")
+            messagebox.showerror("Vision OCR", f"Unexpected Vision OCR error: {exc}")
+            return
+        finally:
+            self._ocr_ai_running = False
+            if run_button is not None:
+                run_button.configure(state="normal", text=self._ocr_import_action_label())
+            if ai_button is not None:
+                ai_button.configure(state="normal")
+
+        text = self._ocr_clean_json_text(raw_text).strip()
+        if not text:
+            self._ocr_status_var.set(f"{provider} Vision OCR returned no text.")
+            self._ocr_candidate_status_var.set("No text was extracted. Try Mistral OCR or a clearer crop.")
+            return
+
+        self._set_ocr_text(text)
+        self._set_ocr_candidate_items([])
+        label, reason = self._ocr_quality_label(text)
+        self._ocr_status_var.set(
+            f"{provider} Vision OCR extracted {len(text.split())} word(s). OCR quality: {label} — {reason}."
+        )
+        self._ocr_candidate_status_var.set(
+            "Vision OCR produced text only. Review/clean the text, then click Find candidates with selected strategy."
+        )
+        self._record_activity(f"{provider} Vision OCR text extracted")
+
+
+    def _run_multimodal_import_candidates(self, provider: str) -> None:
+        """Advanced: extract structured candidates directly from images/PDF pages.
+
+        This is intentionally not used by the OCR button. Normal Vision OCR
+        returns only text and requires a separate Find candidates click.
+        """
+        if self._ocr_ai_running:
+            self._ocr_candidate_status_var.set("Direct image candidate extraction is already running. Wait for it to finish.")
+            return
+        if not self._ocr_source_paths:
+            pasted = self._get_ocr_text()
+            if pasted.strip():
+                self._ocr_status_var.set("Pasted text does not need direct image extraction. Use Find candidates with selected strategy.")
                 return
             messagebox.showwarning("Multimodal import", "Load an image or PDF first.")
             return
@@ -3429,7 +3580,7 @@ class ModernVocabularyGui:
         if text_like_paths:
             messagebox.showwarning(
                 "Multimodal import",
-                "Multimodal import is for image/PDF material. Use Local extraction for TXT/HTML files.",
+                "Direct image extraction is for image/PDF material. Use Local extraction for TXT/HTML files.",
             )
             return
 
@@ -3439,15 +3590,15 @@ class ModernVocabularyGui:
         ai_button = getattr(self, "_ocr_ai_button", None)
         try:
             if run_button is not None:
-                run_button.configure(state="disabled", text=f"Running {provider} multimodal...")
+                run_button.configure(state="disabled", text="Running direct image extraction...")
             if ai_button is not None:
                 ai_button.configure(state="disabled")
             names = ", ".join(path.name for path in self._ocr_source_paths[:3])
             if len(self._ocr_source_paths) > 3:
                 names += f" + {len(self._ocr_source_paths) - 3} more"
-            self._ocr_status_var.set(f"Running {provider} multimodal import on: {names}")
+            self._ocr_status_var.set(f"Running direct image candidate extraction with {provider} on: {names}")
             self._ocr_candidate_status_var.set(
-                f"{provider} is reading the image layout/table directly. This uses API credits."
+                f"{provider} is extracting candidate drafts directly from the image. This is an advanced API workflow."
             )
             self._root.update_idletasks()
             prompt = build_multimodal_import_extraction_prompt(
@@ -3475,15 +3626,15 @@ class ModernVocabularyGui:
                 return
         except OcrExtractionError as exc:
             LOGGER.exception("Multimodal import failed")
-            self._ocr_status_var.set(f"{provider} multimodal import failed.")
-            self._ocr_candidate_status_var.set("Multimodal import failed; try Mistral OCR or crop the image.")
-            messagebox.showerror("Multimodal import", str(exc))
+            self._ocr_status_var.set(f"{provider} direct image extraction failed.")
+            self._ocr_candidate_status_var.set("Direct image extraction failed; try Vision OCR or Mistral OCR first.")
+            messagebox.showerror("Direct image extraction", str(exc))
             return
         except Exception as exc:
             LOGGER.exception("Unexpected multimodal import failed")
-            self._ocr_status_var.set(f"{provider} multimodal import failed.")
+            self._ocr_status_var.set(f"{provider} direct image extraction failed.")
             self._ocr_candidate_status_var.set("Multimodal import failed; try another import provider.")
-            messagebox.showerror("Multimodal import", f"Unexpected multimodal import error: {exc}")
+            messagebox.showerror("Direct image extraction", f"Unexpected direct image extraction error: {exc}")
             return
         finally:
             self._ocr_ai_running = False
@@ -3495,19 +3646,19 @@ class ModernVocabularyGui:
         if not items:
             self._set_ocr_text(self._ocr_clean_json_text(raw_text))
             self._set_ocr_candidate_items([])
-            self._ocr_status_var.set(f"{provider} multimodal returned text but no usable candidates.")
+            self._ocr_status_var.set(f"{provider} direct image extraction returned text but no usable candidates.")
             self._ocr_candidate_status_var.set("No usable candidates found. Try another provider, crop, or use manual picker.")
             return
 
         total = len(items)
-        self._ocr_status_var.set(f"{provider} multimodal extracted {total} candidate draft(s).")
+        self._ocr_status_var.set(f"{provider} direct image extraction found {total} candidate draft(s).")
         self._set_ocr_text(self._ocr_review_text_from_candidate_items(items, provider=provider))
         self._set_ocr_candidate_items(items)
         selected_note = "selected by default" if total <= OCR_CANDIDATE_AUTOSELECT_LIMIT else "not selected by default"
         self._ocr_candidate_status_var.set(
-            f"{provider} multimodal found {total} candidate draft(s); all visible, {selected_note}. Review/cherry-pick before Batch."
+            f"{provider} direct image extraction found {total} candidate draft(s); all visible, {selected_note}. Review/cherry-pick before Batch."
         )
-        self._record_activity(f"{provider} multimodal import candidates: {len(items)}")
+        self._record_activity(f"{provider} direct image candidates: {len(items)}")
 
     @staticmethod
     def _ocr_review_text_from_candidate_items(items: list[dict[str, str]], provider: str = "Multimodal") -> str:
@@ -3550,6 +3701,7 @@ class ModernVocabularyGui:
             message = f"Cleaned extracted text: {len(text.split())} word(s), removed {removed_chars} character(s)/artifact(s)."
         self._ocr_status_var.set(message)
         self._ocr_candidate_status_var.set(message)
+        self._scroll_import_text_to_top()
 
     def _extract_ocr_candidates_with_ai(self) -> None:
         self._extract_ocr_candidates_with_ai_from_text(self._get_ocr_text(), source="all text")
@@ -4687,7 +4839,9 @@ class ModernVocabularyGui:
         self._batch_preview.configure(state="normal")
         self._batch_preview.delete("1.0", "end")
         self._batch_preview.insert("1.0", content)
+        self._batch_preview.see("1.0")
         self._batch_preview.configure(state="disabled")
+        self._scroll_batch_preview_to_top()
 
     def _set_batch_status_card(
         self,
@@ -5507,6 +5661,34 @@ class ModernVocabularyGui:
         self._status_var.set(self._batch_status_var.get())
         messagebox.showinfo("Batch summary", message)
 
+    def _remove_current_batch_item(self) -> None:
+        """Remove only the current Batch row without rebuilding expensive views."""
+        if not self._batch_items:
+            return
+        index = max(0, min(self._batch_index, len(self._batch_items) - 1))
+        removed = self._batch_items.pop(index)
+        removed_word = str(removed.get("word", "")).strip() or "item"
+
+        if self._batch_index >= len(self._batch_items):
+            self._batch_index = max(0, len(self._batch_items) - 1)
+
+        self._batch_generated_card = None
+        self._batch_generated_provider_name = None
+        self._batch_generated_grammar = None
+
+        if self._batch_items:
+            self._show_current_batch_item(generate=False)
+            message = f"Removed from Batch: {removed_word}."
+        else:
+            self._show_current_batch_item(generate=False)
+            self._set_batch_preview("Batch is empty. Load or send candidates to start again.")
+            message = f"Removed from Batch: {removed_word}. Batch is now empty."
+
+        self._batch_status_var.set(message)
+        self._status_var.set(message)
+        self._record_activity(f"Batch item removed: {removed_word}")
+        self._schedule_batch_autosave("batch item removed")
+
     def _batch_next(self) -> None:
         if self._batch_items and self._batch_index < len(self._batch_items) - 1:
             self._batch_index += 1
@@ -5561,6 +5743,28 @@ class ModernVocabularyGui:
             stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
             self._batch_autosave_path = autosave_dir / f"batch_autosave_{stamp}.json"
         return self._batch_autosave_path
+
+    def _schedule_batch_autosave(self, reason: str, delay_ms: int = 800) -> None:
+        """Debounce autosave for fast repeated UI actions such as deletions."""
+        after_id = getattr(self, "_batch_autosave_after_id", None)
+        if after_id:
+            try:
+                self._root.after_cancel(after_id)
+            except Exception:
+                pass
+        if not self._batch_items:
+            self._batch_autosave_after_id = None
+            return
+
+        def run() -> None:
+            self._batch_autosave_after_id = None
+            self._autosave_batch_session(reason)
+
+        try:
+            self._batch_autosave_after_id = self._root.after(delay_ms, run)
+        except Exception:
+            self._batch_autosave_after_id = None
+            self._autosave_batch_session(reason)
 
     def _autosave_batch_session(self, reason: str) -> None:
         """Save the current Batch session automatically."""
@@ -7395,6 +7599,14 @@ class ModernVocabularyGui:
             "",
             f"AUDIO FIELD\n{note.get('audio_field') or '—'}",
             "",
+            (
+                "AUDIO METADATA\n"
+                f"Provider: {note.get('audio_provider') or '—'} · "
+                f"Model: {note.get('audio_model') or '—'} · "
+                f"Voice: {note.get('audio_voice_label') or note.get('audio_voice') or '—'} · "
+                f"Generated: {note.get('audio_generated_at') or '—'}"
+            ),
+            "",
             f"ACTION STATUS\n{note.get('action_status') or 'found'}",
             "",
             f"EXAMPLE\n{note.get('example') or '—'}",
@@ -7503,6 +7715,26 @@ class ModernVocabularyGui:
     @staticmethod
     def _sound_tag(media_filename: str) -> str:
         return f"[sound:{media_filename}]"
+
+    @staticmethod
+    def _audio_metadata_from_tts_result(
+        result: TtsResult,
+        source_text: str,
+        voice_label: str = "",
+    ) -> dict[str, str]:
+        """Build hidden Anki fields for TTS provider/model/voice audit metadata."""
+        clean_source = " ".join(str(source_text or "").split())
+        return {
+            "AudioProvider": result.provider_name,
+            "AudioModel": result.model,
+            "AudioVoice": result.voice,
+            "AudioVoiceLabel": voice_label or result.voice,
+            "AudioSourceText": clean_source,
+            "AudioGeneratedAt": datetime.now().isoformat(timespec="seconds"),
+            "AudioCacheKey": result.path.stem,
+            "AudioCached": "true" if result.cached else "false",
+            "AudioFile": result.path.name,
+        }
 
     @staticmethod
     def _replace_or_append_sound_tag(current_value: str, media_filename: str) -> str:
@@ -7667,16 +7899,34 @@ class ModernVocabularyGui:
                     return
             try:
                 media_name = self._anki_client.store_media_file(result.path)
+                audio_metadata = self._audio_metadata_from_tts_result(
+                    result,
+                    preview.get("1.0", "end").strip(),
+                    self._tts_voice_var.get(),
+                )
                 if mode_var.get() == "Replace target field with [sound]":
                     updated_value = self._sound_tag(media_name)
                 else:
                     updated_value = self._replace_or_append_sound_tag(current_value, media_name)
                 backup_path = self._backup_existing_note_update(
                     note,
-                    {target_field: updated_value},
+                    {target_field: updated_value, **audio_metadata},
                     "audio repair",
                 )
-                self._anki_client.update_note_fields(int(note["note_id"]), {target_field: updated_value})
+                if mode_var.get() == "Replace target field with [sound]":
+                    self._anki_client.attach_audio_to_note(
+                        int(note["note_id"]),
+                        media_name,
+                        target_field,
+                        audio_metadata=audio_metadata,
+                    )
+                else:
+                    self._anki_client.append_audio_to_note(
+                        int(note["note_id"]),
+                        media_name,
+                        target_field,
+                        audio_metadata=audio_metadata,
+                    )
                 self._anki_client.add_tags_to_notes([int(note["note_id"])], "ai_audio_fixed")
             except Exception as exc:
                 LOGGER.exception("Could not replace existing-card audio")
@@ -8301,6 +8551,7 @@ class ModernVocabularyGui:
             self._status_var.set("Add to Anki cancelled because of quality warnings.")
             return
         provider_name = self._generated_provider_name or self._provider_var.get()
+        audio_metadata: dict[str, str] | None = None
         try:
             deck = self._set_selected_deck()
             if self._generated_audio is not None:
@@ -8319,15 +8570,23 @@ class ModernVocabularyGui:
                     )
                     raise RuntimeError(f"Audio was generated but could not be stored in Anki media: {media_exc}") from media_exc
 
+                audio_metadata = self._audio_metadata_from_tts_result(
+                    self._generated_audio,
+                    self._generated_card.example,
+                    self._tts_voice_var.get(),
+                )
                 self._generated_card = self._generated_card.model_copy(
                     update={"audio": f"[sound:{media_name}]"}
                 )
                 LOGGER.info(
-                    "Generated card audio field set: word=%s media=%s",
+                    "Generated card audio field set: word=%s media=%s provider=%s model=%s voice=%s",
                     self._generated_card.word_or_phrase,
                     media_name,
+                    audio_metadata.get("AudioProvider") if audio_metadata else "",
+                    audio_metadata.get("AudioModel") if audio_metadata else "",
+                    audio_metadata.get("AudioVoice") if audio_metadata else "",
                 )
-            self._anki_client.add_card(self._generated_card, provider_name)
+            self._anki_client.add_card(self._generated_card, provider_name, audio_metadata=audio_metadata)
         except DuplicateNoteError:
             replace = messagebox.askyesno(
                 "Card already exists",
@@ -8338,7 +8597,7 @@ class ModernVocabularyGui:
                 self._status_var.set("Existing card was not changed.")
                 return
             try:
-                self._anki_client.update_card(self._generated_card, provider_name)
+                self._anki_client.update_card(self._generated_card, provider_name, audio_metadata=audio_metadata)
             except Exception as update_exc:
                 LOGGER.exception(
                     "Could not update existing single card: word=%s audio=%s",
@@ -9133,10 +9392,25 @@ class ModernVocabularyGui:
                         voice_value,
                     )
                     media_name = self._anki_client.store_media_file(result.path)
+                    audio_metadata = self._audio_metadata_from_tts_result(
+                        result,
+                        source_text,
+                        voice_label,
+                    )
                     if write_mode == "Append [sound] to existing field":
-                        self._anki_client.append_audio_to_note(note_id, media_name, audio_field)
+                        self._anki_client.append_audio_to_note(
+                            note_id,
+                            media_name,
+                            audio_field,
+                            audio_metadata=audio_metadata,
+                        )
                     else:
-                        self._anki_client.attach_audio_to_note(note_id, media_name, audio_field)
+                        self._anki_client.attach_audio_to_note(
+                            note_id,
+                            media_name,
+                            audio_field,
+                            audio_metadata=audio_metadata,
+                        )
                     self._speech_audio_status_by_note_id[note_id] = "updated_in_anki"
                     fields = note.get("fields") if isinstance(note.get("fields"), dict) else {}
                     if write_mode == "Append [sound] to existing field" and audio_field in fields:

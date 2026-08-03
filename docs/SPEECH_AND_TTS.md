@@ -48,6 +48,23 @@ The cache key includes text, language, provider, model, and voice. Unchanged syn
 `AI Vocabulary Light Card` includes an `Audio` field. Existing note types receive the field automatically through AnkiConnect before templates are updated.
 
 
+
+## Hidden Anki audio metadata
+
+Custom vocabulary and grammar note types include hidden metadata fields for generated audio:
+
+- `AudioProvider`
+- `AudioModel`
+- `AudioVoice`
+- `AudioVoiceLabel`
+- `AudioSourceText`
+- `AudioGeneratedAt`
+- `AudioCacheKey`
+- `AudioCached`
+- `AudioFile`
+
+These fields are intentionally not shown on the card templates. They are visible in Anki Browse and make later voice/model audits or regeneration workflows possible. Existing legacy/user note types receive metadata only when they already expose these fields, so audio repair remains safe for old Basic cards.
+
 ## Diagnostics
 
 TTS and Anki audio operations are logged to `logs/ai_anki_app.log`.

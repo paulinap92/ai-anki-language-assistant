@@ -23,8 +23,19 @@ AI Vocabulary Light Card
 | `Collocations` | HTML chips with established collocations and usage patterns. |
 | `GrammarNote` | Short grammar or usage note. |
 | `Audio` | Anki `[sound:filename]` reference for the example sentence. |
+| `AudioProvider` | Hidden TTS provider metadata, for example OpenAI, Gemini, ElevenLabs or Piper. |
+| `AudioModel` | Hidden TTS model metadata. |
+| `AudioVoice` | Hidden provider-specific voice identifier. |
+| `AudioVoiceLabel` | Hidden user-facing voice label selected in the UI. |
+| `AudioSourceText` | Hidden exact source text used for synthesis. |
+| `AudioGeneratedAt` | Hidden local timestamp for audio generation/export. |
+| `AudioCacheKey` | Hidden local audio cache key/stem. |
+| `AudioCached` | Hidden cache-hit flag. |
+| `AudioFile` | Hidden generated media filename. |
 
 When `No translation` is selected, translation fields remain empty and the template hides the corresponding sections.
+
+The audio metadata fields are not referenced in the card templates, so they do not appear during study. They are visible in Anki Browse for audit, filtering and future regeneration workflows.
 
 ## Grammar note type
 
@@ -47,6 +58,9 @@ AI Grammar Light Card
 | `ContextExample` | Natural context using the same structure. |
 | `Contrast` | Comparison with a related structure. |
 | `CommonMistake` | Typical incorrect form and correction. |
+| `Audio` / `ExampleAudio` | Anki `[sound:filename]` references for grammar audio. |
+| `AudioProvider` / `AudioModel` / `AudioVoice` / `AudioVoiceLabel` | Hidden TTS provider/model/voice metadata. |
+| `AudioSourceText` / `AudioGeneratedAt` / `AudioCacheKey` / `AudioCached` / `AudioFile` | Hidden TTS source/cache/export metadata. |
 
 ## Template implementation
 

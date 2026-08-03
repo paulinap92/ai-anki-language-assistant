@@ -962,6 +962,35 @@ Return this exact structure:
 """
 
 
+def build_multimodal_ocr_prompt() -> str:
+    """Build a strict vision-OCR prompt that transcribes only visible text.
+
+    This prompt is intentionally separate from multimodal candidate extraction.
+    It must never create candidate JSON, flashcards or Batch-ready rows.
+    """
+    return """
+You are an OCR transcription engine for language-learning source material.
+
+Task:
+- Extract ONLY the visible text from the supplied image/PDF page(s).
+- Preserve headings, section labels, bullets, numbering, line breaks and paragraph order.
+- Preserve tables as readable Markdown tables when possible.
+- Preserve slash alternatives, accents/diacritics, punctuation and capitalization.
+- If text is unreadable, mark it as [unclear] instead of guessing.
+
+Strict prohibitions:
+- Do NOT create flashcards.
+- Do NOT extract vocabulary candidates.
+- Do NOT classify candidate types.
+- Do NOT output JSON.
+- Do NOT translate unless the translation is visibly present in the source.
+- Do NOT explain grammar, summarize, correct, complete exercises, or generate examples.
+- Do NOT add comments before or after the transcription.
+
+Return only the transcribed text.
+""".strip()
+
+
 def build_multimodal_import_extraction_prompt(
     target_language: str,
     explanation_language: str,

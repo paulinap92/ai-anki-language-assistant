@@ -6,6 +6,18 @@ from html import escape
 
 from src.domain.models import GrammarAnalysis, VocabularyCard
 
+AUDIO_METADATA_FIELD_NAMES = (
+    "AudioProvider",
+    "AudioModel",
+    "AudioVoice",
+    "AudioVoiceLabel",
+    "AudioSourceText",
+    "AudioGeneratedAt",
+    "AudioCacheKey",
+    "AudioCached",
+    "AudioFile",
+)
+
 
 class VocabularyFieldBuilder:
     """Build HTML-safe Anki fields from a vocabulary card.
@@ -16,7 +28,11 @@ class VocabularyFieldBuilder:
     """
 
     @classmethod
-    def build_fields(cls, card: VocabularyCard) -> dict[str, str]:
+    def build_fields(
+        cls,
+        card: VocabularyCard,
+        audio_metadata: dict[str, str] | None = None,
+    ) -> dict[str, str]:
         """Return Anki note fields for the custom vocabulary note type.
 
         Args:
@@ -25,7 +41,7 @@ class VocabularyFieldBuilder:
         Returns:
             Mapping between Anki field names and HTML-safe field values.
         """
-        return {
+        fields = {
             "Word": cls.safe(card.word_or_phrase),
             "Language": cls.safe(card.target_language),
             "PartOfSpeech": cls.safe(card.part_of_speech),
@@ -39,6 +55,21 @@ class VocabularyFieldBuilder:
             "Collocations": cls.chips(card.collocations),
             "GrammarNote": cls.safe(card.grammar_note),
             "Audio": card.audio,
+            **cls.audio_metadata_fields(audio_metadata),
+        }
+        return fields
+
+    @classmethod
+    def audio_metadata_fields(cls, metadata: dict[str, str] | None = None) -> dict[str, str]:
+        """Return hidden Anki fields describing how card audio was generated.
+
+        These fields are intentionally not used in the templates. They are audit
+        data visible in Anki Browse and useful for voice/model migrations.
+        """
+        metadata = metadata or {}
+        return {
+            field_name: cls.safe(str(metadata.get(field_name, "") or ""))
+            for field_name in AUDIO_METADATA_FIELD_NAMES
         }
 
     @staticmethod
@@ -58,7 +89,11 @@ class GrammarFieldBuilder:
     """Build HTML-safe Anki fields from a grammar analysis."""
 
     @classmethod
-    def build_fields(cls, card: GrammarAnalysis) -> dict[str, str]:
+    def build_fields(
+        cls,
+        card: GrammarAnalysis,
+        audio_metadata: dict[str, str] | None = None,
+    ) -> dict[str, str]:
         """Return Anki note fields for the grammar note type."""
         return {
             "Sentence": cls.safe(card.sentence),
@@ -72,6 +107,16 @@ class GrammarFieldBuilder:
             "ExampleAudio": getattr(card, "audio", ""),
             "Contrasts": cls.blocks(card.contrasts),
             "CommonMistakes": cls.blocks(card.common_mistakes),
+            **cls.audio_metadata_fields(audio_metadata),
+        }
+
+    @classmethod
+    def audio_metadata_fields(cls, metadata: dict[str, str] | None = None) -> dict[str, str]:
+        """Return hidden audio generation metadata fields for grammar notes."""
+        metadata = metadata or {}
+        return {
+            field_name: cls.safe(str(metadata.get(field_name, "") or ""))
+            for field_name in AUDIO_METADATA_FIELD_NAMES
         }
 
     @staticmethod
