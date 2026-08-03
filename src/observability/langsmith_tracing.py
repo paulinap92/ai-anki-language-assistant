@@ -625,6 +625,113 @@ class LlmOpsTracer:
             metadata["estimated_cost"] = round(float(estimated_cost), 8)
         return {key: value for key, value in metadata.items() if value not in (None, "", [], {})}
 
+    def _llm_trace_metadata(self, *, feature: str, provider: str, model: str, metadata: dict[str, Any]) -> dict[str, Any]:
+        """Return metadata required by LangSmith to identify a costed LLM run."""
+        return {
+            **metadata,
+            "feature": feature,
+            "provider": provider,
+            "model": model,
+            "ls_provider": self._langsmith_provider_name(provider),
+            "ls_model_name": model,
+            "ls_invocation_params": {"model": model},
+        }
+
+    def _llm_trace_output(self, result: Any, cost_metadata: dict[str, Any]) -> dict[str, Any]:
+        """Return a LangSmith-friendly LLM output envelope with token usage.
+
+        LangSmith cost tracking expects token counts either as a top-level
+        ``usage_metadata`` output field or attached to the current run tree. The
+        actual app result is kept in the caller's holder; this output is only
+        the trace-friendly representation of the provider call.
+        """
+        if isinstance(result, str):
+            content = self.output_summary(result)
+        else:
+            content = self.output_summary(result)
+        output: dict[str, Any] = {
+            "message": {
+                "role": "assistant",
+                "content": content if isinstance(content, str) else str(content)[:2000],
+            },
+            "result_summary": content,
+        }
+        usage = cost_metadata.get("usage_metadata")
+        if usage:
+            output["usage_metadata"] = usage
+        # LangSmith also supports direct cost fields for custom/non-linear
+        # pricing. They are estimates from our local config, so include them
+        # only as explicit custom fields without pretending they are billing.
+        if cost_metadata.get("estimated_cost") is not None:
+            output["total_cost"] = cost_metadata.get("estimated_cost")
+        return output
+
+    def _attach_usage_to_current_langsmith_run(self, cost_metadata: dict[str, Any]) -> None:
+        """Best-effort runtime attachment of usage metadata to current LangSmith run.
+
+        Newer LangSmith docs recommend setting usage_metadata on the current run
+        tree from inside the @traceable function. Keep this defensive because
+        older SDK versions may expose slightly different attributes.
+        """
+        usage = cost_metadata.get("usage_metadata")
+        if not usage:
+            return
+        get_current_run_tree = None
+        try:
+            from langsmith.run_helpers import get_current_run_tree as _get_current_run_tree  # type: ignore
+
+            get_current_run_tree = _get_current_run_tree
+        except Exception:
+            try:
+                from langsmith import get_current_run_tree as _get_current_run_tree  # type: ignore
+
+                get_current_run_tree = _get_current_run_tree
+            except Exception:
+                get_current_run_tree = None
+        if get_current_run_tree is None:
+            return
+        try:
+            run_tree = get_current_run_tree()
+        except Exception:
+            return
+        if run_tree is None:
+            return
+
+        # Preferred public shape: usage_metadata on the run itself.
+        try:
+            setattr(run_tree, "usage_metadata", usage)
+        except Exception:
+            pass
+
+        # Also mirror it into metadata/extra for SDK versions that serialize
+        # metadata only at patch/end time.
+        try:
+            metadata = dict(getattr(run_tree, "metadata", {}) or {})
+            metadata.update(
+                {
+                    "usage_metadata": usage,
+                    "input_tokens": cost_metadata.get("input_tokens"),
+                    "output_tokens": cost_metadata.get("output_tokens"),
+                    "total_tokens": cost_metadata.get("total_tokens"),
+                }
+            )
+            if cost_metadata.get("estimated_cost") is not None:
+                metadata["estimated_cost"] = cost_metadata.get("estimated_cost")
+                metadata["estimated_cost_currency"] = cost_metadata.get("estimated_cost_currency")
+            run_tree.metadata = {key: value for key, value in metadata.items() if value not in (None, "", [], {})}
+        except Exception:
+            pass
+
+        try:
+            extra = getattr(run_tree, "extra", None)
+            if isinstance(extra, dict):
+                extra.setdefault("metadata", {})
+                if isinstance(extra["metadata"], dict):
+                    extra["metadata"].update({"usage_metadata": usage})
+                extra["usage_metadata"] = usage
+        except Exception:
+            pass
+
     def tts_cost_metadata(
         self,
         *,
@@ -812,47 +919,95 @@ class LlmOpsTracer:
         start = time.perf_counter()
 
         def _run_traced(payload: dict[str, Any]) -> dict[str, Any]:
-            try:
-                result = call_fn()
-            except Exception as exc:
-                holder["provider_exception"] = exc
-                raise
-            quality = self.quality_snapshot(feature, result)
-            usage_metadata = usage_fn() if usage_fn else None
-            cost_metadata = self._cost_metadata_for_call(
+            llm_metadata = self._llm_trace_metadata(
+                feature=feature,
                 provider=provider,
                 model=model,
-                inputs=inputs,
-                result=result,
-                usage_metadata=usage_metadata,
+                metadata=safe_metadata,
             )
+
+            def _run_provider_call(_: dict[str, Any]) -> dict[str, Any]:
+                try:
+                    result = call_fn()
+                except Exception as exc:
+                    holder["provider_exception"] = exc
+                    raise
+                quality = self.quality_snapshot(feature, result)
+                usage_metadata = usage_fn() if usage_fn else None
+                cost_metadata = self._cost_metadata_for_call(
+                    provider=provider,
+                    model=model,
+                    inputs=inputs,
+                    result=result,
+                    usage_metadata=usage_metadata,
+                )
+                holder["result"] = result
+                holder["quality"] = quality
+                holder["cost_metadata"] = cost_metadata
+                self._attach_usage_to_current_langsmith_run(cost_metadata)
+                return self._llm_trace_output(result, cost_metadata)
+
+            # Cost tracking in LangSmith is most reliable when the actual model
+            # call is its own child run with run_type="llm", ls_provider,
+            # ls_model_name and top-level usage_metadata. The outer run remains
+            # the app workflow (vocabulary_card_generation, batch, grammar, etc.).
+            try:
+
+                @traceable(  # type: ignore[misc]
+                    name=f"{feature}.llm",
+                    run_type="llm",
+                    metadata=llm_metadata,
+                    tags=[
+                        "ai-anki",
+                        "llm-call",
+                        str(provider),
+                        str(feature),
+                        str(safe_metadata.get("prompt_version", "unknown")),
+                    ],
+                )
+                def _langsmith_llm_call(llm_payload: dict[str, Any]) -> dict[str, Any]:
+                    return _run_provider_call(llm_payload)
+
+            except TypeError:
+
+                @traceable(name=f"{feature}.llm")  # type: ignore[misc]
+                def _langsmith_llm_call(llm_payload: dict[str, Any]) -> dict[str, Any]:
+                    return _run_provider_call(llm_payload)
+
+            llm_trace_output = _langsmith_llm_call(payload)
+            result = holder.get("result")
+            quality = holder.get("quality") or self.quality_snapshot(feature, result)
+            cost_metadata = holder.get("cost_metadata") or {}
             runtime_metadata = {**safe_metadata, **cost_metadata}
-            holder["result"] = result
-            holder["quality"] = quality
-            holder["cost_metadata"] = cost_metadata
             return {
+                "workflow": feature,
                 "inputs": payload,
+                "llm_run": {
+                    "provider": provider,
+                    "model": model,
+                    "usage_metadata": cost_metadata.get("usage_metadata"),
+                    "estimated_cost": cost_metadata.get("estimated_cost"),
+                },
+                "llm_output": llm_trace_output,
                 "result_summary": self.output_summary(result),
                 "quality_metrics": quality.as_metadata(),
-                "usage_metadata": cost_metadata.get("usage_metadata"),
                 "cost_metadata": cost_metadata,
                 "metadata": runtime_metadata,
             }
 
         try:
-            # Keep this as a real @traceable-decorated function. Earlier
-            # versions used traceable(...)(_run_traced), which worked like a
-            # decorator but was confusing to verify and easier to misdiagnose in
-            # the desktop app. This explicit decorator is what LangSmith's docs
-            # show and it is intentionally easy to grep for when debugging.
+            # Outer workflow trace stays a chain; the real provider request is
+            # logged as an LLM child run inside _run_traced so LangSmith can show
+            # token/cost details without losing app-level workflow metadata.
             try:
 
                 @traceable(  # type: ignore[misc]
                     name=feature,
-                    run_type="llm" if feature.endswith("generation") or feature in {"raw_text_generation", "conversation_feedback", "conversation_start", "grammar_analysis"} else "chain",
+                    run_type="chain",
                     metadata=safe_metadata,
                     tags=[
                         "ai-anki",
+                        "workflow",
                         str(provider),
                         str(feature),
                         str(safe_metadata.get("prompt_version", "unknown")),
@@ -1004,6 +1159,15 @@ class TracedVocabularyAiClient(VocabularyAiClient):
     def provider_name(self) -> str:
         return self._inner.provider_name
 
+    def _model_for_workflow(self, workflow: str = "card") -> str:
+        resolver = getattr(self._inner, "model_for_workflow", None)
+        if callable(resolver):
+            try:
+                return str(resolver(workflow))
+            except Exception:
+                return self._model
+        return self._model
+
     def _trace(
         self,
         feature: str,
@@ -1011,12 +1175,15 @@ class TracedVocabularyAiClient(VocabularyAiClient):
         call_fn: Callable[[], Any],
         *,
         metadata: dict[str, Any] | None = None,
+        workflow: str = "card",
     ) -> Any:
+        model = self._model_for_workflow(workflow)
         defaults = TRACER.feature_defaults(feature)
         base_metadata = {
             "feature": feature,
             "provider": self.provider_name,
-            "model": self._model,
+            "model": model,
+            "workflow_model_role": workflow or "card",
             "app": "AI Anki Language Assistant",
             **defaults,
             **(metadata or {}),
@@ -1024,19 +1191,28 @@ class TracedVocabularyAiClient(VocabularyAiClient):
         return TRACER.trace_call(
             feature=feature,
             provider=self.provider_name,
-            model=self._model,
+            model=model,
             inputs=inputs,
             metadata=base_metadata,
             call_fn=call_fn,
             usage_fn=lambda: getattr(self._inner, "_last_usage_metadata", None),
         )
 
-    def _generate_text(self, prompt: str) -> str:
+    def _generate_text(self, prompt: str, workflow: str = "card") -> str:
         generate_text = getattr(self._inner, "_generate_text")
+
+        def _call_generate_text() -> str:
+            try:
+                return generate_text(prompt, workflow=workflow)
+            except TypeError:
+                return generate_text(prompt)
+
         return self._trace(
             "raw_text_generation",
-            {"prompt": prompt, "purpose": "direct prompt call"},
-            lambda: generate_text(prompt),
+            {"prompt": prompt, "purpose": "direct prompt call", "workflow": workflow},
+            _call_generate_text,
+            metadata={"source": f"direct_{workflow}_prompt_call", "workflow_model_role": workflow},
+            workflow=workflow,
         )
 
     def generate_card(
@@ -1056,6 +1232,7 @@ class TracedVocabularyAiClient(VocabularyAiClient):
             },
             lambda: self._inner.generate_card(word_or_phrase, target_language, explanation_language, topic_context),
             metadata={"source": "single_flashcard"},
+            workflow="card",
         )
 
     def start_conversation(self, topic: str, target_language: str) -> ConversationStart:
@@ -1063,6 +1240,7 @@ class TracedVocabularyAiClient(VocabularyAiClient):
             "conversation_start",
             {"topic": topic, "target_language": target_language},
             lambda: self._inner.start_conversation(topic, target_language),
+            workflow="card",
         )
 
     def analyze_grammar(self, sentence: str, target_language: str) -> GrammarAnalysis:
@@ -1070,6 +1248,7 @@ class TracedVocabularyAiClient(VocabularyAiClient):
             "grammar_analysis",
             {"sentence": sentence, "target_language": target_language},
             lambda: self._inner.analyze_grammar(sentence, target_language),
+            workflow="card",
         )
 
     def generate_grammar_card(
@@ -1083,6 +1262,7 @@ class TracedVocabularyAiClient(VocabularyAiClient):
             {"grammar_item": grammar_item, "target_language": target_language, "topic_context": topic_context},
             lambda: self._inner.generate_grammar_card(grammar_item, target_language, topic_context),
             metadata={"source": source},
+            workflow="import" if source == "import_material_grammar" else "card",
         )
 
     def generate_sentence_card(
@@ -1101,6 +1281,7 @@ class TracedVocabularyAiClient(VocabularyAiClient):
                 "topic_context": topic_context,
             },
             lambda: self._inner.generate_sentence_card(raw_item, target_language, explanation_language, topic_context),
+            workflow="card",
         )
 
     def review_conversation_answer(
@@ -1126,6 +1307,7 @@ class TracedVocabularyAiClient(VocabularyAiClient):
                 topic, question, answer, target_language, improvement_level, feedback_language
             ),
             metadata={"improvement_level": improvement_level, "feedback_language": feedback_language},
+            workflow="review",
         )
 
 

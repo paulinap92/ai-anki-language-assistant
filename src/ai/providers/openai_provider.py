@@ -18,21 +18,44 @@ from src.ai.prompts import (
 class OpenAiVocabularyClient(VocabularyAiClient):
     """Generate language-learning content using the OpenAI API."""
 
-    def __init__(self, api_key: str, model: str) -> None:
+    def __init__(
+        self,
+        api_key: str,
+        model: str,
+        *,
+        import_model: str | None = None,
+        review_model: str | None = None,
+    ) -> None:
         """Initialize the OpenAI client."""
         self._client = OpenAI(api_key=api_key)
         self._model = model
+        self._import_model = import_model or model
+        self._review_model = review_model or import_model or model
+        self._last_model = model
+        self._last_workflow = "card"
         self._last_usage_metadata: dict[str, int] = {}
+
+    def model_for_workflow(self, workflow: str = "card") -> str:
+        """Return the configured model for a workflow role."""
+        key = (workflow or "card").strip().casefold()
+        if key in {"import", "ocr", "candidate", "multimodal"}:
+            return self._import_model
+        if key in {"review", "fix", "repair"}:
+            return self._review_model
+        return self._model
 
     @property
     def provider_name(self) -> str:
         """Return the provider name shown to the user."""
         return "OpenAI"
 
-    def _generate_text(self, prompt: str) -> str:
+    def _generate_text(self, prompt: str, workflow: str = "card") -> str:
         """Generate text for a prompt using the OpenAI Responses API."""
+        model = self.model_for_workflow(workflow)
+        self._last_model = model
+        self._last_workflow = workflow or "card"
         response = self._client.responses.create(
-            model=self._model,
+            model=model,
             input=prompt,
         )
         usage = getattr(response, "usage", None)
@@ -52,7 +75,8 @@ class OpenAiVocabularyClient(VocabularyAiClient):
     ) -> VocabularyCard:
         """Generate a vocabulary flashcard with OpenAI."""
         raw_text = self._generate_text(
-            build_vocabulary_prompt(word_or_phrase, target_language, explanation_language, topic_context)
+            build_vocabulary_prompt(word_or_phrase, target_language, explanation_language, topic_context),
+            workflow="card",
         )
         card = self._parse_card_response(raw_text, self.provider_name)
         warnings = validate_vocabulary_card(
@@ -73,13 +97,14 @@ class OpenAiVocabularyClient(VocabularyAiClient):
 
     def start_conversation(self, topic: str, target_language: str) -> ConversationStart:
         """Generate the first conversation question with OpenAI."""
-        raw_text = self._generate_text(build_conversation_start_prompt(topic, target_language))
+        raw_text = self._generate_text(build_conversation_start_prompt(topic, target_language), workflow="card")
         return self._parse_conversation_start(raw_text, self.provider_name)
 
     def analyze_grammar(self, sentence: str, target_language: str) -> GrammarAnalysis:
         """Analyze one sentence and return a structured grammar explanation."""
         raw_text = self._generate_text(
-            build_grammar_analysis_prompt(sentence, target_language)
+            build_grammar_analysis_prompt(sentence, target_language),
+            workflow="card",
         )
         return self._parse_grammar_analysis(raw_text, self.provider_name)
 
@@ -87,8 +112,10 @@ class OpenAiVocabularyClient(VocabularyAiClient):
         self, grammar_item: str, target_language: str, topic_context: str = ""
     ) -> GrammarAnalysis:
         """Generate one Batch grammar card."""
+        workflow = "import" if any(token in str(topic_context or "").casefold() for token in ("source", "ocr", "import", "rule-only", "detected")) else "card"
         raw_text = self._generate_text(
-            build_batch_grammar_prompt(grammar_item, target_language, topic_context)
+            build_batch_grammar_prompt(grammar_item, target_language, topic_context),
+            workflow=workflow,
         )
         return self._parse_grammar_analysis(raw_text, self.provider_name)
 
@@ -101,7 +128,8 @@ class OpenAiVocabularyClient(VocabularyAiClient):
     ) -> VocabularyCard:
         """Generate one card from a user-provided example sentence."""
         raw_text = self._generate_text(
-            build_sentence_based_card_prompt(raw_item, target_language, explanation_language, topic_context)
+            build_sentence_based_card_prompt(raw_item, target_language, explanation_language, topic_context),
+            workflow="card",
         )
         card = self._parse_card_response(raw_text, self.provider_name)
         warnings = validate_vocabulary_card(
@@ -128,6 +156,7 @@ class OpenAiVocabularyClient(VocabularyAiClient):
         raw_text = self._generate_text(
             build_conversation_feedback_prompt(
                 topic, question, answer, target_language, improvement_level, feedback_language
-            )
+            ),
+            workflow="review",
         )
         return self._parse_conversation_feedback(raw_text, self.provider_name)

@@ -3460,6 +3460,7 @@ class ModernVocabularyGui:
                 self._ocr_source_paths,
                 provider=provider,
                 prompt=prompt,
+                model=self._multimodal_model_name(provider),
             )
             raw_count = self._count_ai_json_candidates(raw_text)
             hard_limit = self._ocr_candidate_hard_limit(mode)
@@ -3576,8 +3577,8 @@ class ModernVocabularyGui:
         if provider_name not in self._ai_clients:
             provider_name = self._provider_var.get()
         previous_provider = self._provider_var.get()
-        model_name = self._current_ai_model_name(provider_name)
-        self._ocr_candidate_status_var.set(f"Extracting candidates from {source} with {provider_name} {model_name}...")
+        model_name = self._current_ai_model_name(provider_name, workflow="import")
+        self._ocr_candidate_status_var.set(f"Extracting candidates from {source} with {provider_name} import model {model_name}...")
         self._ocr_ai_running = True
         ai_button = getattr(self, "_ocr_ai_button", None)
         try:
@@ -3596,7 +3597,10 @@ class ModernVocabularyGui:
             if generate_text is None:
                 messagebox.showerror("Import Material", f"{provider_name} client does not expose text generation.")
                 return
-            raw_text = generate_text(prompt)
+            try:
+                raw_text = generate_text(prompt, workflow="import")
+            except TypeError:
+                raw_text = generate_text(prompt)
             raw_count = self._count_ai_json_candidates(raw_text)
             hard_limit = self._ocr_candidate_hard_limit(mode)
             if raw_count is not None and raw_count > hard_limit:
@@ -8126,9 +8130,39 @@ class ModernVocabularyGui:
     def _current_ai_client(self) -> VocabularyAiClient:
         return self._ai_clients[self._provider_var.get()]
 
-    def _current_ai_model_name(self, provider_name: str | None = None) -> str:
+    def _current_ai_model_name(self, provider_name: str | None = None, workflow: str = "card") -> str:
         client = self._ai_clients.get(provider_name or self._provider_var.get()) or self._current_ai_client()
-        return str(getattr(client, "_model", ""))
+        resolver = getattr(client, "model_for_workflow", None)
+        if callable(resolver):
+            try:
+                return str(resolver(workflow))
+            except Exception:
+                pass
+        inner = getattr(client, "_inner", None)
+        resolver = getattr(inner, "model_for_workflow", None)
+        if callable(resolver):
+            try:
+                return str(resolver(workflow))
+            except Exception:
+                pass
+        return str(getattr(client, "_model", getattr(inner, "_model", "")))
+
+    def _multimodal_model_name(self, provider_name: str) -> str | None:
+        """Return the configured vision/multimodal model for Import Material."""
+        provider = (provider_name or "").strip().casefold()
+        if "openai" in provider:
+            return (
+                os.getenv("OPENAI_MULTIMODAL_MODEL")
+                or os.getenv("OPENAI_IMPORT_MODEL")
+                or os.getenv("OPENAI_MODEL")
+            )
+        if "gemini" in provider or "google" in provider:
+            return (
+                os.getenv("GEMINI_MULTIMODAL_MODEL")
+                or os.getenv("GEMINI_IMPORT_MODEL")
+                or os.getenv("GEMINI_MODEL")
+            )
+        return None
 
     def _load_decks(self) -> None:
         try:

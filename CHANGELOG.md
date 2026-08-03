@@ -1,4 +1,12 @@
 
+## v11.5.9 — Workflow-specific model selection
+
+- Added workflow-specific model roles for card generation, Import/OCR extraction, multimodal import, and review/fix workflows.
+- Import Material text candidate extraction now uses the configured import model instead of always using the normal card-generation model.
+- Multimodal import now passes the configured multimodal model explicitly.
+- LangSmith traces include `workflow_model_role` to make model/cost comparison clearer.
+
+
 ## v11.5 — Multimodal Import Extraction
 
 - Added OpenAI/Gemini multimodal import methods for screenshot/book-photo/table extraction.

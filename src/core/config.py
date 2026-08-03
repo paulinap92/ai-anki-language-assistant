@@ -52,10 +52,20 @@ class Settings:
 
     gemini_api_key: str | None
     gemini_model: str
+    gemini_import_model: str
+    gemini_multimodal_model: str
+    gemini_review_model: str
     openai_api_key: str | None
     openai_model: str
+    openai_import_model: str
+    openai_multimodal_model: str
+    openai_review_model: str
+    openai_premium_model: str | None
     anthropic_api_key: str | None
     claude_model: str
+    claude_import_model: str
+    claude_review_model: str
+    claude_premium_model: str | None
     anki_connect_url: str
     anki_deck_name: str
     default_target_language: str
@@ -117,10 +127,57 @@ def get_settings() -> Settings:
     return Settings(
         gemini_api_key=gemini_api_key,
         gemini_model=_clean_env_value(os.getenv("GEMINI_MODEL")) or "gemini-2.5-flash",
+        gemini_import_model=(
+            _clean_env_value(os.getenv("GEMINI_IMPORT_MODEL"))
+            or _clean_env_value(os.getenv("GEMINI_MODEL"))
+            or "gemini-2.5-flash"
+        ),
+        gemini_multimodal_model=(
+            _clean_env_value(os.getenv("GEMINI_MULTIMODAL_MODEL"))
+            or _clean_env_value(os.getenv("GEMINI_IMPORT_MODEL"))
+            or _clean_env_value(os.getenv("GEMINI_MODEL"))
+            or "gemini-2.5-flash"
+        ),
+        gemini_review_model=(
+            _clean_env_value(os.getenv("GEMINI_REVIEW_MODEL"))
+            or _clean_env_value(os.getenv("GEMINI_IMPORT_MODEL"))
+            or _clean_env_value(os.getenv("GEMINI_MODEL"))
+            or "gemini-2.5-flash"
+        ),
         openai_api_key=openai_api_key,
         openai_model=_clean_env_value(os.getenv("OPENAI_MODEL")) or "gpt-4.1-mini",
+        openai_import_model=(
+            _clean_env_value(os.getenv("OPENAI_IMPORT_MODEL"))
+            or _clean_env_value(os.getenv("OPENAI_MODEL"))
+            or "gpt-4.1-mini"
+        ),
+        openai_multimodal_model=(
+            _clean_env_value(os.getenv("OPENAI_MULTIMODAL_MODEL"))
+            or _clean_env_value(os.getenv("OPENAI_IMPORT_MODEL"))
+            or _clean_env_value(os.getenv("OPENAI_MODEL"))
+            or "gpt-4.1-mini"
+        ),
+        openai_review_model=(
+            _clean_env_value(os.getenv("OPENAI_REVIEW_MODEL"))
+            or _clean_env_value(os.getenv("OPENAI_IMPORT_MODEL"))
+            or _clean_env_value(os.getenv("OPENAI_MODEL"))
+            or "gpt-4.1-mini"
+        ),
+        openai_premium_model=_clean_env_value(os.getenv("OPENAI_PREMIUM_MODEL")),
         anthropic_api_key=anthropic_api_key,
-        claude_model=_clean_env_value(os.getenv("CLAUDE_MODEL")) or "claude-haiku-4-5",
+        claude_model=_clean_env_value(os.getenv("CLAUDE_MODEL") or os.getenv("ANTHROPIC_MODEL")) or "claude-haiku-4-5",
+        claude_import_model=(
+            _clean_env_value(os.getenv("CLAUDE_IMPORT_MODEL") or os.getenv("ANTHROPIC_IMPORT_MODEL"))
+            or _clean_env_value(os.getenv("CLAUDE_MODEL") or os.getenv("ANTHROPIC_MODEL"))
+            or "claude-haiku-4-5"
+        ),
+        claude_review_model=(
+            _clean_env_value(os.getenv("CLAUDE_REVIEW_MODEL") or os.getenv("ANTHROPIC_REVIEW_MODEL"))
+            or _clean_env_value(os.getenv("CLAUDE_IMPORT_MODEL") or os.getenv("ANTHROPIC_IMPORT_MODEL"))
+            or _clean_env_value(os.getenv("CLAUDE_MODEL") or os.getenv("ANTHROPIC_MODEL"))
+            or "claude-haiku-4-5"
+        ),
+        claude_premium_model=_clean_env_value(os.getenv("CLAUDE_PREMIUM_MODEL") or os.getenv("ANTHROPIC_PREMIUM_MODEL")),
         anki_connect_url=os.getenv("ANKI_CONNECT_URL", "http://localhost:8765"),
         anki_deck_name=os.getenv("ANKI_DECK_NAME", "AI Vocabulary"),
         default_target_language=normalize_language(

@@ -25,32 +25,58 @@ from src.domain.models import (
 class ClaudeVocabularyClient(VocabularyAiClient):
     """Generate language-learning content using the Claude Messages API."""
 
-    def __init__(self, api_key: str, model: str, max_tokens: int = 4096) -> None:
+    def __init__(
+        self,
+        api_key: str,
+        model: str,
+        max_tokens: int = 4096,
+        *,
+        import_model: str | None = None,
+        review_model: str | None = None,
+    ) -> None:
         """Initialize the Claude client.
 
         Args:
             api_key: Anthropic API key.
             model: Claude API model identifier.
             max_tokens: Maximum number of output tokens per response.
+            import_model: Optional model for OCR/import candidate extraction.
+            review_model: Optional model for review/fix/conversation feedback workflows.
         """
         self._client = Anthropic(api_key=api_key)
         self._model = model
+        self._import_model = import_model or model
+        self._review_model = review_model or import_model or model
+        self._last_model = model
+        self._last_workflow = "card"
         self._max_tokens = max_tokens
         self._last_usage_metadata: dict[str, int] = {}
+
+    def model_for_workflow(self, workflow: str = "card") -> str:
+        """Return the configured model for a workflow role."""
+        key = (workflow or "card").strip().casefold()
+        if key in {"import", "ocr", "candidate", "multimodal"}:
+            return self._import_model
+        if key in {"review", "fix", "repair"}:
+            return self._review_model
+        return self._model
 
     @property
     def provider_name(self) -> str:
         """Return the provider name shown to the user."""
         return "Claude"
 
-    def _generate_text(self, prompt: str) -> str:
+    def _generate_text(self, prompt: str, workflow: str = "card") -> str:
         """Generate text for a prompt using Claude.
 
         Claude responses contain a list of content blocks. Only text blocks are
         joined; non-text blocks are ignored safely.
         """
+        model = self.model_for_workflow(workflow)
+        self._last_model = model
+        self._last_workflow = workflow or "card"
         response = self._client.messages.create(
-            model=self._model,
+            model=model,
             max_tokens=self._max_tokens,
             messages=[{"role": "user", "content": prompt}],
         )
@@ -85,7 +111,8 @@ class ClaudeVocabularyClient(VocabularyAiClient):
                 target_language,
                 explanation_language,
                 topic_context,
-            )
+            ),
+            workflow="card",
         )
         card = self._parse_card_response(raw_text, self.provider_name)
         warnings = validate_vocabulary_card(
@@ -117,7 +144,8 @@ class ClaudeVocabularyClient(VocabularyAiClient):
     ) -> ConversationStart:
         """Generate the first conversation question with Claude."""
         raw_text = self._generate_text(
-            build_conversation_start_prompt(topic, target_language)
+            build_conversation_start_prompt(topic, target_language),
+            workflow="card",
         )
         return self._parse_conversation_start(raw_text, self.provider_name)
 
@@ -128,7 +156,8 @@ class ClaudeVocabularyClient(VocabularyAiClient):
     ) -> GrammarAnalysis:
         """Analyze one sentence and return a structured grammar explanation."""
         raw_text = self._generate_text(
-            build_grammar_analysis_prompt(sentence, target_language)
+            build_grammar_analysis_prompt(sentence, target_language),
+            workflow="card",
         )
         return self._parse_grammar_analysis(raw_text, self.provider_name)
 
@@ -136,8 +165,10 @@ class ClaudeVocabularyClient(VocabularyAiClient):
         self, grammar_item: str, target_language: str, topic_context: str = ""
     ) -> GrammarAnalysis:
         """Generate one Batch grammar card."""
+        workflow = "import" if any(token in str(topic_context or "").casefold() for token in ("source", "ocr", "import", "rule-only", "detected")) else "card"
         raw_text = self._generate_text(
-            build_batch_grammar_prompt(grammar_item, target_language, topic_context)
+            build_batch_grammar_prompt(grammar_item, target_language, topic_context),
+            workflow=workflow,
         )
         return self._parse_grammar_analysis(raw_text, self.provider_name)
 
@@ -150,7 +181,8 @@ class ClaudeVocabularyClient(VocabularyAiClient):
     ) -> VocabularyCard:
         """Generate one card from a user-provided example sentence."""
         raw_text = self._generate_text(
-            build_sentence_based_card_prompt(raw_item, target_language, explanation_language, topic_context)
+            build_sentence_based_card_prompt(raw_item, target_language, explanation_language, topic_context),
+            workflow="card",
         )
         card = self._parse_card_response(raw_text, self.provider_name)
         warnings = validate_vocabulary_card(
@@ -182,6 +214,7 @@ class ClaudeVocabularyClient(VocabularyAiClient):
                 target_language,
                 improvement_level,
                 feedback_language,
-            )
+            ),
+            workflow="review",
         )
         return self._parse_conversation_feedback(raw_text, self.provider_name)

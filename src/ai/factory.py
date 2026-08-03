@@ -34,6 +34,8 @@ def build_ai_clients(settings: Settings) -> dict[str, VocabularyAiClient]:
         client = GeminiVocabularyClient(
             api_key=settings.gemini_api_key,
             model=settings.gemini_model,
+            import_model=settings.gemini_import_model,
+            review_model=settings.gemini_review_model,
         )
         clients[client.provider_name] = client
 
@@ -41,6 +43,8 @@ def build_ai_clients(settings: Settings) -> dict[str, VocabularyAiClient]:
         client = OpenAiVocabularyClient(
             api_key=settings.openai_api_key,
             model=settings.openai_model,
+            import_model=settings.openai_import_model,
+            review_model=settings.openai_review_model,
         )
         clients[client.provider_name] = client
 
@@ -48,6 +52,8 @@ def build_ai_clients(settings: Settings) -> dict[str, VocabularyAiClient]:
         client = ClaudeVocabularyClient(
             api_key=settings.anthropic_api_key,
             model=settings.claude_model,
+            import_model=settings.claude_import_model,
+            review_model=settings.claude_review_model,
         )
         clients[client.provider_name] = client
 
