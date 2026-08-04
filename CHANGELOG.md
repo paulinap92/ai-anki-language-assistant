@@ -1,4 +1,14 @@
 
+
+## v12.0 — Flashcard-based Conversation
+
+- Added a second Conversation Practice mode: `Talk based on flashcards`.
+- Uses the current in-memory Batch / Queue cards without AnkiConnect.
+- Generated vocabulary/grammar cards provide meanings, examples and usage; pending rows provide targets and source sentences.
+- Reuses flashcard context on every feedback turn and prioritizes target expressions in suggestions.
+- Limits one session to 30 usable items and skips failed/invalid/skipped Batch rows.
+- Added prompt, context-building and regression tests.
+
 ## v11.5.11 — Separate Vision OCR from Image Candidate Extraction
 
 - OpenAI/Gemini Vision OCR now transcribes image/PDF material into the reviewed text box only.
@@ -30,6 +40,22 @@
 - Added `OPENAI_MULTIMODAL_MODEL` and `GEMINI_MULTIMODAL_MODEL` env options.
 
 # Changelog
+
+## v12.0.2 — Conversation meaning and continuity
+
+- Added a dedicated target-language `tutor_reply` before the next question.
+- Direct learner questions and unknown flashcards are now answered before the conversation moves on.
+- Conversation feedback receives recent turn history instead of treating every answer as an isolated exchange.
+- Generic Anki `Front`/`Back` notes preserve `Back` as authoritative card content instead of mislabelling it as an example sentence.
+- Flashcard explanations must use the card meaning, definition, back, example or usage and avoid confident invention.
+- Added regression tests for Basic cards, explain-on-demand behaviour and history-aware prompts.
+
+## v12.0.1 — Conversation deck source selector
+
+- Flashcard conversation now defaults to a selected Anki deck.
+- Added visible Flashcard source and Deck selectors inside Conversation Practice.
+- Added Refresh decks and Current Batch / Queue as an optional secondary source.
+- Reads vocabulary, grammar, and recognizable legacy notes without changing the card-generation deck.
 
 This file keeps version history out of the main README. Detailed notes live in `releases/`.
 

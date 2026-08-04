@@ -33,8 +33,13 @@ class VocabularyAiClient(ABC):
         """Generate one validated vocabulary flashcard."""
 
     @abstractmethod
-    def start_conversation(self, topic: str, target_language: str) -> ConversationStart:
-        """Generate the first conversation question for a learner-selected topic."""
+    def start_conversation(
+        self,
+        topic: str,
+        target_language: str,
+        flashcard_context: str = "",
+    ) -> ConversationStart:
+        """Generate the first question for a topic or flashcard-based conversation."""
 
     @abstractmethod
     def analyze_grammar(self, sentence: str, target_language: str) -> GrammarAnalysis:
@@ -65,8 +70,10 @@ class VocabularyAiClient(ABC):
         target_language: str,
         improvement_level: str,
         feedback_language: str,
+        flashcard_context: str = "",
+        conversation_history: str = "",
     ) -> ConversationFeedback:
-        """Provide feedback and the next question for one learner response."""
+        """Provide feedback and continue a topic or flashcard-based conversation."""
 
     @staticmethod
     def _parse_response(

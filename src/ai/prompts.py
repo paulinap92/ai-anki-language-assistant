@@ -6,6 +6,7 @@ from __future__ import annotations
 VOCABULARY_PROMPT_VERSION = "v10-lesson-context-validation"
 GRAMMAR_BATCH_PROMPT_VERSION = "v3-smart-grammar-generated-example-contract"
 SENTENCE_BASED_CARD_PROMPT_VERSION = "v1-provided-example-card"
+CONVERSATION_PROMPT_VERSION = "v3-direct-reply-history-card-back"
 EXPLANATION_LANGUAGES = ["Polish", "English", "Spanish", "German", "Italian", "Same as target", "No translation"]
 
 
@@ -416,12 +417,62 @@ Return this exact JSON structure:
 """
 
 
-def build_conversation_start_prompt(topic: str, target_language: str) -> str:
-    """Build a prompt for the first question in conversation practice."""
+def _conversation_flashcard_instructions(flashcard_context: str) -> str:
+    """Return strict teaching rules for flashcard-based conversation mode."""
+    context = (flashcard_context or "").strip()
+    if not context:
+        return ""
+    return f"""
+
+FLASHCARD-BASED CONVERSATION MODE
+The learner selected flashcards as the basis of this conversation.
+Use the material below as the learning syllabus, not as a quiz answer key.
+The card content is authoritative. Do not invent a conflicting meaning.
+
+Teaching rules:
+- Lead a natural conversation rather than asking for definitions or reading a list.
+- Ask questions that create a realistic opportunity to use 1-3 target items.
+- Recycle target expressions naturally across later turns.
+- Do not force all flashcards into one answer.
+- Respect the meanings, definitions, card backs, examples, and usage supplied with the cards.
+- CARD BACK is the original reverse side of a generic Anki card. It may contain a translation,
+  definition, explanation, or example. Use it faithfully and infer its role conservatively.
+- If the learner says they do not know a target, asks what it means, or asks how it differs
+  from something else, answer that content question directly using the matching card material.
+- If the matching card does not contain enough information, say so briefly instead of inventing
+  a precise definition.
+- Prefer the exact target expressions when suggesting useful vocabulary.
+- Keep all learner-facing tutor replies and questions in the selected target language.
+
+FLASHCARD MATERIAL
+<<<FLASHCARDS
+{context}
+FLASHCARDS>>>
+"""
+
+
+def build_conversation_start_prompt(
+    topic: str,
+    target_language: str,
+    flashcard_context: str = "",
+) -> str:
+    """Build the first question for topic or flashcard-based conversation."""
+    flashcard_rules = _conversation_flashcard_instructions(flashcard_context)
+    if flashcard_context:
+        topic_instruction = (
+            f'Optional conversation focus: "{topic}".'
+            if topic.strip()
+            else "No additional topic focus was provided; infer natural situations from the flashcards."
+        )
+    else:
+        topic_instruction = f'Conversation topic: "{topic}".'
     return f"""
 You are a supportive {target_language} conversation teacher.
-Start a short conversation in {target_language} about: "{topic}"
+{topic_instruction}
+{flashcard_rules}
+Start a short conversation in {target_language}.
 Ask ONE natural, open question suitable for a 2-5 sentence answer.
+Do not assume the learner already knows every flashcard; be ready to explain one naturally.
 Return ONLY valid JSON without markdown:
 {{"question": "string"}}
 """
@@ -434,19 +485,40 @@ def build_conversation_feedback_prompt(
     target_language: str,
     improvement_level: str,
     feedback_language: str,
+    flashcard_context: str = "",
+    conversation_history: str = "",
 ) -> str:
-    """Build a prompt for reviewing one answer and continuing a conversation."""
+    """Build feedback plus a real conversational response and next question."""
     feedback_language = feedback_language.strip()
     if not feedback_language:
         raise ValueError("Feedback language must be selected explicitly.")
     effective_feedback_language = target_language if feedback_language == "Same as target" else feedback_language
+    flashcard_rules = _conversation_flashcard_instructions(flashcard_context)
+    history = (conversation_history or "").strip()
+    history_block = (
+        f"""
+RECENT CONVERSATION HISTORY
+<<<HISTORY
+{history}
+HISTORY>>>
+"""
+        if history
+        else "\nNo earlier conversation history is available.\n"
+    )
     return f"""
 You are a warm, practical {target_language} conversation teacher.
-Conversation topic: "{topic}"
-Question: "{question}"
-Learner answer: "{answer}"
+Conversation topic/focus: "{topic}"
+{flashcard_rules}
+{history_block}
+Current tutor question: "{question}"
+Current learner answer: "{answer}"
 Requested level: "{improvement_level}"
 Feedback language: {effective_feedback_language}
+
+Two-layer response rule:
+1. Language coaching: correct and improve the learner's wording.
+2. Real conversation: answer or react to the CONTENT of what the learner said before asking
+   another question. Never ignore a learner's direct question or request for an explanation.
 
 Teaching style:
 - Be positive first, like a good human teacher.
@@ -454,18 +526,30 @@ Teaching style:
 - Always explain HOW to improve, not only what is wrong.
 - Keep feedback practical and not too long.
 - Use {effective_feedback_language} for feedback, explanations, and mini_practice.
-- Use {target_language} for corrected_version, advanced_answer, next_question, and suggested_vocabulary.
+- Use {target_language} for corrected_version, advanced_answer, tutor_reply, next_question,
+  and suggested_vocabulary.
 - Do not switch to another language or writing system.
+- Use RECENT CONVERSATION HISTORY to stay coherent and avoid repeating questions already answered.
 
 Output requirements:
 - "feedback" must start with one encouraging sentence, then briefly summarize the main improvement.
-- "corrections" must contain 1-4 important corrections. If the answer is already excellent, include one useful style improvement.
-- Each correction must show: learner's original fragment, corrected fragment, and a short explanation in {effective_feedback_language}.
+- "corrections" must contain 1-4 important corrections. If the answer is already excellent,
+  include one useful style improvement.
+- Each correction must show: learner's original fragment, corrected fragment, and a short
+  explanation in {effective_feedback_language}.
 - "corrected_version" must preserve the learner's idea but fix errors.
 - "advanced_answer" must be a richer natural version at {improvement_level}.
-- "suggested_vocabulary" must contain 4 useful reusable words, phrases, or chunks from the answer/topic.
+- "tutor_reply" must be a direct 1-4 sentence conversational response in {target_language}.
+  It must answer clarification questions and explain an unknown flashcard before moving on.
+- When explaining a flashcard, use its exact MEANING, DEFINITION, CARD BACK, EXAMPLE, or USAGE
+  from FLASHCARD MATERIAL. Do not confidently invent details that contradict or exceed the card.
+- "next_question" must contain ONE natural follow-up question in {target_language}.
+  Keep it separate from tutor_reply. In flashcard mode, create an opportunity to use a relevant
+  target item, but do not jump abruptly to an unrelated expression.
+- "suggested_vocabulary" must contain 4 useful reusable words, phrases, or chunks from the
+  current exchange. In flashcard mode, prioritize exact relevant targets from FLASHCARD MATERIAL;
+  do not insert a random unused flashcard merely to fill the list.
 - "mini_practice" must be one short practice task in {effective_feedback_language}.
-- Ask one natural follow-up question in {target_language}.
 - Return ONLY valid JSON without markdown.
 
 {{
@@ -481,7 +565,8 @@ Output requirements:
   "corrected_version": "string in {target_language}",
   "advanced_answer": "string in {target_language}",
   "mini_practice": "short task in {effective_feedback_language}",
-  "next_question": "string in {target_language}",
+  "tutor_reply": "direct conversational response in {target_language}",
+  "next_question": "one question in {target_language}",
   "suggested_vocabulary": ["chunk 1", "chunk 2", "chunk 3", "chunk 4"]
 }}
 """

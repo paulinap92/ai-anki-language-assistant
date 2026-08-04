@@ -111,8 +111,15 @@ USER TASK:
             )
         return card
 
-    def start_conversation(self, topic: str, target_language: str) -> ConversationStart:
-        raw_text = self._generate_text(build_conversation_start_prompt(topic, target_language))
+    def start_conversation(
+        self,
+        topic: str,
+        target_language: str,
+        flashcard_context: str = "",
+    ) -> ConversationStart:
+        raw_text = self._generate_text(
+            build_conversation_start_prompt(topic, target_language, flashcard_context)
+        )
         return self._parse_conversation_start(raw_text, self.provider_name)
 
     def analyze_grammar(self, sentence: str, target_language: str) -> GrammarAnalysis:
@@ -157,10 +164,19 @@ USER TASK:
         target_language: str,
         improvement_level: str,
         feedback_language: str,
+        flashcard_context: str = "",
+        conversation_history: str = "",
     ) -> ConversationFeedback:
         raw_text = self._generate_text(
             build_conversation_feedback_prompt(
-                topic, question, answer, target_language, improvement_level, feedback_language
+                topic,
+                question,
+                answer,
+                target_language,
+                improvement_level,
+                feedback_language,
+                flashcard_context,
+                conversation_history,
             )
         )
         return self._parse_conversation_feedback(raw_text, self.provider_name)

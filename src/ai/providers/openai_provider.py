@@ -95,9 +95,17 @@ class OpenAiVocabularyClient(VocabularyAiClient):
             )
         return card
 
-    def start_conversation(self, topic: str, target_language: str) -> ConversationStart:
+    def start_conversation(
+        self,
+        topic: str,
+        target_language: str,
+        flashcard_context: str = "",
+    ) -> ConversationStart:
         """Generate the first conversation question with OpenAI."""
-        raw_text = self._generate_text(build_conversation_start_prompt(topic, target_language), workflow="card")
+        raw_text = self._generate_text(
+            build_conversation_start_prompt(topic, target_language, flashcard_context),
+            workflow="card",
+        )
         return self._parse_conversation_start(raw_text, self.provider_name)
 
     def analyze_grammar(self, sentence: str, target_language: str) -> GrammarAnalysis:
@@ -151,11 +159,20 @@ class OpenAiVocabularyClient(VocabularyAiClient):
         target_language: str,
         improvement_level: str,
         feedback_language: str,
+        flashcard_context: str = "",
+        conversation_history: str = "",
     ) -> ConversationFeedback:
         """Review an answer and continue the conversation with OpenAI."""
         raw_text = self._generate_text(
             build_conversation_feedback_prompt(
-                topic, question, answer, target_language, improvement_level, feedback_language
+                topic,
+                question,
+                answer,
+                target_language,
+                improvement_level,
+                feedback_language,
+                flashcard_context,
+                conversation_history,
             ),
             workflow="review",
         )

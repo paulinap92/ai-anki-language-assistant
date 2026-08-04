@@ -141,10 +141,11 @@ class ClaudeVocabularyClient(VocabularyAiClient):
         self,
         topic: str,
         target_language: str,
+        flashcard_context: str = "",
     ) -> ConversationStart:
         """Generate the first conversation question with Claude."""
         raw_text = self._generate_text(
-            build_conversation_start_prompt(topic, target_language),
+            build_conversation_start_prompt(topic, target_language, flashcard_context),
             workflow="card",
         )
         return self._parse_conversation_start(raw_text, self.provider_name)
@@ -204,6 +205,8 @@ class ClaudeVocabularyClient(VocabularyAiClient):
         target_language: str,
         improvement_level: str,
         feedback_language: str,
+        flashcard_context: str = "",
+        conversation_history: str = "",
     ) -> ConversationFeedback:
         """Review an answer and continue the conversation with Claude."""
         raw_text = self._generate_text(
@@ -214,6 +217,8 @@ class ClaudeVocabularyClient(VocabularyAiClient):
                 target_language,
                 improvement_level,
                 feedback_language,
+                flashcard_context,
+                conversation_history,
             ),
             workflow="review",
         )

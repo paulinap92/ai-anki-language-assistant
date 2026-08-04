@@ -152,6 +152,13 @@ class ConversationFeedback(BaseModel):
         default="",
         description="One short follow-up practice task in the feedback language.",
     )
+    tutor_reply: str = Field(
+        default="",
+        description=(
+            "A direct conversational reply in the target language that answers or reacts "
+            "to the learner before the next question."
+        ),
+    )
     next_question: str = Field(description="Next conversation question in the target language.")
     suggested_vocabulary: list[str] = Field(
         description="Useful target-language words or phrases suitable for flashcards."
@@ -169,6 +176,8 @@ class ConversationFeedback(BaseModel):
             normalized["corrections"] = []
         if "mini_practice" not in normalized:
             normalized["mini_practice"] = ""
+        if "tutor_reply" not in normalized:
+            normalized["tutor_reply"] = ""
         return normalized
 
     @property

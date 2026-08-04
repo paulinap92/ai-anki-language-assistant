@@ -25,7 +25,7 @@ class DummyClient(VocabularyAiClient):
             explanation_language=explanation_language,
         )
 
-    def start_conversation(self, topic, target_language):
+    def start_conversation(self, topic, target_language, flashcard_context=""):
         return ConversationStart(question=f"Question about {topic}?")
 
     def analyze_grammar(self, sentence, target_language):
@@ -47,7 +47,7 @@ class DummyClient(VocabularyAiClient):
     def generate_sentence_card(self, raw_item, target_language, explanation_language, topic_context=""):
         return self.generate_card(raw_item.split("|")[0].strip(), target_language, explanation_language, topic_context)
 
-    def review_conversation_answer(self, topic, question, answer, target_language, improvement_level, feedback_language):
+    def review_conversation_answer(self, topic, question, answer, target_language, improvement_level, feedback_language, flashcard_context="", conversation_history=""):
         return ConversationFeedback(
             feedback_language=feedback_language,
             feedback="ok",
@@ -55,6 +55,7 @@ class DummyClient(VocabularyAiClient):
             corrected_version=answer,
             advanced_answer=answer,
             mini_practice="",
+            tutor_reply="Direct reply.",
             next_question="Next?",
             suggested_vocabulary=["useful phrase"],
         )
@@ -94,3 +95,36 @@ def test_redaction_summarizes_text_values():
 
     assert sanitized["source_text"].startswith("<redacted text")
     assert "words=3" in sanitized["source_text"]
+
+
+def test_wrapper_accepts_flashcard_conversation_context():
+    configure_llmops(
+        enabled=False,
+        project_name="test-project",
+        api_key=None,
+        redact_inputs=True,
+    )
+    tracer = get_llmops_tracer()
+    tracer.clear_events()
+    client = wrap_ai_client(DummyClient())
+
+    start = client.start_conversation(
+        "work",
+        "Spanish",
+        "1. TARGET: aunar | EXAMPLE: Debemos aunar los dos campos.",
+    )
+    feedback = client.review_conversation_answer(
+        "work",
+        start.question,
+        "Debemos aunar los dos campos.",
+        "Spanish",
+        "Strong B2/C1",
+        "Polish",
+        "1. TARGET: aunar | EXAMPLE: Debemos aunar los dos campos.",
+    )
+
+    assert start.question == "Question about work?"
+    assert feedback.next_question == "Next?"
+    features = [event.feature for event in tracer.snapshot_events()]
+    assert "conversation_start" in features
+    assert "conversation_feedback" in features

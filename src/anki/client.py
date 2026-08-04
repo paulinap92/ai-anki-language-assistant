@@ -92,6 +92,35 @@ class AnkiClient:
             return []
         return self._invoke(action="cardsInfo", params={"cards": card_ids}) or []
 
+    def list_notes_for_conversation(self, deck_name: str) -> list[dict[str, Any]]:
+        """Return normalized notes from one deck for Conversation Practice.
+
+        Notes are fetched in chunks so a large deck does not create one enormous
+        AnkiConnect ``notesInfo`` request. Reading a deck never changes the active
+        deck used by card-generation workflows.
+        """
+        selected_deck = deck_name.strip()
+        if not selected_deck:
+            raise ValueError("Select an Anki deck for Conversation Practice.")
+        deck = self._escape_search_value(selected_deck)
+        note_ids = self._invoke(
+            action="findNotes",
+            params={"query": f'deck:"{deck}"'},
+        ) or []
+        if not note_ids:
+            return []
+
+        summaries: list[dict[str, Any]] = []
+        chunk_size = 250
+        for start in range(0, len(note_ids), chunk_size):
+            chunk = note_ids[start : start + chunk_size]
+            notes = self._invoke(action="notesInfo", params={"notes": chunk}) or []
+            for raw_note in notes:
+                summary = self._summarise_note(raw_note)
+                if summary.get("word"):
+                    summaries.append(summary)
+        return summaries
+
     def ensure_deck_exists(self) -> None:
         """Create the currently selected deck if it does not already exist."""
         self._invoke(action="createDeck", params={"deck": self._deck_name})

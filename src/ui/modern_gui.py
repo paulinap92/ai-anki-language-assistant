@@ -33,6 +33,10 @@ from src.anki.client import AnkiClient, DuplicateNoteError
 from src.anki.templates import MODEL_NAME
 from src.domain.languages import LANGUAGE_TAGS
 from src.domain.models import ConversationFeedback, GrammarAnalysis, VocabularyCard
+from src.conversation import (
+    build_anki_note_conversation_material,
+    build_flashcard_conversation_material,
+)
 from src.practice import PracticeItem, PracticeQuestion, PracticeService
 from src.quality import validate_vocabulary_card
 from src.ocr import HTML_EXTENSIONS, TEXT_EXTENSIONS, OcrExtractionError, clean_ocr_text, extract_text_from_paths, extract_text_with_mistral, extract_candidates_with_multimodal, extract_text_with_multimodal
@@ -44,6 +48,16 @@ from src.observability import get_llmops_tracer
 
 EXPLANATION_LANGUAGES = ["Polish", "English", "Spanish", "German", "Italian", "Same as target", "No translation"]
 IMPROVEMENT_LEVELS = ["Natural B1/B2", "Strong B2/C1", "Professional / Interview"]
+CONVERSATION_MODE_TOPIC = "Talk about a topic"
+CONVERSATION_MODE_FLASHCARDS = "Talk based on flashcards"
+CONVERSATION_MODES = [CONVERSATION_MODE_TOPIC, CONVERSATION_MODE_FLASHCARDS]
+CONVERSATION_FLASHCARD_SOURCE_ANKI = "Anki deck"
+CONVERSATION_FLASHCARD_SOURCE_BATCH = "Current Batch / Queue"
+CONVERSATION_FLASHCARD_SOURCES = [
+    CONVERSATION_FLASHCARD_SOURCE_ANKI,
+    CONVERSATION_FLASHCARD_SOURCE_BATCH,
+]
+CONVERSATION_FLASHCARD_LIMIT = 30
 BATCH_MODES = ["Vocabulary", "Grammar", "Mixed", "Provided examples"]
 OCR_EXTRACTION_MODES = ["Provided examples", "Vocabulary", "Vocabulary + source examples", "Smart vocabulary", "Grammar", "Smart grammar import", "Mixed"]
 OCR_IMPORT_METHODS = ["Local extraction (free)", "Mistral OCR (cloud text only)", "OpenAI Vision OCR (text only)", "Gemini Vision OCR (text only)"]
@@ -150,6 +164,16 @@ class ModernVocabularyGui:
         self._generated_grammar_provider_name: str | None = None
 
         self._topic_var = ctk.StringVar()
+        self._conversation_mode_var = ctk.StringVar(value=CONVERSATION_MODE_TOPIC)
+        self._conversation_flashcard_source_var = ctk.StringVar(
+            value=CONVERSATION_FLASHCARD_SOURCE_ANKI
+        )
+        self._conversation_deck_var = ctk.StringVar(value=anki_client.deck_name)
+        self._conversation_flashcard_context = ""
+        self._conversation_flashcard_targets: list[str] = []
+        self._conversation_flashcard_status_var = ctk.StringVar(
+            value="Choose an Anki deck or use the current Batch / Queue."
+        )
         self._conversation_language_var = ctk.StringVar(value=default_target_language)
         preferred_conversation_provider = (
             "OpenAI" if "OpenAI" in ai_clients
@@ -593,6 +617,9 @@ class ModernVocabularyGui:
             top_settings.grid_remove()
         else:
             top_settings.grid(row=getattr(self, "_top_settings_grid_row", 1), column=0, sticky="ew", padx=24, pady=(8, 4))
+
+        if current_tab == "Conversation Practice":
+            self._refresh_conversation_flashcard_status()
 
         # Avoid stale global messages from a previous workflow, for example
         # Conversation status still visible in Speech / Audio.
@@ -1228,12 +1255,15 @@ class ModernVocabularyGui:
         ctk.CTkLabel(topic, text="Conversation topic", font=ctk.CTkFont(size=16, weight="bold")).grid(
             row=0, column=0, padx=(18, 10), pady=14, sticky="w"
         )
-        ctk.CTkEntry(
+        self._conversation_topic_entry = ctk.CTkEntry(
             topic,
             textvariable=self._topic_var,
             placeholder_text="e.g. daily life, travel, an interview, cooking...",
             height=38,
-        ).grid(row=0, column=1, padx=(0, 10), pady=14, sticky="ew")
+        )
+        self._conversation_topic_entry.grid(
+            row=0, column=1, padx=(0, 10), pady=14, sticky="ew"
+        )
         ctk.CTkLabel(topic, text="Answer level").grid(
             row=0, column=2, padx=(4, 6), pady=14, sticky="e"
         )
@@ -1244,7 +1274,13 @@ class ModernVocabularyGui:
             state="readonly",
             width=190,
         ).grid(row=0, column=3, padx=(0, 10), pady=14)
-        ctk.CTkButton(topic, text="Start topic", width=120, command=self._start_conversation_topic).grid(
+        self._conversation_start_button = ctk.CTkButton(
+            topic,
+            text="Start topic",
+            width=150,
+            command=self._start_conversation_topic,
+        )
+        self._conversation_start_button.grid(
             row=0, column=4, padx=(0, 10), pady=14
         )
         ctk.CTkButton(topic, text="Reset", width=80, command=self._reset_conversation).grid(
@@ -1281,6 +1317,73 @@ class ModernVocabularyGui:
             width=190,
         ).grid(row=1, column=5, padx=(0, 18), pady=(0, 14), sticky="ew")
 
+        ctk.CTkLabel(topic, text="Conversation mode").grid(
+            row=2, column=0, padx=(18, 8), pady=(0, 14), sticky="w"
+        )
+        self._conversation_mode_box = ctk.CTkComboBox(
+            topic,
+            variable=self._conversation_mode_var,
+            values=CONVERSATION_MODES,
+            state="readonly",
+            width=230,
+            command=self._on_conversation_mode_changed,
+        )
+        self._conversation_mode_box.grid(
+            row=2, column=1, padx=(0, 10), pady=(0, 14), sticky="w"
+        )
+        ctk.CTkLabel(topic, text="Flashcard source").grid(
+            row=2, column=2, padx=(4, 6), pady=(0, 14), sticky="e"
+        )
+        self._conversation_source_box = ctk.CTkComboBox(
+            topic,
+            variable=self._conversation_flashcard_source_var,
+            values=CONVERSATION_FLASHCARD_SOURCES,
+            state="readonly",
+            width=190,
+            command=self._on_conversation_source_changed,
+        )
+        self._conversation_source_box.grid(
+            row=2, column=3, padx=(0, 10), pady=(0, 14), sticky="ew"
+        )
+        ctk.CTkLabel(topic, text="Deck").grid(
+            row=2, column=4, padx=(0, 6), pady=(0, 14), sticky="e"
+        )
+        self._conversation_deck_box = ctk.CTkComboBox(
+            topic,
+            variable=self._conversation_deck_var,
+            values=[self._anki_client.deck_name],
+            state="readonly",
+            width=190,
+            command=lambda _value: self._refresh_conversation_flashcard_status(),
+        )
+        self._conversation_deck_box.grid(
+            row=2, column=5, padx=(0, 18), pady=(0, 14), sticky="ew"
+        )
+
+        self._conversation_refresh_decks_button = ctk.CTkButton(
+            topic,
+            text="Refresh decks",
+            width=135,
+            command=self._refresh_conversation_decks,
+        )
+        self._conversation_refresh_decks_button.grid(
+            row=3, column=0, padx=(18, 10), pady=(0, 14), sticky="w"
+        )
+        ctk.CTkLabel(
+            topic,
+            textvariable=self._conversation_flashcard_status_var,
+            text_color=("gray35", "gray75"),
+            wraplength=900,
+            justify="left",
+        ).grid(
+            row=3,
+            column=1,
+            columnspan=5,
+            padx=(0, 18),
+            pady=(0, 14),
+            sticky="w",
+        )
+
         chat_panel = ctk.CTkFrame(layout, corner_radius=18)
         chat_panel.grid(row=1, column=0, sticky="nsew", padx=(0, 12))
         chat_panel.grid_columnconfigure(0, weight=1)
@@ -1290,7 +1393,10 @@ class ModernVocabularyGui:
         )
         self._chat_text = ctk.CTkTextbox(chat_panel, wrap="word", font=ctk.CTkFont(size=14))
         self._chat_text.grid(row=1, column=0, sticky="nsew", padx=18, pady=(0, 12))
-        self._chat_text.insert("1.0", "Choose a topic and click Start topic. Then continue the conversation here.\n")
+        self._chat_text.insert(
+            "1.0",
+            "Choose a mode. Start with a topic or use flashcards from an Anki deck or Batch / Queue.\n",
+        )
         self._chat_text.configure(state="disabled")
 
         input_row = ctk.CTkFrame(chat_panel, fg_color="transparent")
@@ -1412,6 +1518,8 @@ class ModernVocabularyGui:
             text="Open Batch / Queue",
             command=self._open_batch_queue_tab,
         ).grid(row=0, column=2, sticky="ew", padx=(6, 0))
+
+        self._on_conversation_mode_changed(self._conversation_mode_var.get())
 
     def _open_batch_queue_tab(self) -> None:
         try:
@@ -8422,8 +8530,13 @@ class ModernVocabularyGui:
             speech_deck_box = getattr(self, "_speech_deck_box", None)
             if speech_deck_box is not None:
                 speech_deck_box.configure(values=[self._anki_client.deck_name])
+            conversation_deck_box = getattr(self, "_conversation_deck_box", None)
+            if conversation_deck_box is not None:
+                conversation_deck_box.configure(values=[self._anki_client.deck_name])
             if not self._speech_deck_var.get().strip():
                 self._speech_deck_var.set(self._anki_client.deck_name)
+            if not self._conversation_deck_var.get().strip():
+                self._conversation_deck_var.set(self._anki_client.deck_name)
             self._status_var.set("Could not load decks. Open Anki and click Refresh.")
             messagebox.showwarning("Anki connection", str(exc))
             return
@@ -8435,11 +8548,18 @@ class ModernVocabularyGui:
         speech_deck_box = getattr(self, "_speech_deck_box", None)
         if speech_deck_box is not None:
             speech_deck_box.configure(values=deck_values)
+        conversation_deck_box = getattr(self, "_conversation_deck_box", None)
+        if conversation_deck_box is not None:
+            conversation_deck_box.configure(values=deck_values)
         if not self._deck_var.get().strip():
             self._deck_var.set(self._anki_client.deck_name)
         if not self._speech_deck_var.get().strip():
             self._speech_deck_var.set(self._deck_var.get() or self._anki_client.deck_name)
-        self._status_var.set("Decks loaded. Select the target deck before adding cards or the audio deck in Speech / Audio.")
+        if not self._conversation_deck_var.get().strip():
+            self._conversation_deck_var.set(self._deck_var.get() or self._anki_client.deck_name)
+        self._status_var.set(
+            "Decks loaded. Select a target deck for cards, audio, or Conversation Practice."
+        )
 
     def _set_selected_deck(self) -> str:
         deck_name = self._deck_var.get().strip()
@@ -9727,7 +9847,7 @@ class ModernVocabularyGui:
     def _read_conversation_question_aloud(self) -> None:
         """Generate and play audio for the current Conversation Practice question."""
         if not self._conversation_question:
-            messagebox.showinfo("No question", "Start a conversation topic first.")
+            messagebox.showinfo("No question", "Start a conversation first.")
             return
         if not self._speech_service or not self._tts_provider_var.get():
             messagebox.showerror(
@@ -9758,18 +9878,173 @@ class ModernVocabularyGui:
         self._status_var.set(f"Question audio ready: {result.path.name}")
         self._open_audio_file(result.path)
 
-    def _start_conversation_topic(self) -> None:
-        """Start a new conversation topic using the shared AI client interface."""
-        topic = self._topic_var.get().strip()
-        if not topic:
-            messagebox.showerror("Missing topic", "Enter a conversation topic first.")
+    def _conversation_flashcard_records(
+        self,
+        limit: int = CONVERSATION_FLASHCARD_LIMIT,
+    ) -> tuple[list[str], list[str], int]:
+        """Build prompt rows from the selected flashcard source."""
+        source = self._conversation_flashcard_source_var.get().strip()
+        if source == CONVERSATION_FLASHCARD_SOURCE_BATCH:
+            return build_flashcard_conversation_material(
+                self._batch_items,
+                limit=limit,
+            )
+
+        deck_name = self._conversation_deck_var.get().strip()
+        if not deck_name:
+            raise ValueError("Select an Anki deck for Conversation Practice.")
+        try:
+            notes = self._anki_client.list_notes_for_conversation(deck_name)
+        except Exception as exc:
+            raise ValueError(
+                f"Could not read Anki deck '{deck_name}'. Open Anki, make sure "
+                "AnkiConnect is running, then click Refresh decks."
+            ) from exc
+        return build_anki_note_conversation_material(notes, limit=limit)
+
+    def _refresh_conversation_decks(self) -> None:
+        """Reload Anki deck names for the Conversation Practice selector."""
+        self._load_decks()
+        self._refresh_conversation_flashcard_status()
+
+    def _refresh_conversation_flashcard_status(self) -> None:
+        mode = self._conversation_mode_var.get().strip()
+        if mode != CONVERSATION_MODE_FLASHCARDS:
+            self._conversation_flashcard_status_var.set(
+                "Topic mode does not use a flashcard source."
+            )
             return
 
+        source = self._conversation_flashcard_source_var.get().strip()
+        if source == CONVERSATION_FLASHCARD_SOURCE_BATCH:
+            rows, _targets, total = build_flashcard_conversation_material(
+                self._batch_items,
+                limit=CONVERSATION_FLASHCARD_LIMIT,
+            )
+            if total == 0:
+                self._conversation_flashcard_status_var.set(
+                    "No usable Batch / Queue items. Load or create flashcards there first."
+                )
+            elif total > len(rows):
+                self._conversation_flashcard_status_var.set(
+                    f"{total} usable Batch / Queue item(s); this session will use {len(rows)}."
+                )
+            else:
+                self._conversation_flashcard_status_var.set(
+                    f"{total} usable Batch / Queue item(s) available."
+                )
+            return
+
+        deck_name = self._conversation_deck_var.get().strip()
+        if not deck_name:
+            self._conversation_flashcard_status_var.set(
+                "Select an Anki deck. Open Anki and click Refresh decks if the list is empty."
+            )
+            return
+        self._conversation_flashcard_status_var.set(
+            f"Anki deck selected: {deck_name}. Up to {CONVERSATION_FLASHCARD_LIMIT} usable cards "
+            "will be loaded when you start."
+        )
+
+    def _on_conversation_source_changed(self, selected: str | None = None) -> None:
+        """Enable deck controls only for the Anki-deck source."""
+        source = (selected or self._conversation_flashcard_source_var.get()).strip()
+        uses_anki = source == CONVERSATION_FLASHCARD_SOURCE_ANKI
+        deck_state = "readonly" if uses_anki else "disabled"
+        button_state = "normal" if uses_anki else "disabled"
+        self._conversation_deck_box.configure(state=deck_state)
+        self._conversation_refresh_decks_button.configure(state=button_state)
+        self._refresh_conversation_flashcard_status()
+
+    def _on_conversation_mode_changed(self, selected: str | None = None) -> None:
+        """Update Conversation controls for topic or flashcard mode."""
+        mode = (selected or self._conversation_mode_var.get()).strip()
+        flashcard_mode = mode == CONVERSATION_MODE_FLASHCARDS
+        self._conversation_start_button.configure(
+            text="Start from flashcards" if flashcard_mode else "Start topic"
+        )
+        self._conversation_topic_entry.configure(
+            placeholder_text=(
+                "optional focus, e.g. work, travel, daily life..."
+                if flashcard_mode
+                else "e.g. daily life, travel, an interview, cooking..."
+            )
+        )
+        self._conversation_source_box.configure(
+            state="readonly" if flashcard_mode else "disabled"
+        )
+        if flashcard_mode:
+            self._on_conversation_source_changed()
+        else:
+            self._conversation_deck_box.configure(state="disabled")
+            self._conversation_refresh_decks_button.configure(state="disabled")
+            self._refresh_conversation_flashcard_status()
+
+    def _prepare_conversation_context(self) -> tuple[str, str]:
+        """Return (display label, flashcard context) for the selected mode."""
+        topic = self._topic_var.get().strip()
+        if self._conversation_mode_var.get() != CONVERSATION_MODE_FLASHCARDS:
+            if not topic:
+                raise ValueError("Enter a conversation topic first.")
+            self._conversation_flashcard_context = ""
+            self._conversation_flashcard_targets = []
+            return topic, ""
+
+        rows, targets, total = self._conversation_flashcard_records()
+        source = self._conversation_flashcard_source_var.get().strip()
+        if not rows:
+            if source == CONVERSATION_FLASHCARD_SOURCE_BATCH:
+                raise ValueError(
+                    "No usable flashcards are loaded in Batch / Queue. "
+                    "Load a list or create cards there first."
+                )
+            deck_name = self._conversation_deck_var.get().strip()
+            raise ValueError(
+                f"No usable flashcards were found in Anki deck '{deck_name}'. "
+                "Choose another deck or add supported vocabulary/grammar cards."
+            )
+
+        self._conversation_flashcard_context = "\n".join(
+            f"{index}. {row}" for index, row in enumerate(rows, start=1)
+        )
+        self._conversation_flashcard_targets = targets
+        focus = topic or "natural situations inferred from the flashcards"
+        if source == CONVERSATION_FLASHCARD_SOURCE_BATCH:
+            source_label = "Current Batch / Queue"
+        else:
+            source_label = f"Anki deck: {self._conversation_deck_var.get().strip()}"
+        return f"{source_label} ({total} usable) · focus: {focus}", self._conversation_flashcard_context
+
+    def _start_conversation_topic(self) -> None:
+        """Start a topic conversation or one based on a selected flashcard source."""
+        if (
+            self._conversation_mode_var.get() == CONVERSATION_MODE_FLASHCARDS
+            and self._conversation_flashcard_source_var.get() == CONVERSATION_FLASHCARD_SOURCE_ANKI
+        ):
+            deck_name = self._conversation_deck_var.get().strip()
+            self._status_var.set(f"Loading flashcards from Anki deck: {deck_name}...")
+            self._root.update_idletasks()
+        try:
+            display_context, flashcard_context = self._prepare_conversation_context()
+        except ValueError as exc:
+            messagebox.showerror("Conversation", str(exc))
+            return
+
+        topic = self._topic_var.get().strip()
         provider_name = self._conversation_provider_var.get()
         self._conversation_history.clear()
         self._conversation_question = None
         self._clear_chat()
-        self._append_chat("TOPIC", topic)
+
+        if flashcard_context:
+            self._append_chat("MODE", display_context)
+            preview = "\n".join(f"• {target}" for target in self._conversation_flashcard_targets[:12])
+            if len(self._conversation_flashcard_targets) > 12:
+                preview += f"\n• +{len(self._conversation_flashcard_targets) - 12} more"
+            self._append_chat("FLASHCARD TARGETS", preview)
+        else:
+            self._append_chat("TOPIC", display_context)
+
         self._status_var.set(f"Starting conversation with {provider_name}...")
         self._root.update_idletasks()
 
@@ -9777,6 +10052,7 @@ class ModernVocabularyGui:
             start = self._conversation_ai_client().start_conversation(
                 topic=topic,
                 target_language=self._conversation_language_var.get(),
+                flashcard_context=flashcard_context,
             )
         except Exception as exc:
             self._status_var.set("Conversation start failed.")
@@ -9784,13 +10060,19 @@ class ModernVocabularyGui:
             return
 
         self._conversation_question = start.question
+        self._conversation_history.append(("ai", start.question))
         self._append_chat("AI TUTOR", start.question)
-        self._status_var.set("Conversation started. Write your answer and send it.")
+        if flashcard_context:
+            self._status_var.set(
+                "Flashcard-based conversation started. Answer naturally and try to use the target expressions."
+            )
+        else:
+            self._status_var.set("Conversation started. Write your answer and send it.")
 
     def _send_conversation_message(self) -> None:
         """Send the learner answer, request feedback, and continue the conversation."""
         if not self._conversation_question:
-            messagebox.showerror("No conversation", "Start a conversation topic first.")
+            messagebox.showerror("No conversation", "Start a conversation first.")
             return
 
         answer = self._message_input.get("1.0", "end").strip()
@@ -9811,6 +10093,8 @@ class ModernVocabularyGui:
                 target_language=self._conversation_language_var.get(),
                 improvement_level=self._improvement_level_var.get(),
                 feedback_language=self._feedback_language_var.get(),
+                flashcard_context=self._conversation_flashcard_context,
+                conversation_history=self._build_history_text(max_turns=10),
             )
         except Exception as exc:
             self._status_var.set("Conversation reply failed.")
@@ -9818,7 +10102,13 @@ class ModernVocabularyGui:
             return
 
         self._conversation_history.append(("user", answer))
-        self._conversation_history.append(("ai", feedback.advanced_answer))
+        assistant_turn = " ".join(
+            part.strip()
+            for part in (feedback.tutor_reply, feedback.next_question)
+            if part and part.strip()
+        )
+        if assistant_turn:
+            self._conversation_history.append(("ai", assistant_turn))
         self._append_conversation_feedback(feedback)
         self._conversation_question = feedback.next_question
         self._render_suggestions(feedback.suggested_vocabulary)
@@ -9848,7 +10138,13 @@ class ModernVocabularyGui:
             self._append_chat("MINI PRACTICE", feedback.mini_practice)
         if feedback.suggested_vocabulary:
             self._append_chat("SUGGESTED EXPRESSIONS", "\n".join(f"• {item}" for item in feedback.suggested_vocabulary))
-        self._append_chat("AI TUTOR", feedback.next_question)
+        if feedback.tutor_reply:
+            self._append_chat("AI TUTOR", feedback.tutor_reply)
+            self._append_chat("NEXT QUESTION", feedback.next_question)
+        else:
+            # Backward-compatible display for older/local providers that do not
+            # yet return the dedicated conversational reply field.
+            self._append_chat("AI TUTOR", feedback.next_question)
 
     def _append_chat(self, speaker: str, text: str) -> None:
         self._chat_text.configure(state="normal")
@@ -10098,6 +10394,8 @@ class ModernVocabularyGui:
     def _reset_conversation(self) -> None:
         self._conversation_history.clear()
         self._conversation_question = None
+        self._conversation_flashcard_context = ""
+        self._conversation_flashcard_targets = []
         self._latest_suggestions = []
         self._conversation_last_batch_send = []
         self._suggestion_items = []
@@ -10105,7 +10403,10 @@ class ModernVocabularyGui:
         self._suggestion_entry_vars = []
         self._clear_chat()
         self._chat_text.configure(state="normal")
-        self._chat_text.insert("1.0", "Choose a topic and click Start topic. Then continue the conversation here.\n")
+        self._chat_text.insert(
+            "1.0",
+            "Choose a mode. Start with a topic or use flashcards from an Anki deck or Batch / Queue.\n",
+        )
         self._chat_text.configure(state="disabled")
         self._flashcard_queue.clear()
         self._render_suggestions([])
@@ -10113,4 +10414,5 @@ class ModernVocabularyGui:
         self._conversation_queue_log_var.set(
             "Conversation reset. Select AI suggestions, edit them if needed, then stage them here."
         )
+        self._refresh_conversation_flashcard_status()
         self._status_var.set("Conversation reset.")

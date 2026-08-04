@@ -86,7 +86,7 @@ FEATURE_DEFAULTS: dict[str, dict[str, str]] = {
     "grammar_analysis": {"prompt_version": "sentence_first_grammar_prompt_v1", "source": "grammar_tab"},
     "grammar_card_generation": {"prompt_version": "grammar_card_prompt_v1", "source": "batch_grammar"},
     "conversation_start": {"prompt_version": "conversation_start_prompt_v1", "source": "conversation_practice"},
-    "conversation_feedback": {"prompt_version": "conversation_feedback_prompt_v2", "source": "conversation_practice"},
+    "conversation_feedback": {"prompt_version": "conversation_feedback_prompt_v3", "source": "conversation_practice"},
     "llmops_test_trace": {"prompt_version": "manual_test", "source": "llmops_tab"},
     "anki_outcome": {"prompt_version": "not_applicable", "source": "anki_connect"},
 }
@@ -1235,11 +1235,29 @@ class TracedVocabularyAiClient(VocabularyAiClient):
             workflow="card",
         )
 
-    def start_conversation(self, topic: str, target_language: str) -> ConversationStart:
+    def start_conversation(
+        self,
+        topic: str,
+        target_language: str,
+        flashcard_context: str = "",
+    ) -> ConversationStart:
+        inputs = {
+            "topic": topic,
+            "target_language": target_language,
+            "flashcard_context": flashcard_context,
+        }
         return self._trace(
             "conversation_start",
-            {"topic": topic, "target_language": target_language},
-            lambda: self._inner.start_conversation(topic, target_language),
+            inputs,
+            lambda: self._inner.start_conversation(
+                topic,
+                target_language,
+                flashcard_context,
+            ),
+            metadata={
+                "source": "conversation_flashcards" if flashcard_context else "conversation_topic",
+                "conversation_mode": "flashcards" if flashcard_context else "topic",
+            },
             workflow="card",
         )
 
@@ -1292,6 +1310,8 @@ class TracedVocabularyAiClient(VocabularyAiClient):
         target_language: str,
         improvement_level: str,
         feedback_language: str,
+        flashcard_context: str = "",
+        conversation_history: str = "",
     ) -> ConversationFeedback:
         return self._trace(
             "conversation_feedback",
@@ -1302,11 +1322,25 @@ class TracedVocabularyAiClient(VocabularyAiClient):
                 "target_language": target_language,
                 "improvement_level": improvement_level,
                 "feedback_language": feedback_language,
+                "flashcard_context": flashcard_context,
+                "conversation_history": conversation_history,
             },
             lambda: self._inner.review_conversation_answer(
-                topic, question, answer, target_language, improvement_level, feedback_language
+                topic,
+                question,
+                answer,
+                target_language,
+                improvement_level,
+                feedback_language,
+                flashcard_context,
+                conversation_history,
             ),
-            metadata={"improvement_level": improvement_level, "feedback_language": feedback_language},
+            metadata={
+                "improvement_level": improvement_level,
+                "feedback_language": feedback_language,
+                "source": "conversation_flashcards" if flashcard_context else "conversation_topic",
+                "conversation_mode": "flashcards" if flashcard_context else "topic",
+            },
             workflow="review",
         )
 

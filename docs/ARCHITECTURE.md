@@ -112,14 +112,19 @@ Sentence
 ## Conversation flow
 
 ```text
-Topic + level
-→ start_conversation()
+Mode A: topic + level
+or
+Mode B: current Batch / Queue flashcards + optional topic focus
+→ start_conversation(..., flashcard_context="")
 → learner answer
-→ review_conversation_answer()
+→ review_conversation_answer(..., flashcard_context="")
 → feedback + corrected answer + suggested vocabulary
 → optional vocabulary-card generation
-→ Anki
+→ Batch / Queue
+→ reviewed Anki export
 ```
+
+Flashcard-based Conversation uses the current in-memory Batch / Queue only. It does not read cards through AnkiConnect. Context building is isolated in `src/conversation/flashcard_context.py` and is bounded to 30 usable unique items per session.
 
 ## Batch / Queue flow
 

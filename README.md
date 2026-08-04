@@ -66,7 +66,7 @@ Starts the command-line interface.
 | Import Material | OCR/import text, review source material and extract candidate drafts. |
 | Speech / Audio | Generate or repair example audio for Anki cards. |
 | Fix Cards | Find and repair existing Anki cards. |
-| Conversation Practice | Practise writing/speaking and stage useful expressions for Batch. |
+| Conversation Practice | Practise by free topic or from current Batch / Queue flashcards, then stage useful expressions for Batch. |
 | Practice & Print | Practise selected cards and create printable tests. |
 | LLMOps / LangSmith | Optional tracing and local quality-event log. |
 
