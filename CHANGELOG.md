@@ -1,3 +1,15 @@
+## v12.0.4 — Conversation UX, card rotation and coverage
+
+- Made the entire right Conversation panel vertically scrollable so staged items and session controls remain reachable on smaller windows.
+- Moved speaking cues and new-card candidates above the staged queue; session flashcards are now collapsed at the bottom by default.
+- Added per-turn accumulation of genuinely new flashcard candidates, capped at 0–3 new items per exchange, with clear/stage controls and disabled staging buttons when nothing new exists.
+- Added persistent per-deck card selection modes: Continue rotation, Anki due cards, Random cards and Repeat last session.
+- Continue rotation avoids repeating cards until the current shuffled cycle is exhausted; Reset keeps rotation progress.
+- Added read-only due-card lookup through AnkiConnect without changing the active generation deck or Anki scheduling state.
+- Added session coverage tracking with a live `x/30 practised` counter and used/not-used markers.
+- Flashcard context now prioritizes targets not used yet and tells the tutor not to base consecutive questions on the same target unless clarification is needed.
+- Added regression tests for rotation, due-card lookup and updated flashcard conversation prompts.
+
 ## v12.0.3 — Conversation suggestion separation
 
 - Kept `Talk about a topic` suggestions unchanged.

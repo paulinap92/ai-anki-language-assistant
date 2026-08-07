@@ -121,17 +121,21 @@ Mode A: topic + level
 → Batch / Queue
 
 Mode B: selected Anki deck or current Batch / Queue + optional topic focus
+→ select cards: Continue rotation / Anki due / Random / Repeat last session
 → build bounded flashcard context (up to 30 session cards)
+→ persist rotation only after conversation start succeeds
 → start_conversation(..., flashcard_context="...")
+→ track which session targets have actually appeared in the conversation
+→ rebuild context with NOT USED YET targets before ALREADY USED targets
 → learner answer
 → review_conversation_answer(..., flashcard_context="...", conversation_history="...")
 → corrections + tutor reply + next question
 → expressions to use next (practice cues; may reuse existing cards)
-→ genuinely new flashcard candidates (editable and stageable)
-→ explicit send to Batch / Queue
+→ 0–3 genuinely new flashcard candidates per turn, accumulated for the session
+→ explicit staging and send to Batch / Queue
 ```
 
-Flashcard-based Conversation reads either a selected deck through AnkiConnect or the current in-memory Batch / Queue. Context building is isolated in `src/conversation/flashcard_context.py`. Suggestion separation and duplicate/relevance filtering live in `src/conversation/suggestions.py`. Exact deck targets are practice material and cannot become new-card candidates; longer grounded collocations remain allowed.
+Flashcard-based Conversation reads either a selected deck through AnkiConnect or the current in-memory Batch / Queue. Context building is isolated in `src/conversation/flashcard_context.py`; persistent session selection/rotation lives in `src/conversation/selection.py`; suggestion separation and duplicate/relevance filtering live in `src/conversation/suggestions.py`. Exact deck targets are practice material and cannot become new-card candidates; longer grounded collocations remain allowed. Local rotation progress is stored in `conversation_rotation_state.json`, which is ignored by Git and is not part of clean releases.
 
 ## Batch / Queue flow
 

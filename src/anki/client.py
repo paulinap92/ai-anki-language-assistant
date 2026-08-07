@@ -92,6 +92,43 @@ class AnkiClient:
             return []
         return self._invoke(action="cardsInfo", params={"cards": card_ids}) or []
 
+    def list_due_note_ids_for_conversation(self, deck_name: str) -> list[int]:
+        """Return note ids for cards currently due in one deck.
+
+        This is a read-only Conversation Practice helper. It does not change the
+        active deck or scheduling state in Anki.
+        """
+        selected_deck = deck_name.strip()
+        if not selected_deck:
+            raise ValueError("Select an Anki deck for Conversation Practice.")
+        deck = self._escape_search_value(selected_deck)
+        card_ids = self._invoke(
+            action="findCards",
+            params={"query": f'deck:"{deck}" is:due'},
+        ) or []
+        if not card_ids:
+            return []
+
+        note_ids: list[int] = []
+        seen: set[int] = set()
+        chunk_size = 250
+        for start in range(0, len(card_ids), chunk_size):
+            chunk = card_ids[start : start + chunk_size]
+            cards = self._invoke(action="cardsInfo", params={"cards": chunk}) or []
+            for card in cards:
+                raw_note_id = card.get("note")
+                if raw_note_id is None:
+                    raw_note_id = card.get("noteId")
+                try:
+                    note_id = int(raw_note_id)
+                except (TypeError, ValueError):
+                    continue
+                if note_id in seen:
+                    continue
+                seen.add(note_id)
+                note_ids.append(note_id)
+        return note_ids
+
     def list_notes_for_conversation(self, deck_name: str) -> list[dict[str, Any]]:
         """Return normalized notes from one deck for Conversation Practice.
 

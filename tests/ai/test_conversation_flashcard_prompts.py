@@ -21,6 +21,8 @@ def test_conversation_start_prompt_injects_flashcard_material():
     assert "FLASHCARD-BASED CONVERSATION MODE" in prompt
     assert context in prompt
     assert "realistic opportunity to use 1-3 target items" in prompt
+    assert "Prefer flashcards marked NOT USED YET" in prompt
+    assert "Do not base two consecutive questions on the same target" in prompt
 
 
 def test_conversation_feedback_prompt_reuses_flashcards():
@@ -39,7 +41,7 @@ def test_conversation_feedback_prompt_reuses_flashcards():
     assert context in prompt
     assert '"suggested_vocabulary" must be an empty list' in prompt
     assert '"expressions_to_use_next" must contain 2-4' in prompt
-    assert '"new_flashcard_candidates" may contain 0-4' in prompt
+    assert '"new_flashcard_candidates" may contain 0-3' in prompt
     assert "impartir una clase magistral" in prompt
     assert '"tutor_reply"' in prompt
     assert "Never ignore a learner's direct question" in prompt

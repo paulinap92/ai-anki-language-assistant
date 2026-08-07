@@ -117,3 +117,6 @@ batch_autosave_*.json
 audio_progress.json
 audio_progress*.json
 audio_progress/
+
+# Local Conversation Practice rotation state
+conversation_rotation_state.json

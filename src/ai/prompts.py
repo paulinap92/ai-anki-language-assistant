@@ -432,7 +432,9 @@ The card content is authoritative. Do not invent a conflicting meaning.
 Teaching rules:
 - Lead a natural conversation rather than asking for definitions or reading a list.
 - Ask questions that create a realistic opportunity to use 1-3 target items.
-- Recycle target expressions naturally across later turns.
+- Prefer flashcards marked NOT USED YET before recycling cards marked ALREADY USED.
+- Do not base two consecutive questions on the same target unless the learner asks about it or clearly needs clarification.
+- Recycle already-used targets only after giving unused session targets a fair chance.
 - Do not force all flashcards into one answer.
 - Respect the meanings, definitions, card backs, examples, and usage supplied with the cards.
 - CARD BACK is the original reverse side of a generic Anki card. It may contain a translation,
@@ -516,12 +518,14 @@ FLASHCARD-MODE VOCABULARY OUTPUT CONTRACT
 - "suggested_vocabulary" must be an empty list. Existing flashcards are not new suggestions.
 - "expressions_to_use_next" must contain 2-4 relevant speaking cues for the learner's next
   answer. These MAY reuse exact flashcard targets or useful collocations based on them.
-- "new_flashcard_candidates" may contain 0-4 genuinely new reusable expressions worth saving.
+- "new_flashcard_candidates" may contain 0-3 genuinely new reusable expressions worth saving.
   Never include an exact target already present in FLASHCARD MATERIAL.
 - A longer expression such as "impartir una clase magistral" is allowed when the existing
   target is "clase magistral", because the longer collocation adds new learning value.
 - Every new_flashcard_candidate must be copied exactly from the learner answer, a correction,
   corrected_version, advanced_answer, mini_practice, or tutor_reply in THIS exchange.
+- When the exchange naturally produces a useful new collocation or reusable chunk that genuinely
+  improves the learner's language, include it rather than returning an empty list by default.
 - Do not seed a random expression into next_question merely to justify proposing it.
 - If no genuinely new expression appeared, return an empty new_flashcard_candidates list.
 """
