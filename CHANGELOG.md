@@ -1,4 +1,12 @@
+## v12.0.3 — Conversation suggestion separation
 
+- Kept `Talk about a topic` suggestions unchanged.
+- Split flashcard-based Conversation into three explicit concepts: session flashcards, expressions to use next, and genuinely new flashcard candidates.
+- Existing deck targets are no longer offered as new cards, including case, punctuation and article-only variants.
+- Longer useful collocations such as `impartir una clase magistral` remain valid even when `clase magistral` already exists.
+- New-card candidates must be grounded in the current learner answer, correction, improved answer, mini-practice or tutor reply; unrelated prompt-seeded expressions are rejected.
+- Added normalized duplicate filtering against the full selected Anki deck, the current session and already staged expressions.
+- Added separate right-panel sections and regression tests for the new workflow.
 
 ## v12.0 — Flashcard-based Conversation
 

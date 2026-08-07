@@ -36,6 +36,8 @@ from src.domain.models import ConversationFeedback, GrammarAnalysis, VocabularyC
 from src.conversation import (
     build_anki_note_conversation_material,
     build_flashcard_conversation_material,
+    dedupe_expressions,
+    filter_new_flashcard_candidates,
 )
 from src.practice import PracticeItem, PracticeQuestion, PracticeService
 from src.quality import validate_vocabulary_card
@@ -171,6 +173,8 @@ class ModernVocabularyGui:
         self._conversation_deck_var = ctk.StringVar(value=anki_client.deck_name)
         self._conversation_flashcard_context = ""
         self._conversation_flashcard_targets: list[str] = []
+        self._conversation_all_flashcard_targets: list[str] = []
+        self._conversation_expressions_to_use_next: list[str] = []
         self._conversation_flashcard_status_var = ctk.StringVar(
             value="Choose an Anki deck or use the current Batch / Queue."
         )
@@ -1354,7 +1358,7 @@ class ModernVocabularyGui:
             values=[self._anki_client.deck_name],
             state="readonly",
             width=190,
-            command=lambda _value: self._refresh_conversation_flashcard_status(),
+            command=lambda _value: self._on_conversation_source_changed(),
         )
         self._conversation_deck_box.grid(
             row=2, column=5, padx=(0, 18), pady=(0, 14), sticky="ew"
@@ -1453,57 +1457,130 @@ class ModernVocabularyGui:
         vocab_panel = ctk.CTkFrame(layout, corner_radius=18)
         vocab_panel.grid(row=1, column=1, sticky="nsew")
         vocab_panel.grid_columnconfigure(0, weight=1)
-        vocab_panel.grid_rowconfigure(2, weight=1)
-        vocab_panel.grid_rowconfigure(8, weight=1)
+        vocab_panel.grid_rowconfigure(7, weight=1)
+        vocab_panel.grid_rowconfigure(13, weight=1)
 
-        ctk.CTkLabel(vocab_panel, text="AI suggestions", font=ctk.CTkFont(size=20, weight="bold")).grid(
+        self._conversation_suggestions_title_label = ctk.CTkLabel(
+            vocab_panel,
+            text="AI suggestions",
+            font=ctk.CTkFont(size=20, weight="bold"),
+        )
+        self._conversation_suggestions_title_label.grid(
             row=0, column=0, sticky="w", padx=18, pady=(18, 4)
         )
-        ctk.CTkLabel(
+        self._conversation_suggestions_help_label = ctk.CTkLabel(
             vocab_panel,
             text="Checkbox → edit/remove → stage here → send to Batch / Queue. No direct Anki write here.",
             text_color=("gray35", "gray75"),
-        ).grid(row=1, column=0, sticky="w", padx=18, pady=(0, 8))
-        self._suggestions_frame = ctk.CTkScrollableFrame(vocab_panel, height=145, corner_radius=14)
-        self._suggestions_frame.grid(row=2, column=0, sticky="nsew", padx=18, pady=(0, 10))
+            wraplength=430,
+            justify="left",
+        )
+        self._conversation_suggestions_help_label.grid(
+            row=1, column=0, sticky="w", padx=18, pady=(0, 8)
+        )
+
+        self._conversation_session_label = ctk.CTkLabel(
+            vocab_panel,
+            text="Flashcards in this session",
+            font=ctk.CTkFont(size=15, weight="bold"),
+        )
+        self._conversation_session_label.grid(
+            row=2, column=0, sticky="w", padx=18, pady=(2, 4)
+        )
+        self._conversation_session_text = ctk.CTkTextbox(
+            vocab_panel,
+            wrap="word",
+            height=92,
+            font=ctk.CTkFont(size=12),
+        )
+        self._conversation_session_text.grid(
+            row=3, column=0, sticky="ew", padx=18, pady=(0, 8)
+        )
+        self._set_conversation_readonly_text(
+            self._conversation_session_text,
+            "Start a flashcard conversation to load the session targets.",
+        )
+
+        self._conversation_use_next_label = ctk.CTkLabel(
+            vocab_panel,
+            text="Expressions to use next — practice cues, not new cards",
+            font=ctk.CTkFont(size=15, weight="bold"),
+        )
+        self._conversation_use_next_label.grid(
+            row=4, column=0, sticky="w", padx=18, pady=(2, 4)
+        )
+        self._conversation_use_next_text = ctk.CTkTextbox(
+            vocab_panel,
+            wrap="word",
+            height=82,
+            font=ctk.CTkFont(size=12),
+        )
+        self._conversation_use_next_text.grid(
+            row=5, column=0, sticky="ew", padx=18, pady=(0, 8)
+        )
+        self._set_conversation_readonly_text(
+            self._conversation_use_next_text,
+            "The tutor will place relevant speaking cues here after your answer.",
+        )
+
+        self._conversation_candidates_label = ctk.CTkLabel(
+            vocab_panel,
+            text="New flashcard candidates",
+            font=ctk.CTkFont(size=15, weight="bold"),
+        )
+        self._conversation_candidates_label.grid(
+            row=6, column=0, sticky="w", padx=18, pady=(2, 4)
+        )
+        self._suggestions_frame = ctk.CTkScrollableFrame(vocab_panel, height=130, corner_radius=14)
+        self._suggestions_frame.grid(row=7, column=0, sticky="nsew", padx=18, pady=(0, 10))
         self._render_suggestions([])
 
-        buttons = ctk.CTkFrame(vocab_panel, fg_color="transparent")
-        buttons.grid(row=3, column=0, sticky="ew", padx=18, pady=(0, 10))
-        buttons.grid_columnconfigure((0, 1), weight=1)
-        ctk.CTkButton(buttons, text="Stage selected", command=self._add_selected_suggestions_to_queue).grid(
-            row=0, column=0, sticky="ew", padx=(0, 6)
-        )
-        ctk.CTkButton(buttons, text="Stage all", command=self._add_all_suggestions_to_queue).grid(
-            row=0, column=1, sticky="ew", padx=(6, 0)
-        )
+        self._conversation_suggestion_buttons = ctk.CTkFrame(vocab_panel, fg_color="transparent")
+        self._conversation_suggestion_buttons.grid(row=8, column=0, sticky="ew", padx=18, pady=(0, 10))
+        self._conversation_suggestion_buttons.grid_columnconfigure((0, 1), weight=1)
+        ctk.CTkButton(
+            self._conversation_suggestion_buttons,
+            text="Stage selected",
+            command=self._add_selected_suggestions_to_queue,
+        ).grid(row=0, column=0, sticky="ew", padx=(0, 6))
+        ctk.CTkButton(
+            self._conversation_suggestion_buttons,
+            text="Stage all",
+            command=self._add_all_suggestions_to_queue,
+        ).grid(row=0, column=1, sticky="ew", padx=(6, 0))
 
-        ctk.CTkLabel(vocab_panel, text="Custom word or phrase").grid(row=4, column=0, sticky="w", padx=18, pady=(2, 4))
+        ctk.CTkLabel(vocab_panel, text="Custom word or phrase").grid(
+            row=9, column=0, sticky="w", padx=18, pady=(2, 4)
+        )
         custom = ctk.CTkFrame(vocab_panel, fg_color="transparent")
-        custom.grid(row=5, column=0, sticky="ew", padx=18, pady=(0, 12))
+        custom.grid(row=10, column=0, sticky="ew", padx=18, pady=(0, 12))
         custom.grid_columnconfigure(0, weight=1)
         self._custom_phrase_var = ctk.StringVar()
         ctk.CTkEntry(custom, textvariable=self._custom_phrase_var, height=36).grid(
             row=0, column=0, sticky="ew", padx=(0, 8)
         )
-        ctk.CTkButton(custom, text="Add", width=70, command=self._add_custom_phrase_to_queue).grid(row=0, column=1)
-
-        ctk.CTkLabel(vocab_panel, text="Staged for Batch / Queue", font=ctk.CTkFont(size=16, weight="bold")).grid(
-            row=6, column=0, sticky="sw", padx=18, pady=(0, 4)
+        ctk.CTkButton(custom, text="Add", width=70, command=self._add_custom_phrase_to_queue).grid(
+            row=0, column=1
         )
+
+        ctk.CTkLabel(
+            vocab_panel,
+            text="Staged for Batch / Queue",
+            font=ctk.CTkFont(size=16, weight="bold"),
+        ).grid(row=11, column=0, sticky="sw", padx=18, pady=(0, 4))
         ctk.CTkLabel(
             vocab_panel,
             textvariable=self._conversation_queue_log_var,
             text_color=("gray35", "gray75"),
             wraplength=430,
             justify="left",
-        ).grid(row=7, column=0, sticky="ew", padx=18, pady=(0, 6))
-        self._queue_text = ctk.CTkTextbox(vocab_panel, wrap="word", height=210, font=ctk.CTkFont(size=13))
-        self._queue_text.grid(row=8, column=0, sticky="nsew", padx=18, pady=(0, 10))
+        ).grid(row=12, column=0, sticky="ew", padx=18, pady=(0, 6))
+        self._queue_text = ctk.CTkTextbox(vocab_panel, wrap="word", height=170, font=ctk.CTkFont(size=13))
+        self._queue_text.grid(row=13, column=0, sticky="nsew", padx=18, pady=(0, 10))
         self._refresh_queue_text()
 
         queue_buttons = ctk.CTkFrame(vocab_panel, fg_color="transparent")
-        queue_buttons.grid(row=9, column=0, sticky="ew", padx=18, pady=(0, 18))
+        queue_buttons.grid(row=14, column=0, sticky="ew", padx=18, pady=(0, 18))
         queue_buttons.grid_columnconfigure((0, 1, 2), weight=1)
         ctk.CTkButton(queue_buttons, text="Clear staged", command=self._clear_queue).grid(
             row=0, column=0, sticky="ew", padx=(0, 6)
@@ -9882,25 +9959,32 @@ class ModernVocabularyGui:
         self,
         limit: int = CONVERSATION_FLASHCARD_LIMIT,
     ) -> tuple[list[str], list[str], int]:
-        """Build prompt rows from the selected flashcard source."""
+        """Build prompt rows and retain all source targets for duplicate filtering."""
         source = self._conversation_flashcard_source_var.get().strip()
         if source == CONVERSATION_FLASHCARD_SOURCE_BATCH:
-            return build_flashcard_conversation_material(
+            all_rows, all_targets, total = build_flashcard_conversation_material(
                 self._batch_items,
-                limit=limit,
+                limit=max(1, len(self._batch_items)),
+            )
+        else:
+            deck_name = self._conversation_deck_var.get().strip()
+            if not deck_name:
+                raise ValueError("Select an Anki deck for Conversation Practice.")
+            try:
+                notes = self._anki_client.list_notes_for_conversation(deck_name)
+            except Exception as exc:
+                raise ValueError(
+                    f"Could not read Anki deck '{deck_name}'. Open Anki, make sure "
+                    "AnkiConnect is running, then click Refresh decks."
+                ) from exc
+            all_rows, all_targets, total = build_anki_note_conversation_material(
+                notes,
+                limit=max(1, len(notes)),
             )
 
-        deck_name = self._conversation_deck_var.get().strip()
-        if not deck_name:
-            raise ValueError("Select an Anki deck for Conversation Practice.")
-        try:
-            notes = self._anki_client.list_notes_for_conversation(deck_name)
-        except Exception as exc:
-            raise ValueError(
-                f"Could not read Anki deck '{deck_name}'. Open Anki, make sure "
-                "AnkiConnect is running, then click Refresh decks."
-            ) from exc
-        return build_anki_note_conversation_material(notes, limit=limit)
+        self._conversation_all_flashcard_targets = list(all_targets)
+        safe_limit = max(1, int(limit))
+        return all_rows[:safe_limit], all_targets[:safe_limit], total
 
     def _refresh_conversation_decks(self) -> None:
         """Reload Anki deck names for the Conversation Practice selector."""
@@ -9954,10 +10038,56 @@ class ModernVocabularyGui:
         button_state = "normal" if uses_anki else "disabled"
         self._conversation_deck_box.configure(state=deck_state)
         self._conversation_refresh_decks_button.configure(state=button_state)
+        self._conversation_all_flashcard_targets = []
+        self._conversation_flashcard_targets = []
+        if hasattr(self, "_conversation_session_text"):
+            self._set_conversation_readonly_text(
+                self._conversation_session_text,
+                "Start a flashcard conversation to load the session targets.",
+            )
         self._refresh_conversation_flashcard_status()
 
+    @staticmethod
+    def _set_conversation_readonly_text(widget: ctk.CTkTextbox, text: str) -> None:
+        """Replace text in one read-only Conversation side-panel box."""
+        widget.configure(state="normal")
+        widget.delete("1.0", "end")
+        widget.insert("1.0", text)
+        widget.configure(state="disabled")
+
+    def _refresh_conversation_suggestion_panel_mode(self) -> None:
+        """Show separate semantics for topic suggestions and flashcard practice."""
+        flashcard_mode = self._conversation_mode_var.get() == CONVERSATION_MODE_FLASHCARDS
+        flashcard_widgets = (
+            self._conversation_session_label,
+            self._conversation_session_text,
+            self._conversation_use_next_label,
+            self._conversation_use_next_text,
+            self._conversation_candidates_label,
+        )
+        if flashcard_mode:
+            self._conversation_suggestions_title_label.configure(text="Flashcard conversation")
+            self._conversation_suggestions_help_label.configure(
+                text=(
+                    "Session cards are practice material. Only genuinely new expressions below "
+                    "can be staged for Batch / Queue."
+                )
+            )
+            for widget in flashcard_widgets:
+                widget.grid()
+        else:
+            self._conversation_suggestions_title_label.configure(text="AI suggestions")
+            self._conversation_suggestions_help_label.configure(
+                text=(
+                    "Checkbox → edit/remove → stage here → send to Batch / Queue. "
+                    "No direct Anki write here."
+                )
+            )
+            for widget in flashcard_widgets:
+                widget.grid_remove()
+
     def _on_conversation_mode_changed(self, selected: str | None = None) -> None:
-        """Update Conversation controls for topic or flashcard mode."""
+        """Update Conversation controls and side-panel semantics for each mode."""
         mode = (selected or self._conversation_mode_var.get()).strip()
         flashcard_mode = mode == CONVERSATION_MODE_FLASHCARDS
         self._conversation_start_button.configure(
@@ -9973,11 +10103,21 @@ class ModernVocabularyGui:
         self._conversation_source_box.configure(
             state="readonly" if flashcard_mode else "disabled"
         )
+        self._conversation_expressions_to_use_next = []
+        self._render_suggestions([])
+        self._refresh_conversation_suggestion_panel_mode()
         if flashcard_mode:
             self._on_conversation_source_changed()
+            self._set_conversation_readonly_text(
+                self._conversation_use_next_text,
+                "The tutor will place relevant speaking cues here after your answer.",
+            )
         else:
             self._conversation_deck_box.configure(state="disabled")
             self._conversation_refresh_decks_button.configure(state="disabled")
+            self._conversation_flashcard_context = ""
+            self._conversation_flashcard_targets = []
+            self._conversation_all_flashcard_targets = []
             self._refresh_conversation_flashcard_status()
 
     def _prepare_conversation_context(self) -> tuple[str, str]:
@@ -9988,6 +10128,7 @@ class ModernVocabularyGui:
                 raise ValueError("Enter a conversation topic first.")
             self._conversation_flashcard_context = ""
             self._conversation_flashcard_targets = []
+            self._conversation_all_flashcard_targets = []
             return topic, ""
 
         rows, targets, total = self._conversation_flashcard_records()
@@ -10034,6 +10175,8 @@ class ModernVocabularyGui:
         provider_name = self._conversation_provider_var.get()
         self._conversation_history.clear()
         self._conversation_question = None
+        self._conversation_expressions_to_use_next = []
+        self._render_suggestions([])
         self._clear_chat()
 
         if flashcard_context:
@@ -10042,6 +10185,17 @@ class ModernVocabularyGui:
             if len(self._conversation_flashcard_targets) > 12:
                 preview += f"\n• +{len(self._conversation_flashcard_targets) - 12} more"
             self._append_chat("FLASHCARD TARGETS", preview)
+            self._set_conversation_readonly_text(
+                self._conversation_session_text,
+                "\n".join(
+                    f"{index}. {target}"
+                    for index, target in enumerate(self._conversation_flashcard_targets, start=1)
+                ),
+            )
+            self._set_conversation_readonly_text(
+                self._conversation_use_next_text,
+                "Answer naturally first. Relevant speaking cues will appear here after feedback.",
+            )
         else:
             self._append_chat("TOPIC", display_context)
 
@@ -10068,6 +10222,26 @@ class ModernVocabularyGui:
             )
         else:
             self._status_var.set("Conversation started. Write your answer and send it.")
+
+    def _conversation_feedback_exchange_text(
+        self,
+        answer: str,
+        feedback: ConversationFeedback,
+    ) -> str:
+        """Return fields that may legitimately ground a new flashcard candidate."""
+        parts = [
+            answer,
+            feedback.feedback,
+            feedback.corrected_version,
+            feedback.advanced_answer,
+            feedback.mini_practice,
+            feedback.tutor_reply,
+        ]
+        for correction in feedback.corrections:
+            parts.extend((correction.original, correction.correction, correction.explanation))
+        # Deliberately exclude next_question: the model must not seed an unrelated
+        # phrase into the next prompt merely to make it look like a valid candidate.
+        return "\n".join(part.strip() for part in parts if part and part.strip())
 
     def _send_conversation_message(self) -> None:
         """Send the learner answer, request feedback, and continue the conversation."""
@@ -10101,6 +10275,43 @@ class ModernVocabularyGui:
             messagebox.showerror("Conversation error", str(exc))
             return
 
+        flashcard_mode = self._conversation_mode_var.get() == CONVERSATION_MODE_FLASHCARDS
+        if flashcard_mode:
+            # Older/local providers may still fill only suggested_vocabulary.
+            # Treat that legacy list as practice cues, never as new cards.
+            use_next_source = feedback.expressions_to_use_next or feedback.suggested_vocabulary
+            use_next = dedupe_expressions(use_next_source, limit=4)
+            exchange_text = self._conversation_feedback_exchange_text(answer, feedback)
+            new_candidates = filter_new_flashcard_candidates(
+                feedback.new_flashcard_candidates,
+                existing_expressions=(
+                    list(self._conversation_all_flashcard_targets)
+                    + list(self._conversation_flashcard_targets)
+                ),
+                staged_expressions=self._flashcard_queue,
+                exchange_text=exchange_text,
+                limit=6,
+            )
+            self._conversation_expressions_to_use_next = use_next
+            self._set_conversation_readonly_text(
+                self._conversation_use_next_text,
+                "\n".join(f"• {item}" for item in use_next)
+                if use_next
+                else "No additional speaking cue is needed for the next answer.",
+            )
+            self._render_suggestions(new_candidates)
+            status = (
+                f"Feedback ready. {len(new_candidates)} genuinely new candidate(s) available."
+                if new_candidates
+                else "Feedback ready. No genuinely new flashcard candidate appeared in this exchange."
+            )
+        else:
+            topic_suggestions = dedupe_expressions(feedback.suggested_vocabulary, limit=6)
+            use_next = []
+            new_candidates = topic_suggestions
+            self._render_suggestions(topic_suggestions)
+            status = "Feedback ready. Select expressions or continue the conversation."
+
         self._conversation_history.append(("user", answer))
         assistant_turn = " ".join(
             part.strip()
@@ -10109,18 +10320,30 @@ class ModernVocabularyGui:
         )
         if assistant_turn:
             self._conversation_history.append(("ai", assistant_turn))
-        self._append_conversation_feedback(feedback)
+        self._append_conversation_feedback(
+            feedback,
+            expressions_to_use_next=use_next,
+            new_flashcard_candidates=new_candidates if flashcard_mode else [],
+        )
         self._conversation_question = feedback.next_question
-        self._render_suggestions(feedback.suggested_vocabulary)
-        self._status_var.set("Feedback ready. Select expressions or continue the conversation.")
+        self._status_var.set(status)
 
     def _build_history_text(self, max_turns: int = 8) -> str:
         recent = self._conversation_history[-max_turns:]
         return "\n".join(f"{speaker}: {message}" for speaker, message in recent)
 
-    def _append_conversation_feedback(self, feedback: ConversationFeedback) -> None:
-        """Render AI feedback and the next question in the chat panel."""
-        self._append_chat(f"FEEDBACK ({feedback.feedback_language or self._feedback_language_var.get()})", feedback.feedback)
+    def _append_conversation_feedback(
+        self,
+        feedback: ConversationFeedback,
+        *,
+        expressions_to_use_next: list[str] | None = None,
+        new_flashcard_candidates: list[str] | None = None,
+    ) -> None:
+        """Render feedback while keeping practice cues separate from new cards."""
+        self._append_chat(
+            f"FEEDBACK ({feedback.feedback_language or self._feedback_language_var.get()})",
+            feedback.feedback,
+        )
         if feedback.corrections:
             correction_lines: list[str] = []
             for idx, correction in enumerate(feedback.corrections, start=1):
@@ -10136,8 +10359,27 @@ class ModernVocabularyGui:
         self._append_chat("STRONGER ANSWER", feedback.advanced_answer)
         if feedback.mini_practice:
             self._append_chat("MINI PRACTICE", feedback.mini_practice)
-        if feedback.suggested_vocabulary:
-            self._append_chat("SUGGESTED EXPRESSIONS", "\n".join(f"• {item}" for item in feedback.suggested_vocabulary))
+
+        flashcard_mode = self._conversation_mode_var.get() == CONVERSATION_MODE_FLASHCARDS
+        if flashcard_mode:
+            use_next = expressions_to_use_next or []
+            candidates = new_flashcard_candidates or []
+            if use_next:
+                self._append_chat(
+                    "EXPRESSIONS TO USE NEXT",
+                    "\n".join(f"• {item}" for item in use_next),
+                )
+            if candidates:
+                self._append_chat(
+                    "NEW FLASHCARD CANDIDATES",
+                    "\n".join(f"• {item}" for item in candidates),
+                )
+        elif feedback.suggested_vocabulary:
+            self._append_chat(
+                "SUGGESTED EXPRESSIONS",
+                "\n".join(f"• {item}" for item in feedback.suggested_vocabulary),
+            )
+
         if feedback.tutor_reply:
             self._append_chat("AI TUTOR", feedback.tutor_reply)
             self._append_chat("NEXT QUESTION", feedback.next_question)
@@ -10168,9 +10410,16 @@ class ModernVocabularyGui:
         self._suggestion_vars = []
         self._suggestion_entry_vars = []
         if not self._suggestion_items:
+            flashcard_mode = self._conversation_mode_var.get() == CONVERSATION_MODE_FLASHCARDS
+            empty_text = (
+                "No genuinely new flashcard candidates in this exchange. Existing session "
+                "targets remain visible above only as practice material."
+                if flashcard_mode
+                else "No suggestions yet. AI suggestions will appear here after conversation feedback."
+            )
             ctk.CTkLabel(
                 self._suggestions_frame,
-                text="No suggestions yet. AI suggestions will appear here after conversation feedback.",
+                text=empty_text,
                 text_color=("gray35", "gray75"),
                 wraplength=330,
                 justify="left",
@@ -10235,13 +10484,10 @@ class ModernVocabularyGui:
 
     def _add_phrases_to_queue(self, phrases: list[str]) -> None:
         added = 0
-        existing_lower = {item.lower() for item in self._flashcard_queue}
-        for phrase in phrases:
-            cleaned = phrase.strip()
-            if cleaned and cleaned.lower() not in existing_lower:
-                self._flashcard_queue.append(cleaned)
-                existing_lower.add(cleaned.lower())
-                added += 1
+        merged = dedupe_expressions([*self._flashcard_queue, *phrases])
+        existing_count = len(self._flashcard_queue)
+        self._flashcard_queue = merged
+        added = max(0, len(self._flashcard_queue) - existing_count)
         if added:
             self._conversation_last_batch_send = []
         self._refresh_queue_text()
@@ -10396,6 +10642,8 @@ class ModernVocabularyGui:
         self._conversation_question = None
         self._conversation_flashcard_context = ""
         self._conversation_flashcard_targets = []
+        self._conversation_all_flashcard_targets = []
+        self._conversation_expressions_to_use_next = []
         self._latest_suggestions = []
         self._conversation_last_batch_send = []
         self._suggestion_items = []
@@ -10411,8 +10659,16 @@ class ModernVocabularyGui:
         self._flashcard_queue.clear()
         self._render_suggestions([])
         self._refresh_queue_text()
+        self._set_conversation_readonly_text(
+            self._conversation_session_text,
+            "Start a flashcard conversation to load the session targets.",
+        )
+        self._set_conversation_readonly_text(
+            self._conversation_use_next_text,
+            "The tutor will place relevant speaking cues here after your answer.",
+        )
         self._conversation_queue_log_var.set(
-            "Conversation reset. Select AI suggestions, edit them if needed, then stage them here."
+            "Conversation reset. Topic suggestions and flashcard-mode candidates remain separate."
         )
         self._refresh_conversation_flashcard_status()
         self._status_var.set("Conversation reset.")

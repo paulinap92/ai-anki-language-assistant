@@ -441,7 +441,11 @@ Teaching rules:
   from something else, answer that content question directly using the matching card material.
 - If the matching card does not contain enough information, say so briefly instead of inventing
   a precise definition.
-- Prefer the exact target expressions when suggesting useful vocabulary.
+- Existing flashcard targets are practice material, not new-card suggestions.
+- Use exact targets only as speaking cues in "expressions_to_use_next".
+- Put an item in "new_flashcard_candidates" only when it is a genuinely new expression
+  discovered in the current exchange. A longer collocation may contain an existing target,
+  but the exact target itself must never be proposed as a new card.
 - Keep all learner-facing tutor replies and questions in the selected target language.
 
 FLASHCARD MATERIAL
@@ -505,6 +509,40 @@ HISTORY>>>
         if history
         else "\nNo earlier conversation history is available.\n"
     )
+
+    if flashcard_context:
+        suggestion_contract = f"""
+FLASHCARD-MODE VOCABULARY OUTPUT CONTRACT
+- "suggested_vocabulary" must be an empty list. Existing flashcards are not new suggestions.
+- "expressions_to_use_next" must contain 2-4 relevant speaking cues for the learner's next
+  answer. These MAY reuse exact flashcard targets or useful collocations based on them.
+- "new_flashcard_candidates" may contain 0-4 genuinely new reusable expressions worth saving.
+  Never include an exact target already present in FLASHCARD MATERIAL.
+- A longer expression such as "impartir una clase magistral" is allowed when the existing
+  target is "clase magistral", because the longer collocation adds new learning value.
+- Every new_flashcard_candidate must be copied exactly from the learner answer, a correction,
+  corrected_version, advanced_answer, mini_practice, or tutor_reply in THIS exchange.
+- Do not seed a random expression into next_question merely to justify proposing it.
+- If no genuinely new expression appeared, return an empty new_flashcard_candidates list.
+"""
+        suggestion_json = '''
+  "suggested_vocabulary": [],
+  "expressions_to_use_next": ["relevant existing target", "useful speaking cue"],
+  "new_flashcard_candidates": ["new grounded collocation"]
+'''
+    else:
+        suggestion_contract = f"""
+TOPIC-MODE VOCABULARY OUTPUT CONTRACT
+- "suggested_vocabulary" must contain 4 useful reusable words, phrases, or chunks from the
+  current exchange that are suitable for staging as new flashcards.
+- "expressions_to_use_next" and "new_flashcard_candidates" must both be empty lists.
+"""
+        suggestion_json = '''
+  "suggested_vocabulary": ["chunk 1", "chunk 2", "chunk 3", "chunk 4"],
+  "expressions_to_use_next": [],
+  "new_flashcard_candidates": []
+'''
+
     return f"""
 You are a warm, practical {target_language} conversation teacher.
 Conversation topic/focus: "{topic}"
@@ -527,7 +565,7 @@ Teaching style:
 - Keep feedback practical and not too long.
 - Use {effective_feedback_language} for feedback, explanations, and mini_practice.
 - Use {target_language} for corrected_version, advanced_answer, tutor_reply, next_question,
-  and suggested_vocabulary.
+  suggested_vocabulary, expressions_to_use_next, and new_flashcard_candidates.
 - Do not switch to another language or writing system.
 - Use RECENT CONVERSATION HISTORY to stay coherent and avoid repeating questions already answered.
 
@@ -546,9 +584,7 @@ Output requirements:
 - "next_question" must contain ONE natural follow-up question in {target_language}.
   Keep it separate from tutor_reply. In flashcard mode, create an opportunity to use a relevant
   target item, but do not jump abruptly to an unrelated expression.
-- "suggested_vocabulary" must contain 4 useful reusable words, phrases, or chunks from the
-  current exchange. In flashcard mode, prioritize exact relevant targets from FLASHCARD MATERIAL;
-  do not insert a random unused flashcard merely to fill the list.
+{suggestion_contract}
 - "mini_practice" must be one short practice task in {effective_feedback_language}.
 - Return ONLY valid JSON without markdown.
 
@@ -567,7 +603,7 @@ Output requirements:
   "mini_practice": "short task in {effective_feedback_language}",
   "tutor_reply": "direct conversational response in {target_language}",
   "next_question": "one question in {target_language}",
-  "suggested_vocabulary": ["chunk 1", "chunk 2", "chunk 3", "chunk 4"]
+{suggestion_json}
 }}
 """
 

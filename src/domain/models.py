@@ -161,7 +161,25 @@ class ConversationFeedback(BaseModel):
     )
     next_question: str = Field(description="Next conversation question in the target language.")
     suggested_vocabulary: list[str] = Field(
-        description="Useful target-language words or phrases suitable for flashcards."
+        default_factory=list,
+        description=(
+            "Topic-mode vocabulary suggestions suitable for staging as flashcards. "
+            "Flashcard mode should keep this list empty."
+        ),
+    )
+    expressions_to_use_next: list[str] = Field(
+        default_factory=list,
+        description=(
+            "Flashcard-mode speaking cues for the learner's next answer. These may reuse "
+            "existing session targets and are not new-card suggestions."
+        ),
+    )
+    new_flashcard_candidates: list[str] = Field(
+        default_factory=list,
+        description=(
+            "Flashcard-mode expressions genuinely discovered in the current exchange and "
+            "worth staging as new cards. Exact existing flashcard targets must not appear here."
+        ),
     )
 
     @model_validator(mode="before")
@@ -178,6 +196,12 @@ class ConversationFeedback(BaseModel):
             normalized["mini_practice"] = ""
         if "tutor_reply" not in normalized:
             normalized["tutor_reply"] = ""
+        if "suggested_vocabulary" not in normalized:
+            normalized["suggested_vocabulary"] = []
+        if "expressions_to_use_next" not in normalized:
+            normalized["expressions_to_use_next"] = []
+        if "new_flashcard_candidates" not in normalized:
+            normalized["new_flashcard_candidates"] = []
         return normalized
 
     @property

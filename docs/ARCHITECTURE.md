@@ -113,18 +113,25 @@ Sentence
 
 ```text
 Mode A: topic + level
-or
-Mode B: current Batch / Queue flashcards + optional topic focus
 → start_conversation(..., flashcard_context="")
 → learner answer
 → review_conversation_answer(..., flashcard_context="")
-→ feedback + corrected answer + suggested vocabulary
-→ optional vocabulary-card generation
+→ feedback + corrected answer + topic vocabulary suggestions
+→ editable suggestion basket
 → Batch / Queue
-→ reviewed Anki export
+
+Mode B: selected Anki deck or current Batch / Queue + optional topic focus
+→ build bounded flashcard context (up to 30 session cards)
+→ start_conversation(..., flashcard_context="...")
+→ learner answer
+→ review_conversation_answer(..., flashcard_context="...", conversation_history="...")
+→ corrections + tutor reply + next question
+→ expressions to use next (practice cues; may reuse existing cards)
+→ genuinely new flashcard candidates (editable and stageable)
+→ explicit send to Batch / Queue
 ```
 
-Flashcard-based Conversation uses the current in-memory Batch / Queue only. It does not read cards through AnkiConnect. Context building is isolated in `src/conversation/flashcard_context.py` and is bounded to 30 usable unique items per session.
+Flashcard-based Conversation reads either a selected deck through AnkiConnect or the current in-memory Batch / Queue. Context building is isolated in `src/conversation/flashcard_context.py`. Suggestion separation and duplicate/relevance filtering live in `src/conversation/suggestions.py`. Exact deck targets are practice material and cannot become new-card candidates; longer grounded collocations remain allowed.
 
 ## Batch / Queue flow
 
