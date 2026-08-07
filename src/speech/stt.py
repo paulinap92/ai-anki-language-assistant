@@ -131,8 +131,18 @@ class LocalWhisperSttService:
             "No microphone/input device detected. Connect or enable a microphone, then try again."
         )
 
-    def stop_and_transcribe(self) -> SttResult:
-        """Stop recording, keep last_recording.wav, and transcribe it."""
+    def stop_and_transcribe(
+        self,
+        *,
+        initial_prompt: str | None = None,
+        language: str | None = None,
+    ) -> SttResult:
+        """Stop recording, keep last_recording.wav, and transcribe it.
+
+        ``language`` and ``initial_prompt`` may be supplied by Conversation Practice so
+        Whisper is biased toward the selected language, current topic, proper names and
+        active flashcard vocabulary instead of relying on automatic detection alone.
+        """
         if not self._is_recording or self._stream is None:
             raise RuntimeError("No recording is running.")
 
@@ -167,7 +177,11 @@ class LocalWhisperSttService:
         wav_path = self.cache_dir / "last_recording.wav"
         sf.write(str(wav_path), audio, self.sample_rate)
         self.last_recording_path = wav_path
-        text, detected_language = self._transcribe_wav(wav_path)
+        text, detected_language = self._transcribe_wav(
+            wav_path,
+            initial_prompt=initial_prompt,
+            language=language,
+        )
 
         return SttResult(
             text=text,
@@ -195,13 +209,27 @@ class LocalWhisperSttService:
         )
         return self._model
 
-    def _transcribe_wav(self, wav_path: Path) -> tuple[str, str | None]:
+    def _transcribe_wav(
+        self,
+        wav_path: Path,
+        *,
+        initial_prompt: str | None = None,
+        language: str | None = None,
+    ) -> tuple[str, str | None]:
         model = self._load_model()
+        prompt = (initial_prompt or "").strip()
+        # faster-whisper accepts a free-text initial prompt. Keep it bounded so a long
+        # conversation history cannot dominate the acoustic transcription.
+        if len(prompt) > 1200:
+            prompt = prompt[-1200:]
         segments, info = model.transcribe(
             str(wav_path),
-            language=self.language,
+            language=language or self.language,
             beam_size=5,
-            vad_filter=False,
+            vad_filter=True,
+            vad_parameters={"min_silence_duration_ms": 350},
+            condition_on_previous_text=False,
+            initial_prompt=prompt or None,
         )
         parts = [segment.text.strip() for segment in segments if segment.text.strip()]
         return " ".join(parts).strip(), getattr(info, "language", None)

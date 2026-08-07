@@ -199,7 +199,7 @@ def get_settings() -> Settings:
         ollama_model=ollama_model,
         audio_cache_dir=_clean_env_value(os.getenv("AUDIO_CACHE_DIR")) or ".audio_cache",
         stt_provider=_clean_env_value(os.getenv("STT_PROVIDER")) or "local_whisper",
-        whisper_model=_clean_env_value(os.getenv("WHISPER_MODEL")) or "base",
+        whisper_model=_clean_env_value(os.getenv("WHISPER_MODEL")) or "small",
         whisper_language=_clean_env_value(os.getenv("WHISPER_LANGUAGE")),
         langsmith_tracing=langsmith_tracing,
         langsmith_api_key=langsmith_api_key,

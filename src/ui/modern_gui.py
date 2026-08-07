@@ -70,6 +70,14 @@ CONVERSATION_FLASHCARD_SOURCES = [
     CONVERSATION_FLASHCARD_SOURCE_BATCH,
 ]
 CONVERSATION_FLASHCARD_LIMIT = 30
+STT_LANGUAGE_CODES = {
+    "English": "en",
+    "Spanish": "es",
+    "German": "de",
+    "French": "fr",
+    "Italian": "it",
+    "Portuguese": "pt",
+}
 BATCH_MODES = ["Vocabulary", "Grammar", "Mixed", "Provided examples"]
 OCR_EXTRACTION_MODES = ["Provided examples", "Vocabulary", "Vocabulary + source examples", "Smart vocabulary", "Grammar", "Smart grammar import", "Mixed"]
 OCR_IMPORT_METHODS = ["Local extraction (free)", "Mistral OCR (cloud text only)", "OpenAI Vision OCR (text only)", "Gemini Vision OCR (text only)"]
@@ -206,6 +214,8 @@ class ModernVocabularyGui:
             else next(iter(ai_clients))
         )
         self._conversation_provider_var = ctk.StringVar(value=preferred_conversation_provider)
+        self._conversation_detailed_feedback_var = ctk.BooleanVar(value=False)
+        self._conversation_current_input_from_stt = False
         self._stt_status_var = ctk.StringVar(value="Speech input: ready." if stt_service else "Speech input: not configured.")
         self._recording_timer_after_id: str | None = None
         self._conversation_question: str | None = None
@@ -1407,6 +1417,13 @@ class ModernVocabularyGui:
         self._conversation_selection_box.grid(
             row=3, column=3, padx=(0, 10), pady=(0, 14), sticky="ew"
         )
+        ctk.CTkSwitch(
+            topic,
+            text="Detailed coaching",
+            variable=self._conversation_detailed_feedback_var,
+            onvalue=True,
+            offvalue=False,
+        ).grid(row=3, column=4, columnspan=2, padx=(0, 18), pady=(0, 14), sticky="e")
         ctk.CTkLabel(
             topic,
             textvariable=self._conversation_flashcard_status_var,
@@ -1599,20 +1616,20 @@ class ModernVocabularyGui:
 
         queue_buttons = ctk.CTkFrame(vocab_panel, fg_color="transparent")
         queue_buttons.grid(row=12, column=0, sticky="ew", padx=18, pady=(0, 14))
-        queue_buttons.grid_columnconfigure((0, 1, 2), weight=1)
+        queue_buttons.grid_columnconfigure(0, weight=1)
         ctk.CTkButton(queue_buttons, text="Clear staged", command=self._clear_queue).grid(
-            row=0, column=0, sticky="ew", padx=(0, 6)
+            row=0, column=0, sticky="ew", pady=(0, 6)
         )
         ctk.CTkButton(
             queue_buttons,
-            text="Add staged to Batch / Queue",
+            text="Send to Batch / Queue",
             command=self._send_conversation_queue_to_batch,
-        ).grid(row=0, column=1, sticky="ew", padx=6)
+        ).grid(row=1, column=0, sticky="ew", pady=(0, 6))
         ctk.CTkButton(
             queue_buttons,
             text="Open Batch / Queue",
             command=self._open_batch_queue_tab,
-        ).grid(row=0, column=2, sticky="ew", padx=(6, 0))
+        ).grid(row=2, column=0, sticky="ew")
 
         self._conversation_session_toggle_button = ctk.CTkButton(
             vocab_panel,
@@ -9882,6 +9899,35 @@ class ModernVocabularyGui:
                 pass
             self._recording_timer_after_id = None
 
+    def _conversation_stt_language_code(self) -> str | None:
+        """Return the Whisper language code for the selected conversation language."""
+        return STT_LANGUAGE_CODES.get(self._conversation_language_var.get().strip())
+
+    def _build_conversation_stt_prompt(self) -> str:
+        """Build a short dynamic Whisper prompt from the active conversation context."""
+        language = self._conversation_language_var.get().strip()
+        topic = self._topic_var.get().strip()
+        vocabulary = dedupe_expressions(
+            [
+                *self._conversation_flashcard_targets[:16],
+                *self._conversation_expressions_to_use_next[:6],
+            ],
+            limit=20,
+        )
+        recent = self._conversation_history[-4:]
+        recent_text = " ".join(message for _speaker, message in recent if message).strip()
+        parts = [f"Conversation language: {language}."]
+        if topic:
+            parts.append(f"Topic: {topic}.")
+        if vocabulary:
+            parts.append("Expected vocabulary and names: " + ", ".join(vocabulary) + ".")
+        if self._conversation_question:
+            parts.append(f"Current question: {self._conversation_question}")
+        if recent_text:
+            parts.append(f"Recent context: {recent_text}")
+        prompt = " ".join(parts)
+        return prompt[-1200:]
+
     def _stop_conversation_recording(self) -> None:
         """Stop recording and transcribe the audio in a background thread."""
         if not self._stt_service:
@@ -9895,9 +9941,15 @@ class ModernVocabularyGui:
         self._status_var.set("Finishing recording and transcribing spoken answer...")
         self._root.update_idletasks()
 
+        stt_prompt = self._build_conversation_stt_prompt()
+        stt_language = self._conversation_stt_language_code()
+
         def _worker() -> None:
             try:
-                result = self._stt_service.stop_and_transcribe()
+                result = self._stt_service.stop_and_transcribe(
+                    initial_prompt=stt_prompt,
+                    language=stt_language,
+                )
             except Exception as exc:
                 self._root.after(0, lambda exc=exc: self._handle_stt_error(exc))
                 return
@@ -9928,9 +9980,12 @@ class ModernVocabularyGui:
             self._message_input.insert("end", "\n" + transcript)
         else:
             self._message_input.insert("1.0", transcript)
-        language_part = f", detected: {language}" if language else ""
+        self._conversation_current_input_from_stt = True
+        language_part = f", language: {language}" if language else ""
         audio_hint = " Last recording saved for playback." if self._stt_service and self._stt_service.last_recording_path else ""
-        self._stt_status_var.set(f"Transcript inserted ({model}{language_part}). Edit it before sending.{audio_hint}")
+        self._stt_status_var.set(
+            f"Transcript inserted ({model}{language_part}, context-aware). Edit it before sending.{audio_hint}"
+        )
         self._status_var.set("Spoken answer transcribed. Play last recording if the transcript looks cut, then review/edit and click Send.")
 
 
@@ -10428,6 +10483,7 @@ class ModernVocabularyGui:
         provider_name = self._conversation_provider_var.get()
         self._conversation_history.clear()
         self._conversation_question = None
+        self._conversation_current_input_from_stt = False
         self._conversation_expressions_to_use_next = []
         self._conversation_new_candidate_pool = []
         self._render_suggestions([])
@@ -10513,6 +10569,13 @@ class ModernVocabularyGui:
         provider_name = self._conversation_provider_var.get()
         self._status_var.set(f"Reviewing answer with {provider_name}...")
         self._root.update_idletasks()
+        history_for_prompt = self._build_history_text(max_turns=10)
+        if self._conversation_current_input_from_stt:
+            history_for_prompt = (
+                history_for_prompt
+                + "\nINPUT SOURCE: The CURRENT learner answer originated from speech-to-text. "
+                "Obvious garbled proper names or nonsensical phonetic fragments may be transcription errors."
+            ).strip()
         try:
             feedback = self._conversation_ai_client().review_conversation_answer(
                 topic=self._topic_var.get().strip(),
@@ -10522,13 +10585,14 @@ class ModernVocabularyGui:
                 improvement_level=self._improvement_level_var.get(),
                 feedback_language=self._feedback_language_var.get(),
                 flashcard_context=self._conversation_flashcard_context,
-                conversation_history=self._build_history_text(max_turns=10),
+                conversation_history=history_for_prompt,
             )
         except Exception as exc:
             self._status_var.set("Conversation reply failed.")
             messagebox.showerror("Conversation error", str(exc))
             return
 
+        self._conversation_current_input_from_stt = False
         flashcard_mode = self._conversation_mode_var.get() == CONVERSATION_MODE_FLASHCARDS
         if flashcard_mode:
             # Older/local providers may still fill only suggested_vocabulary. Keep it usable
@@ -10614,29 +10678,55 @@ class ModernVocabularyGui:
         expressions_to_use_next: list[str] | None = None,
         new_flashcard_candidates: list[str] | None = None,
     ) -> None:
-        """Render feedback while keeping practice cues separate from new cards."""
+        """Render compact coaching first and keep extended material optional."""
         self._append_chat(
             f"FEEDBACK ({feedback.feedback_language or self._feedback_language_var.get()})",
             feedback.feedback,
         )
-        if feedback.corrections:
-            correction_lines: list[str] = []
-            for idx, correction in enumerate(feedback.corrections, start=1):
-                original = correction.original.strip() or "original wording"
-                fixed = correction.correction.strip() or "corrected wording"
-                explanation = correction.explanation.strip()
-                block = f"{idx}. ❌ {original}\n   ✅ {fixed}"
-                if explanation:
-                    block += f"\n   💡 {explanation}"
-                correction_lines.append(block)
-            self._append_chat("MAIN CORRECTIONS", "\n\n".join(correction_lines))
-        self._append_chat("CORRECTED VERSION", feedback.corrected_version)
-        self._append_chat("STRONGER ANSWER", feedback.advanced_answer)
-        if feedback.mini_practice:
-            self._append_chat("MINI PRACTICE", feedback.mini_practice)
+
+        grouped: dict[str, list[str]] = {
+            "error": [],
+            "improvement": [],
+            "possible_transcription": [],
+        }
+        for correction in feedback.corrections:
+            kind = (getattr(correction, "kind", "error") or "error").strip().casefold()
+            if kind not in grouped:
+                kind = "error"
+            original = correction.original.strip() or "original wording"
+            fixed = correction.correction.strip() or "corrected wording"
+            explanation = correction.explanation.strip()
+            if kind == "possible_transcription":
+                block = f"🎙 {original}\n   → {fixed}"
+            elif kind == "improvement":
+                block = f"• {original}\n   → {fixed}"
+            else:
+                block = f"❌ {original}\n   ✅ {fixed}"
+            if explanation:
+                block += f"\n   💡 {explanation}"
+            grouped[kind].append(block)
+
+        if grouped["error"]:
+            self._append_chat("CORRECTIONS", "\n\n".join(grouped["error"]))
+        if grouped["improvement"]:
+            self._append_chat("MORE NATURAL / ADVANCED", "\n\n".join(grouped["improvement"]))
+        if grouped["possible_transcription"]:
+            self._append_chat(
+                "POSSIBLE TRANSCRIPTION ERROR",
+                "\n\n".join(grouped["possible_transcription"]),
+            )
+
+        detailed = bool(self._conversation_detailed_feedback_var.get())
+        if detailed:
+            if feedback.corrected_version:
+                self._append_chat("CORRECTED VERSION", feedback.corrected_version)
+            if feedback.advanced_answer:
+                self._append_chat("STRONGER ANSWER", feedback.advanced_answer)
+            if feedback.mini_practice:
+                self._append_chat("MINI PRACTICE", feedback.mini_practice)
 
         flashcard_mode = self._conversation_mode_var.get() == CONVERSATION_MODE_FLASHCARDS
-        if flashcard_mode:
+        if detailed and flashcard_mode:
             use_next = expressions_to_use_next or []
             candidates = new_flashcard_candidates or []
             if use_next:
@@ -10649,7 +10739,7 @@ class ModernVocabularyGui:
                     "NEW FLASHCARD CANDIDATES",
                     "\n".join(f"• {item}" for item in candidates),
                 )
-        elif feedback.suggested_vocabulary:
+        elif detailed and feedback.suggested_vocabulary:
             self._append_chat(
                 "SUGGESTED EXPRESSIONS",
                 "\n".join(f"• {item}" for item in feedback.suggested_vocabulary),
@@ -10960,6 +11050,7 @@ class ModernVocabularyGui:
     def _reset_conversation(self) -> None:
         self._conversation_history.clear()
         self._conversation_question = None
+        self._conversation_current_input_from_stt = False
         self._conversation_flashcard_context = ""
         self._conversation_flashcard_rows = []
         self._conversation_flashcard_targets = []

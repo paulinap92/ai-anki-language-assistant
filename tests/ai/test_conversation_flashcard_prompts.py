@@ -131,3 +131,26 @@ def test_feedback_prompt_json_example_matches_mode_contract():
     assert flashcard_example["suggested_vocabulary"] == []
     assert flashcard_example["expressions_to_use_next"]
     assert flashcard_example["new_flashcard_candidates"]
+
+
+def test_feedback_prompt_separates_real_errors_improvements_and_stt_glitches():
+    prompt = build_conversation_feedback_prompt(
+        topic="coches clásicos",
+        question="¿Qué coche tienes?",
+        answer="Tengo un anrobe de 1975.",
+        target_language="Spanish",
+        improvement_level="Strong B2/C1",
+        feedback_language="Spanish",
+        conversation_history=(
+            "ai: ¿Qué coche tienes?\n"
+            "INPUT SOURCE: The CURRENT learner answer originated from speech-to-text."
+        ),
+    )
+
+    assert '"kind"' in prompt
+    assert '"error" for a genuine grammar' in prompt
+    assert '"improvement" for wording that is already acceptable' in prompt
+    assert '"possible_transcription" only when the current answer came from STT' in prompt
+    assert "Never count a \"possible_transcription\" item as a learner language mistake" in prompt
+    assert '"feedback" must be ONE concise' in prompt
+    assert '"mini_practice" may be empty' in prompt

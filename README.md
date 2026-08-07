@@ -173,9 +173,11 @@ MISTRAL_OCR_MODEL=...
 
 ```env
 STT_PROVIDER=local_whisper
-WHISPER_MODEL=base
+WHISPER_MODEL=small
 WHISPER_LANGUAGE=
 ```
+
+Conversation Practice now passes the selected conversation language plus a short dynamic topic/flashcard context to faster-whisper. For higher accuracy on a capable CPU, try `WHISPER_MODEL=medium`; existing `.env` files that explicitly use `base` are not overwritten.
 
 ### Optional LangSmith / LLMOps
 

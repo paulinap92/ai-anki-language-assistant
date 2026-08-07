@@ -120,10 +120,14 @@ class ConversationStart(BaseModel):
 
 
 class ConversationCorrection(BaseModel):
-    """One visible learner mistake and its correction."""
+    """One visible correction, style improvement, or probable STT issue."""
 
+    kind: str = Field(
+        default="error",
+        description="error | improvement | possible_transcription",
+    )
     original: str = Field(default="", description="The learner's original wording or fragment.")
-    correction: str = Field(default="", description="A corrected version of the fragment.")
+    correction: str = Field(default="", description="A corrected or more natural version of the fragment.")
     explanation: str = Field(default="", description="Short explanation of how to improve it.")
 
 

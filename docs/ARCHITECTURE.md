@@ -230,3 +230,7 @@ Add all ready
 ```
 
 This keeps GUI updates on the main Tk thread and reduces thread-safety risk.
+
+### Conversation STT and compact coaching (v12.0.5)
+
+Conversation Practice supplies faster-whisper with an explicit ISO language code and a bounded dynamic initial prompt built from the topic, recent turns, active flashcard targets and speaking cues. Local STT uses VAD before transcription. Conversation feedback classifies coaching items as `error`, `improvement`, or `possible_transcription`; the GUI renders only compact coaching by default and keeps corrected/advanced answers plus mini practice behind the `Detailed coaching` switch.

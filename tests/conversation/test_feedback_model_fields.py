@@ -36,3 +36,35 @@ def test_flashcard_mode_fields_are_parsed_separately():
 
     assert feedback.expressions_to_use_next == ["clase magistral"]
     assert feedback.new_flashcard_candidates == ["impartir una clase magistral"]
+
+
+def test_correction_kind_distinguishes_error_improvement_and_stt_issue():
+    payload = _base_payload()
+    payload["corrections"] = [
+        {
+            "kind": "error",
+            "original": "entre mucho aire",
+            "correction": "entra mucho aire",
+            "explanation": "Verbo incorrecto.",
+        },
+        {
+            "kind": "improvement",
+            "original": "se utiliza para trabajar",
+            "correction": "se puede utilizar tanto para trabajar como...",
+            "explanation": "La original ya es correcta; esta versión es más elaborada.",
+        },
+        {
+            "kind": "possible_transcription",
+            "original": "anrobe",
+            "correction": "Land Rover",
+            "explanation": "Probable error de reconocimiento de voz.",
+        },
+    ]
+
+    feedback = ConversationFeedback(**payload)
+
+    assert [item.kind for item in feedback.corrections] == [
+        "error",
+        "improvement",
+        "possible_transcription",
+    ]

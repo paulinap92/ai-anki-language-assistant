@@ -1,4 +1,15 @@
+## v12.0.5 - Conversation feedback and STT quality
+
+- Fixed clipped Conversation Batch / Queue buttons by stacking full-width actions.
+- Added compact coaching by default with optional Detailed coaching for corrected/stronger answers and mini practice.
+- Kept tutor replies conversational and brief instead of drifting into long domain lectures or overconfident specialist advice.
+- Separated genuine errors, naturalness improvements and probable speech-transcription errors.
+- Added context-aware faster-whisper transcription using the selected conversation language, topic, active flashcards, speaking cues and recent context.
+- Enabled Whisper VAD and disabled cross-segment previous-text conditioning to reduce cutoffs and hallucinated carry-over.
+- Changed the clean-install Whisper default from `base` to `small`; existing explicit `.env` choices remain unchanged.
+
 ## v12.0.4 — Conversation UX, card rotation and coverage
+
 
 - Made the entire right Conversation panel vertically scrollable so staged items and session controls remain reachable on smaller windows.
 - Moved speaking cues and new-card candidates above the staged queue; session flashcards are now collapsed at the bottom by default.
