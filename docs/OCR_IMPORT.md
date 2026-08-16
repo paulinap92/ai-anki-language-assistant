@@ -1,24 +1,36 @@
 # Import Material workflow
 
-The Import Material tab prepares Batch candidates only. It never adds cards directly to Anki.
+The Import Material tab is for raw or complex source material. It prepares reviewed candidates and sends them to **Batch**; it never writes directly to Anki.
 
-## Default free workflow
-
-This is the main workflow for normal use. It avoids AI/API calls after text is extracted.
+## Main workflow
 
 ```text
-Paste text/screenshot or load TXT/HTML/PDF/image
-→ Extract text locally or with Mistral if needed
-→ Review and clean the extracted text if needed
-→ Look for words / phrases OR Look for sentences
-→ Cherry-pick candidates on the right
-→ Mark each item as word/phrase, grammar, or sentence
-→ Send selected candidates to Batch / Queue
-→ review generated cards
+TXT / HTML / PDF / image / pasted material
+→ extract or review source text
+→ choose what to find
+→ AI extraction (recommended) or basic local fallback
+→ review/edit/cherry-pick candidates
+→ Send selected to Batch
+→ generate/review cards
 → add to Anki
 ```
 
-Local candidate search is heuristic. It does not need Gemini, Claude, OpenAI, or Mistral. It simply finds useful chunks from the extracted text so the user can decide what becomes a card.
+TXT and HTML are converted to plain text locally. They do **not** need OCR. OCR/vision is reserved for images, scans and image-based PDFs.
+
+## What do you want to find?
+
+The main UI deliberately exposes only four choices:
+
+- **Vocabulary & expressions** — useful words, phrases, idioms, phrasal verbs and collocations from the whole source; a useful source sentence is kept as context when available.
+- **Grammar** — smart classification of grammar structures, rules, transformations, exercises and examples.
+- **Examples / sentences** — target + exact source sentence pairs.
+- **Auto** — mixed extraction where AI classifies each useful candidate.
+
+Internally these map to the mature extraction contracts from older releases, so saved/tested behavior is preserved without showing implementation names such as `Smart grammar import` or `Vocabulary + source examples` to the user.
+
+## Basic local finder
+
+The local finder is an optional fallback and makes no API call. `Words / phrases` finds short lexical chunks; `Sentences` finds sentence-like candidates. AI extraction is the recommended main path for complex lessons.
 
 ## Paste text / screenshot
 
@@ -44,7 +56,7 @@ Each candidate card can be marked as:
 - `As grammar` → Batch mode: Grammar
 - `As sentence` → Batch mode: Provided examples
 
-Then use `Add selected to Batch / Queue`.
+Then use `Add selected to Batch`.
 
 ## Manual missing candidates
 
@@ -71,7 +83,7 @@ Load PDF/image
 → Mistral extracts text
 → use free local Look for words/sentences buttons
 → cherry-pick
-→ Add selected to Batch / Queue
+→ Add selected to Batch
 ```
 
 Mistral OCR does not automatically generate candidates in the default workflow.

@@ -79,3 +79,7 @@ The log includes:
 - exception details for failed audio operations.
 
 The GUI displays detailed error messages instead of a generic failure state.
+
+## Voice Lab and preview playback (v12.1)
+
+Speech / Audio includes a dedicated Voice Lab with editable sample text, Play voice, Stop and provider diagnostics. Preview audio is decoded and played inside the application with `sounddevice` / `soundfile`; it does not open Windows Media Player or another external player.

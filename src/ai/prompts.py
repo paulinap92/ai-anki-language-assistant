@@ -934,24 +934,26 @@ ALLOWED OUTPUT TYPES
 
 {mode_contract}
 
-Your job is controlled recall, not runaway word mining:
-- Do NOT choose only the best 30 items from explicit lesson vocabulary lists.
+Your job is complete lesson-level vocabulary recall, not explicit-section-only extraction:
 - Extract every explicit vocabulary item from clearly marked lesson vocabulary lists when they are present.
 - Extract every explicit idiom/expression from clearly marked expression sections when they are present.
-- Do NOT extract every possible word from continuous prose.
-- Do NOT create one candidate for every noun, verb, adjective, symptom, body part, or repeated word in ordinary paragraphs.
-- If the source contains explicit vocabulary/expression sections, process those sections first and keep reading-text mining minimal.
-- If the source is mostly continuous prose, return only high-value reusable items: idioms, collocations, specialist terms, and lesson-relevant phrases.
-- Hard output budgets: Vocabulary <= 300, Vocabulary + source examples <= 250, Smart vocabulary <= 180.
-- For continuous prose without explicit vocabulary lists, keep Vocabulary + source examples <= 60 and Smart vocabulary <= 80.
-- If there are more possible items than the budget, prioritize explicit list items, idioms, collocations, and repeated lesson-relevant expressions.
+- Treat those explicit sections as the guaranteed minimum, not the end of the task.
+- After the explicit sections are complete, scan the ENTIRE remaining document from beginning to end for additional useful vocabulary.
+- Mine content-bearing prose, examples, facts, warm-up prompts, discussion questions, explanations and homework text for reusable words, phrases, phrasal verbs, idioms, collocations and specialist terms.
+- Do not stop just because a document already contains a Vocabulary, Key Terms, Expressions, Idioms or Lexique section.
+- Do not extract every ordinary noun, verb or adjective. Skip basic/high-frequency words that are unlikely to be useful learning targets at the lesson level.
+- For advanced C1/C2 material, actively look for advanced reusable lexical chunks and academic/discussion language outside the explicit vocabulary sections.
+- Do not treat a discussion question as mere UI/task text when the sentence itself contains useful language-learning targets.
+- Hard output budgets remain safety limits, not desired result sizes: Vocabulary <= 300, Vocabulary + source examples <= 250, Smart vocabulary <= 180.
+- If the complete set exceeds the safety budget, keep all explicit lesson items first, then prioritize the strongest reusable items from the rest of the document.
 
-Priority order:
-1. Extract every explicit bullet/list item under headings such as Vocabulario, Vocabulary, Léxico, Lexique, Wortschatz, Expresiones, Expresiones coloquiales, Idioms, Expressions.
+Coverage order:
+1. Extract every explicit bullet/list item under headings such as Vocabulario, Vocabulary, Léxico, Lexique, Wortschatz, Expresiones, Expresiones coloquiales, Idioms, Expressions, Key Terms and Common Expressions.
 2. Extract every numbered idiom/expression heading from expression sections.
-3. Extract a small, selective set of useful collocations from reading text only after explicit lists and expression headings are complete.
-4. Skip exercises, questions, tasks, page footers, emails, websites, image filenames, copyright/footer text, tutor IDs, and page numbers.
-5. When in doubt, prefer fewer high-quality reusable candidates over a massive list.
+3. Continue through ALL other content-bearing sections and extract additional high-value words, phrases, phrasal verbs, idioms, collocations, specialist terms and reusable advanced expressions.
+4. Questions and exercises may contain valid vocabulary: mine their natural language, but do not return answer labels, numbering, blanks, multiple-choice options, transformation instructions or other exercise mechanics as targets.
+5. Skip only non-content noise such as page footers, websites, emails, image filenames, copyright text, tutor IDs, navigation labels and page numbers.
+6. Prefer useful reusable lexical units over isolated trivial words, but do not artificially shrink a rich lesson to only a handful of candidates.
 
 Slash and parenthesis rules:
 - If a slash-separated item is a list of separate words, split it into separate vocabulary candidates.

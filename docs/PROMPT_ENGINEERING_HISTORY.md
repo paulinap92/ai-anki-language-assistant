@@ -117,7 +117,7 @@ The update preserves the Anki note and its review history while replacing its fi
 
 - classic vocabulary GUI;
 - modern single-card mode;
-- Batch / Queue mode;
+- Batch mode;
 - grammar cards;
 - vocabulary generated from Conversation Practice.
 

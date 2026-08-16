@@ -19,7 +19,7 @@ Find candidates without AI / with AI
         ↓
 Candidate drafts / cherry-pick
         ↓
-Staged suggestions → Batch / Queue
+Staged suggestions → Batch
 ```
 
 Planned improvements:
@@ -78,7 +78,7 @@ checkbox + edit/remove
         ↓
 Add selected to queue
         ↓
-Staged for Batch / Queue
+Staged for Batch
 ```
 
 Planned improvements:
@@ -129,7 +129,7 @@ user fills answer OR AI solves with review
         ↓
 one completed sentence = one Grammar card = one audio sentence
         ↓
-Batch / Queue
+Batch
 ```
 
 Planned draft fields:
@@ -149,7 +149,7 @@ MVP idea:
 - create editable exercise drafts rather than final cards;
 - let the user type the answer manually;
 - optional **Solve with AI** button, but always with review;
-- send only completed, reviewed sentences to Batch / Queue.
+- send only completed, reviewed sentences to Batch.
 
 Important rule:
 

@@ -111,7 +111,7 @@ duplicate detected
 → preserve review history
 ```
 
-## 7. Display Batch / Queue
+## 7. Display Batch
 
 Switch to the corresponding milestone tag.
 

@@ -2,7 +2,7 @@
 
 Date checked: 2026-06-29
 
-This file is a practical cost note for the current app workflow: vocabulary cards, grammar cards, Batch / Queue generation, and later audio generation.
+This file is a practical cost note for the current app workflow: vocabulary cards, grammar cards, Batch generation, and later audio generation.
 
 The key point: for high-volume flashcard batches, Claude is not the best default provider. It is useful as an optional quality fallback, but it is relatively expensive and it does not provide the audio/TTS workflow used by this app.
 
@@ -89,7 +89,7 @@ Estimated cost per 1,000 cards:
 | `gemini-2.5-flash` | $0.00370 | $3.70 |
 | `claude-haiku-4-5` | $0.00900 | $9.00 |
 
-This explains why a small prepaid Claude balance can disappear quickly during Batch / Queue generation, especially if there are retries, regenerations, or validation false positives.
+This explains why a small prepaid Claude balance can disappear quickly during Batch generation, especially if there are retries, regenerations, or validation false positives.
 
 ---
 

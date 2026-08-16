@@ -50,6 +50,7 @@ def _env_bool(name: str, default: bool = False) -> bool:
 class Settings:
     """Application settings."""
 
+    setup_mode: str
     gemini_api_key: str | None
     gemini_model: str
     gemini_import_model: str
@@ -100,8 +101,8 @@ def get_settings() -> Settings:
     Returns:
         Application settings.
 
-    Raises:
-        ValueError: If no AI provider API key is configured.
+    The GUI is allowed to start with no provider configured so first-time users
+    can open the Setup tab and choose Local, Hybrid/BYOK or API/BYOK.
     """
     gemini_api_key = _clean_env_value(os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY"))
     openai_api_key = _clean_env_value(os.getenv("OPENAI_API_KEY"))
@@ -118,13 +119,35 @@ def get_settings() -> Settings:
 
     ollama_model = _clean_env_value(os.getenv("OLLAMA_MODEL"))
 
-    if not gemini_api_key and not openai_api_key and not anthropic_api_key and not ollama_model:
-        raise ValueError(
-            "Configure at least one AI provider in .env: GEMINI_API_KEY, "
-            "OPENAI_API_KEY, ANTHROPIC_API_KEY, or OLLAMA_MODEL for local Ollama."
-        )
+    requested_mode = (_clean_env_value(os.getenv("AI_SETUP_MODE")) or "").casefold()
+    aliases = {
+        "local": "local",
+        "fully local": "local",
+        "offline": "local",
+        "hybrid": "hybrid",
+        "byok": "hybrid",
+        "local + api": "hybrid",
+        "api": "api",
+        "cloud": "api",
+        "cloud / api": "api",
+    }
+    if requested_mode in aliases:
+        setup_mode = aliases[requested_mode]
+    else:
+        has_cloud = bool(gemini_api_key or openai_api_key or anthropic_api_key)
+        if ollama_model and has_cloud:
+            setup_mode = "hybrid"
+        elif ollama_model:
+            setup_mode = "local"
+        elif has_cloud:
+            setup_mode = "api"
+        else:
+            # First run: keep the GUI available so the user can configure a
+            # local, hybrid or BYOK setup instead of crashing before startup.
+            setup_mode = "hybrid"
 
     return Settings(
+        setup_mode=setup_mode,
         gemini_api_key=gemini_api_key,
         gemini_model=_clean_env_value(os.getenv("GEMINI_MODEL")) or "gemini-2.5-flash",
         gemini_import_model=(

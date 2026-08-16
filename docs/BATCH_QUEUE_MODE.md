@@ -1,4 +1,15 @@
-# Batch / Queue Vocabulary Mode
+# v12.1 Batch input rule
+
+Batch is for **clean, structured input**. Choose the Batch mode before loading a file.
+
+- Vocabulary: one word/phrase per row; CSV first column is the Word target.
+- Provided examples: `target | exact source sentence`; CSV column 1 = target, column 2 = sentence.
+- Grammar: sentence, or `grammar target | sentence`.
+- Mixed: already-prepared mixed rows only.
+
+For HTML lessons, PDFs, screenshots, scans or other material that still needs extraction/interpretation, use Import Material first.
+
+# Batch Vocabulary Mode
 
 ## Purpose
 
@@ -41,7 +52,7 @@ Successful actions are displayed in the persistent status area and recent activi
 
 ## Simple Auto Batch
 
-The Batch / Queue tab supports two bulk actions:
+The Batch tab supports two bulk actions:
 
 - `Auto-generate pending`;
 - `Add all ready`.

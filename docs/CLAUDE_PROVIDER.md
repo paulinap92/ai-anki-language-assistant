@@ -29,7 +29,7 @@ The provider implements the same application contract as Gemini and OpenAI:
 - sentence-first grammar analysis,
 - conversation start,
 - conversation feedback,
-- Batch / Queue generation,
+- Batch generation,
 - Practice and Print workflows that use generated Anki cards.
 
 ## Implementation notes
@@ -46,4 +46,4 @@ changed through `CLAUDE_MODEL` without modifying the source code.
 
 Claude in this project is a text provider only. It does not provide the app's audio/TTS workflow. Use the separate Speech / Audio providers for audio generation.
 
-For high-volume Batch / Queue generation, Claude Haiku is still relatively expensive compared with cheap Gemini/OpenAI options. See `docs/PROVIDER_COST_COMPARISON.md` before using Claude as a default batch provider.
+For high-volume Batch generation, Claude Haiku is still relatively expensive compared with cheap Gemini/OpenAI options. See `docs/PROVIDER_COST_COMPARISON.md` before using Claude as a default batch provider.

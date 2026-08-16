@@ -6,10 +6,10 @@ The app is built around a human-in-the-loop process: AI drafts the learning cont
 
 ## What it does
 
-- Generates vocabulary and grammar cards with Gemini, OpenAI or Claude.
-- Imports text, images and PDFs through explicit OCR/import workflows.
-- Extracts candidate vocabulary, grammar structures and example sentences from learning material.
-- Supports Batch / Queue review before adding cards to Anki.
+- Generates vocabulary and grammar cards with local Ollama or BYOK cloud providers such as Gemini, OpenAI or Claude.
+- Imports TXT/HTML locally and images/PDFs through explicit OCR/import workflows.
+- Extracts candidate vocabulary, grammar structures and example sentences from learning material; Vocabulary modes preserve explicit lists and continue mining useful vocabulary across the full lesson text.
+- Supports Batch review before adding cards to Anki.
 - Exports reviewed cards to Anki through AnkiConnect.
 - Supports example audio / TTS and existing-card audio backfill, including hidden Anki metadata for TTS provider/model/voice/source tracking.
 - Supports a small local Whisper STT trial for Conversation Practice.
@@ -23,7 +23,7 @@ Import / OCR / manual input
         ↓
 Candidate drafts / cherry-pick
         ↓
-Batch / Queue review
+Batch review
         ↓
 AI generation
         ↓
@@ -60,15 +60,44 @@ Starts the command-line interface.
 
 | Area | Purpose |
 |---|---|
-| Single flashcard | Generate and review one vocabulary card. |
-| Batch / Queue | Process lists of vocabulary, grammar and provided-example items. |
-| Grammar | Analyse grammar through a sentence or structure. |
-| Import Material | OCR/import text, review source material and extract candidate drafts. |
-| Speech / Audio | Generate or repair example audio for Anki cards. |
+| Setup | Choose Fully local, Hybrid / BYOK or API / BYOK, import/create `.env`, reload providers and check local Ollama. |
+| Create Card | Generate and review one Vocabulary or Grammar card in one workspace. |
+| Batch | Fast path for clean structured TXT/CSV/pasted rows. Choose Vocabulary, Grammar, Mixed or Provided examples before loading. |
+| Import Material | Advanced/raw-source path for lessons, TXT/HTML, PDFs, screenshots, scans and mixed material. TXT/HTML are read locally; OCR/vision is only for sources that need it. |
+| Speech / Audio | Test voices in the in-app Voice Lab, generate/repair example audio and backfill existing Anki cards without opening an external player. |
 | Fix Cards | Find and repair existing Anki cards. |
-| Conversation Practice | Practise by free topic, a selected Anki deck, or current Batch / Queue. Flashcard mode adds persistent deck rotation, due/random/repeat selection, session coverage, speaking cues, and genuinely new card candidates. |
+| Conversation Practice | Practise by free topic, a selected Anki deck, or current Batch. Flashcard mode adds persistent deck rotation, due/random/repeat selection, session coverage, speaking cues, genuinely new card candidates, TXT/Markdown export, and in-app tutor/question TTS. |
 | Practice & Print | Practise selected cards and create printable tests. |
-| LLMOps / LangSmith | Optional tracing and local quality-event log. |
+| Advanced / LLMOps | Optional tracing, model/cost diagnostics and local quality-event log. |
+
+
+### Batch vs Import Material
+
+Use **Batch** when the input is already clean and structured, for example one vocabulary target per line or `target | sentence` rows. Choose the Batch mode before loading so CSV/TXT parsing is deterministic.
+
+Use **Import Material** when the source still needs interpretation or extraction: lessons, HTML pages, PDFs, screenshots, textbook images, scans or mixed material. TXT/HTML are converted to plain text locally and do not need OCR; candidate extraction is a separate explicit step.
+
+Import Material exposes four user-facing extraction choices:
+
+- **Vocabulary & expressions** — scans the whole source for useful words, phrases, idioms, phrasal verbs and collocations; useful source sentences are preserved when available.
+- **Grammar** — uses the smart grammar routing internally for rules, structures, transformations, exercises and sentence examples.
+- **Examples / sentences** — preserves useful target + exact source-sentence pairs.
+- **Auto** — lets AI classify useful items across vocabulary, grammar and source examples.
+
+The older implementation-specific strategy names remain internal for backward compatibility and are no longer shown in the main UI.
+
+
+## Local, Hybrid and BYOK profiles
+
+The same application supports three user-facing setup profiles:
+
+- **Fully local** — Ollama for AI, local faster-whisper for STT and Piper for TTS. Cloud AI providers are ignored even if old keys are present.
+- **Hybrid / BYOK** — mix local components with the user's own OpenAI, Gemini, Claude, ElevenLabs or OCR API keys.
+- **API / BYOK** — use the user's own cloud AI/TTS providers; local Whisper remains available for speech input in this release.
+
+The app can start with **no AI provider configured**. First-time users are sent to **Setup** instead of seeing a startup crash. The Setup tab can create a starter `.env`, import supported values from an existing `.env`, reopen the local file, reload providers without restarting the app and check whether Ollama plus the selected local model are reachable.
+
+Secrets stay in the local `.env`. Clean ZIP releases do not include `.env`, API keys, logs, caches, generated audio or runtime state.
 
 ## Quality and safety workflow
 
@@ -94,7 +123,7 @@ The app can use different providers for different jobs.
 
 | Provider type | Examples | Used for |
 |---|---|---|
-| Card AI provider | Gemini, OpenAI, Claude | Vocabulary, grammar, conversation, candidate extraction. |
+| Card AI provider | Ollama local, Gemini, OpenAI, Claude | Vocabulary, grammar, conversation, candidate extraction. |
 | OCR provider | Local Tesseract, Mistral OCR, OpenAI/Gemini Vision OCR | Image/PDF/text extraction only. Vision OCR does not create candidates directly. |
 | Audio provider | ElevenLabs, OpenAI TTS, Gemini TTS, Piper local | Example audio and audio repair. |
 | STT provider | Local Whisper / faster-whisper | Conversation speech-to-text trial. |
@@ -106,9 +135,10 @@ Only providers configured in `.env` are available in the UI.
 - Python 3.10+
 - Anki Desktop
 - AnkiConnect add-on
-- At least one configured card-generation provider key: Gemini, OpenAI or Claude
+- For Fully local AI: Ollama plus a pulled local model
+- For BYOK cloud AI: at least one user-owned provider key
 
-Optional features require their own dependencies and API keys, for example Mistral OCR, ElevenLabs/OpenAI/Gemini TTS, Piper local or faster-whisper.
+Local image/scanned-PDF OCR uses Tesseract when OCR is required, so the Tesseract executable must be installed separately for that feature.
 
 ## Setup from source
 
@@ -119,23 +149,31 @@ python -m venv .venv
 .\.venv\Scripts\Activate.ps1
 ```
 
-Install dependencies:
+Choose an install:
 
 ```powershell
-pip install -r requirements.txt
+# Fully local — no OpenAI/Gemini/Claude/Mistral/LangSmith SDKs required
+pip install -r requirements-local.txt
+
+# Hybrid / BYOK or API / BYOK
+pip install -r requirements-hybrid.txt
 ```
 
-Create `.env` from the example:
+`requirements.txt` remains an alias for the full Hybrid/BYOK install.
+
+You can simply start the app with no `.env` and configure it from **Setup**, or create `.env` manually from the example:
 
 ```powershell
 Copy-Item .env.example .env
 ```
 
-Add at least one card AI provider key, then start the app:
+Then start the app:
 
 ```powershell
 python main_gui_custom.py
 ```
+
+For local mode, set `AI_SETUP_MODE=local`, configure `OLLAMA_MODEL` and start Ollama. For BYOK mode, paste only your own keys into `.env`.
 
 Keep Anki Desktop open while using Anki export or existing-card workflows.
 
@@ -178,6 +216,12 @@ WHISPER_LANGUAGE=
 ```
 
 Conversation Practice now passes the selected conversation language plus a short dynamic topic/flashcard context to faster-whisper. For higher accuracy on a capable CPU, try `WHISPER_MODEL=medium`; existing `.env` files that explicitly use `base` are not overwritten.
+
+### Conversation audio and export
+
+Conversation Practice can export the current session as `.md` or `.txt`. Exports include session metadata, the visible tutor/learner transcript, active flashcards and accumulated new-card candidates. Generated exports are stored outside version control by default.
+
+Conversation TTS uses the provider/model/voice configured in **Speech / Audio**. `Read tutor reply`, `Read question`, and `Stop audio` play directly inside the application through `sounddevice`/`soundfile`; no external media-player window is required. When TTS is configured, `Auto-read tutor` and `Auto-read question` start enabled and can be switched off independently. The app generates the complete TTS file before starting playback and stops playback before microphone recording.
 
 ### Optional LangSmith / LLMOps
 

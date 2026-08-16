@@ -6,59 +6,70 @@ from pathlib import Path
 
 from src.core.config import Settings
 from src.speech.tts.base import TextToSpeechProvider
-from src.speech.tts.elevenlabs import ElevenLabsTtsProvider
-from src.speech.tts.gemini_tts import GeminiTtsProvider
-from src.speech.tts.openai_tts import OpenAiTtsProvider
-from src.speech.tts.piper import PiperExecutableTtsProvider, PiperTtsProvider
 
 
 def build_tts_providers(settings: Settings) -> dict[str, TextToSpeechProvider]:
-    """Build only providers whose credentials or local model are configured.
+    """Build TTS providers allowed by the selected setup profile.
 
-    Safer/default providers are added first. ElevenLabs is kept available, but
-    last, because voice access is account-dependent and can require a premium
-    or verified voice.
+    Imports are lazy so local-only users do not need cloud SDK packages.
     """
     providers: dict[str, TextToSpeechProvider] = {}
-    if settings.openai_api_key:
+    mode = (settings.setup_mode or "hybrid").casefold()
+    allow_local = mode in {"local", "hybrid"}
+    allow_cloud = mode in {"api", "hybrid"}
+
+    if allow_cloud and settings.openai_api_key:
+        from src.speech.tts.openai_tts import OpenAiTtsProvider
+
         provider = OpenAiTtsProvider(
             settings.openai_api_key,
             settings.openai_tts_model,
             settings.openai_tts_voice,
         )
         providers[provider.provider_name] = provider
-    if settings.gemini_api_key:
+
+    if allow_cloud and settings.gemini_api_key:
+        from src.speech.tts.gemini_tts import GeminiTtsProvider
+
         provider = GeminiTtsProvider(
             settings.gemini_api_key,
             settings.gemini_tts_model,
             settings.gemini_tts_voice,
         )
         providers[provider.provider_name] = provider
-    piper_voice_candidates = [
-        settings.piper_voice_en,
-        settings.piper_voice_es,
-        settings.piper_voice_pl,
-        settings.piper_model_path,
-    ]
-    piper_voice_paths = []
-    for candidate in piper_voice_candidates:
-        if candidate and candidate not in piper_voice_paths:
-            piper_voice_paths.append(candidate)
 
-    if settings.piper_exe_path and piper_voice_paths:
-        provider = PiperExecutableTtsProvider(
-            Path(settings.piper_exe_path),
-            [Path(path) for path in piper_voice_paths],
-        )
-        providers[provider.provider_name] = provider
-    elif settings.piper_model_path:
-        provider = PiperTtsProvider(Path(settings.piper_model_path))
-        providers[provider.provider_name] = provider
-    if settings.elevenlabs_api_key:
+    if allow_local:
+        from src.speech.tts.piper import PiperExecutableTtsProvider, PiperTtsProvider
+
+        piper_voice_candidates = [
+            settings.piper_voice_en,
+            settings.piper_voice_es,
+            settings.piper_voice_pl,
+            settings.piper_model_path,
+        ]
+        piper_voice_paths: list[str] = []
+        for candidate in piper_voice_candidates:
+            if candidate and candidate not in piper_voice_paths:
+                piper_voice_paths.append(candidate)
+
+        if settings.piper_exe_path and piper_voice_paths:
+            provider = PiperExecutableTtsProvider(
+                Path(settings.piper_exe_path),
+                [Path(path) for path in piper_voice_paths],
+            )
+            providers[provider.provider_name] = provider
+        elif settings.piper_model_path:
+            provider = PiperTtsProvider(Path(settings.piper_model_path))
+            providers[provider.provider_name] = provider
+
+    if allow_cloud and settings.elevenlabs_api_key:
+        from src.speech.tts.elevenlabs import ElevenLabsTtsProvider
+
         provider = ElevenLabsTtsProvider(
             settings.elevenlabs_api_key,
             settings.elevenlabs_tts_model,
             settings.elevenlabs_voice_id,
         )
         providers[provider.provider_name] = provider
+
     return providers

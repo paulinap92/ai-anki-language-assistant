@@ -120,3 +120,5 @@ audio_progress/
 
 # Local Conversation Practice rotation state
 conversation_rotation_state.json
+
+conversation_exports/

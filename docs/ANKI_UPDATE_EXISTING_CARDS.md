@@ -27,4 +27,4 @@ Selecting **Yes** updates all fields of the existing note. Selecting **No** leav
 - vocabulary cards: `Word`;
 - grammar cards: `Sentence`.
 
-The feature is available in both GUIs, Batch / Queue, Grammar, and Conversation-generated card flows.
+The feature is available in both GUIs, Batch, Grammar, and Conversation-generated card flows.

@@ -24,7 +24,7 @@ class VocabularyApp:
         self._ai_clients = ai_clients
         self._anki_client = anki_client
         self._target_language = default_target_language
-        self._provider_name = next(iter(ai_clients))
+        self._provider_name = next(iter(ai_clients), "")
 
     @property
     def _ai_client(self) -> VocabularyAiClient:
@@ -33,6 +33,11 @@ class VocabularyApp:
 
     def run(self) -> None:
         """Run the interactive vocabulary flashcard generator."""
+        if not self._ai_clients:
+            print("No AI provider is configured.")
+            print("Open the desktop app Setup tab or configure .env first.")
+            print("Use AI_SETUP_MODE=local + OLLAMA_MODEL for local mode, or add your own API key for BYOK mode.")
+            return
         print("=" * 60)
         print("AI ANKI VOCABULARY GENERATOR")
         print("=" * 60)

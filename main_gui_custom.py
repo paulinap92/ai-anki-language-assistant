@@ -22,7 +22,7 @@ def main() -> None:
     )
 
     tts_providers = build_tts_providers(settings)
-    speech_service = SpeechService(tts_providers, Path(settings.audio_cache_dir))
+    speech_service = SpeechService(tts_providers, Path(settings.audio_cache_dir)) if tts_providers else None
     stt_service = None
     if settings.stt_provider.lower() in {"local_whisper", "whisper", "faster_whisper"}:
         stt_service = LocalWhisperSttService(

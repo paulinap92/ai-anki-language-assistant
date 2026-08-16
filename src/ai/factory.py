@@ -4,21 +4,14 @@ from __future__ import annotations
 
 from src.ai.base import VocabularyAiClient
 from src.core.config import Settings
-from src.ai.providers.gemini import GeminiVocabularyClient
-from src.ai.providers.openai_provider import OpenAiVocabularyClient
-from src.ai.providers.claude import ClaudeVocabularyClient
-from src.ai.providers.ollama import OllamaVocabularyClient
 from src.observability import configure_llmops, wrap_ai_client
 
 
 def build_ai_clients(settings: Settings) -> dict[str, VocabularyAiClient]:
-    """Create clients only for providers with configured API keys.
+    """Create only AI clients allowed by the selected setup profile.
 
-    Args:
-        settings: Environment-backed application settings.
-
-    Returns:
-        Provider names mapped to initialized clients.
+    Cloud SDK imports are intentionally lazy so a fully-local installation can
+    run without OpenAI/Gemini/Claude packages installed.
     """
     configure_llmops(
         enabled=settings.langsmith_tracing,
@@ -29,8 +22,13 @@ def build_ai_clients(settings: Settings) -> dict[str, VocabularyAiClient]:
     )
 
     clients: dict[str, VocabularyAiClient] = {}
+    mode = (settings.setup_mode or "hybrid").casefold()
+    allow_local = mode in {"local", "hybrid"}
+    allow_cloud = mode in {"api", "hybrid"}
 
-    if settings.gemini_api_key:
+    if allow_cloud and settings.gemini_api_key:
+        from src.ai.providers.gemini import GeminiVocabularyClient
+
         client = GeminiVocabularyClient(
             api_key=settings.gemini_api_key,
             model=settings.gemini_model,
@@ -39,7 +37,9 @@ def build_ai_clients(settings: Settings) -> dict[str, VocabularyAiClient]:
         )
         clients[client.provider_name] = client
 
-    if settings.openai_api_key:
+    if allow_cloud and settings.openai_api_key:
+        from src.ai.providers.openai_provider import OpenAiVocabularyClient
+
         client = OpenAiVocabularyClient(
             api_key=settings.openai_api_key,
             model=settings.openai_model,
@@ -48,7 +48,9 @@ def build_ai_clients(settings: Settings) -> dict[str, VocabularyAiClient]:
         )
         clients[client.provider_name] = client
 
-    if settings.anthropic_api_key:
+    if allow_cloud and settings.anthropic_api_key:
+        from src.ai.providers.claude import ClaudeVocabularyClient
+
         client = ClaudeVocabularyClient(
             api_key=settings.anthropic_api_key,
             model=settings.claude_model,
@@ -57,7 +59,9 @@ def build_ai_clients(settings: Settings) -> dict[str, VocabularyAiClient]:
         )
         clients[client.provider_name] = client
 
-    if settings.ollama_model:
+    if allow_local and settings.ollama_model:
+        from src.ai.providers.ollama import OllamaVocabularyClient
+
         client = OllamaVocabularyClient(
             base_url=settings.ollama_base_url,
             model=settings.ollama_model,

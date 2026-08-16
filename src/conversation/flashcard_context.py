@@ -114,7 +114,7 @@ def build_flashcard_conversation_material(
 ) -> tuple[list[str], list[str], int]:
     """Return prompt rows, visible targets, and total usable unique items.
 
-    The function uses only the current in-memory Batch / Queue payload. It never
+    The function uses only the current in-memory Batch payload. It never
     queries AnkiConnect. Generated cards provide richer context; pending rows
     still provide their target and source sentence when available.
     """

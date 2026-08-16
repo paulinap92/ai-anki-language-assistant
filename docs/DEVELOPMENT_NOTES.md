@@ -11,7 +11,7 @@ The application currently includes:
 - sentence-first Grammar;
 - Conversation Practice with selectable level;
 - non-blocking status messages;
-- Batch / Queue import;
+- Batch import;
 - Practice mode;
 - Print Test with separate answer key;
 - existing Anki card updates;
@@ -59,7 +59,7 @@ pipenv run python -m pytest   --cov=src   --cov-report=term-missing   --cov-repo
 - save a grammar card to Anki;
 - verify non-blocking success status.
 
-### Modern GUI — Batch / Queue
+### Modern GUI — Batch
 
 - load TXT;
 - load CSV;
@@ -111,7 +111,7 @@ Keep these examples in the evaluation set:
 | Prompt behaviour | `PROMPT_ENGINEERING_HISTORY.md` |
 | Anki fields/templates | `ANKI_CARD_MODEL.md` |
 | Existing-note replacement | `ANKI_UPDATE_EXISTING_CARDS.md` |
-| Batch / Queue | `BATCH_QUEUE_MODE.md` |
+| Batch | `BATCH_QUEUE_MODE.md` |
 | Practice / Print | `PRACTICE_AND_PRINT_MODE.md` |
 | Claude | `CLAUDE_PROVIDER.md` |
 | Module boundaries | `ARCHITECTURE.md` |

@@ -1,68 +1,87 @@
-# Local/free mode: Ollama + Piper
+# Local / Hybrid / BYOK setup
 
-This version adds a minimal local/free path for Conversation Practice.
+The app now has three user-facing setup profiles in the **Setup** tab.
 
-## Ollama Local LLM
+## Fully local
 
-Ollama is optional and requires no API key.
+Uses local components wherever the app has a local implementation:
 
-`.env`:
+- AI / card generation / conversation / text candidate extraction: Ollama
+- Speech-to-text: faster-whisper
+- Text-to-speech: Piper
+- TXT/HTML/PDF text extraction: local Python tools
+- Image/scanned-PDF OCR: local Tesseract when installed
+- Anki: local AnkiConnect
+
+Cloud AI/TTS providers are ignored in this profile even if old API keys remain in `.env`.
+
+Example `.env`:
 
 ```env
+AI_SETUP_MODE=local
 OLLAMA_BASE_URL=http://localhost:11434
 OLLAMA_MODEL=gemma3:4b
-```
-
-Useful commands:
-
-```powershell
-ollama list
-ollama run gemma3:4b
-```
-
-Recommended first model from the user's current local list: `gemma3:4b`.
-`nomic-embed-text` is for embeddings/RAG later, not for chat.
-
-## Piper Local TTS
-
-This version supports the standalone `piper.exe` workflow. Piper does not need to live inside the repository.
-A clean local layout is:
-
-```text
-C:\tools\piper\piper.exe
-C:\tools\piper\espeak-ng-data\
-C:\tools\piper\voices\en_US-lessac-medium.onnx
-C:\tools\piper\voices\en_US-lessac-medium.onnx.json
-```
-
-`.env`:
-
-```env
+STT_PROVIDER=local_whisper
+WHISPER_MODEL=small
 PIPER_EXE_PATH=C:\tools\piper\piper.exe
 PIPER_VOICE_EN=C:\tools\piper\voices\en_US-lessac-medium.onnx
 ```
 
-PowerShell test outside the app:
+Install the Python dependencies with:
 
 ```powershell
-echo "Hello, this is a test." | C:\tools\piper\piper.exe --model C:\tools\piper\voices\en_US-lessac-medium.onnx --output_file C:\tools\piper\test.wav
-start C:\tools\piper\test.wav
+pip install -r requirements-local.txt
 ```
 
-## Conversation Practice
+Ollama and Tesseract/Piper executables or voice/model files are external local tools and are not bundled into the clean release ZIP.
 
-Conversation Practice can now use:
+## Hybrid / BYOK
 
-- `Ollama Local (experimental)` as the conversation model.
-- `Read question` to generate and play the current AI question with the configured TTS provider.
-- Existing Whisper/STT buttons remain for later testing on a computer with a working microphone.
+Use local components together with the user's own API keys. Example:
 
-This is intentionally small: no cloud agent, no LangGraph, no RAG, no automatic pronunciation scoring.
+```env
+AI_SETUP_MODE=hybrid
+OLLAMA_MODEL=gemma3:4b
+OPENAI_API_KEY=...
+GEMINI_API_KEY=...
+ELEVENLABS_API_KEY=...
+STT_PROVIDER=local_whisper
+WHISPER_MODEL=small
+```
 
+Install with:
 
-## v10.1 notes
+```powershell
+pip install -r requirements-hybrid.txt
+```
 
-- Conversation Practice has its own Conversation language selector.
-- The top Card AI provider bar is hidden in Conversation Practice to avoid confusion.
-- Single Flashcard has an Audio provider selector for Piper/other configured TTS providers.
-- If no microphone is detected, STT shows a friendly no-microphone message.
+The UI shows only configured AI providers. Cloud OCR methods are shown only when the corresponding provider/key is configured.
+
+## API / BYOK
+
+Use the user's own configured cloud AI/TTS providers. Ollama and Piper are not activated by the provider factories in this profile. Local Whisper remains available for speech input in this release.
+
+```env
+AI_SETUP_MODE=api
+OPENAI_API_KEY=...
+ELEVENLABS_API_KEY=...
+STT_PROVIDER=local_whisper
+WHISPER_MODEL=small
+```
+
+## First-run setup
+
+The desktop app can start with no AI provider configured. Instead of failing on startup, it opens **Setup**. From there the user can:
+
+- choose Fully local, Hybrid / BYOK or API / BYOK;
+- create/update a starter `.env`;
+- import supported settings from an existing `.env`;
+- open the local `.env` file;
+- reload provider configuration without restarting the app;
+- check whether Ollama is reachable and whether the configured model is installed.
+
+Imported `.env` files are filtered to app-supported keys. An existing destination `.env` is backed up before importing.
+
+## Secret handling
+
+`.env` is ignored by Git and excluded from clean releases. The Setup screen displays only configured/missing status; it does not print API-key values.

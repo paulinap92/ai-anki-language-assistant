@@ -1,0 +1,11 @@
+# Hybrid / BYOK profile. Includes the fully-local stack plus optional cloud providers.
+-r requirements-local.txt
+
+google-genai
+openai
+anthropic
+mistralai
+langsmith
+beautifulsoup4
+lxml
+tenacity

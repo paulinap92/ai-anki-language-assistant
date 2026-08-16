@@ -1,0 +1,17 @@
+# Fully local profile: no cloud AI SDKs required.
+python-dotenv
+requests
+pydantic
+customtkinter
+
+# Local document/text handling
+PyMuPDF
+pypdf
+pillow
+pytesseract
+
+# Local speech
+piper-tts
+faster-whisper
+sounddevice
+soundfile
