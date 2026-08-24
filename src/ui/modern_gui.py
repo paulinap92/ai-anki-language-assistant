@@ -1,7 +1,7 @@
 """Modern CustomTkinter GUI for the AI Anki Vocabulary Generator.
 
 This module keeps the existing application logic and adds a modern interface with
-both the single flashcard generator and Conversation Practice workflow.
+both the single flashcard generator and Conversation workflow.
 """
 
 from __future__ import annotations
@@ -80,7 +80,7 @@ CONVERSATION_MODE_TOPIC = "Talk about a topic"
 CONVERSATION_MODE_FLASHCARDS = "Talk based on flashcards"
 CONVERSATION_MODES = [CONVERSATION_MODE_TOPIC, CONVERSATION_MODE_FLASHCARDS]
 CONVERSATION_FLASHCARD_SOURCE_ANKI = "Anki deck"
-CONVERSATION_FLASHCARD_SOURCE_BATCH = "Current Batch"
+CONVERSATION_FLASHCARD_SOURCE_BATCH = "Current Queue"
 CONVERSATION_FLASHCARD_SOURCES = [
     CONVERSATION_FLASHCARD_SOURCE_ANKI,
     CONVERSATION_FLASHCARD_SOURCE_BATCH,
@@ -94,38 +94,78 @@ STT_LANGUAGE_CODES = {
     "Italian": "it",
     "Portuguese": "pt",
 }
+TTS_SAMPLE_TEXTS = {
+    "English": "Hello! This is a quick voice test for your flashcards.",
+    "Spanish": "Hola. Esta es una prueba rápida de voz para tus tarjetas.",
+    "Polish": "Cześć. To jest krótki test głosu do twoich fiszek.",
+    "German": "Hallo. Dies ist ein kurzer Stimmtest für deine Lernkarten.",
+    "French": "Bonjour. Voici un court test de voix pour vos cartes mémoire.",
+    "Italian": "Ciao. Questo è un breve test della voce per le tue flashcard.",
+    "Portuguese": "Olá. Este é um pequeno teste de voz para os seus cartões.",
+}
 CREATE_CARD_MODES = ["Vocabulary", "Grammar"]
 BATCH_MODES = ["Vocabulary", "Grammar", "Mixed", "Provided examples"]
-OCR_EXTRACTION_MODES = ["Vocabulary & expressions", "Grammar", "Examples / sentences", "Auto"]
+OCR_EXTRACTION_MODES = [
+    "Provided examples",
+    "Vocabulary",
+    "Vocabulary + source examples",
+    "Smart vocabulary",
+    "Grammar",
+    "Smart grammar import",
+    "Mixed",
+]
 OCR_EXTRACTION_MODE_INTERNAL = {
+    # The original mature Import Material modes are user-facing again.
+    # Keep only aliases from the short-lived simplified UI for compatibility.
     "Vocabulary & expressions": "Vocabulary + source examples",
-    "Grammar": "Smart grammar import",
     "Examples / sentences": "Provided examples",
     "Auto": "Mixed",
 }
 OCR_EXTRACTION_MODE_HELP = {
-    "Vocabulary & expressions": "Find useful words, phrases, idioms, phrasal verbs and collocations across the whole source. Keep a source sentence when it is genuinely useful.",
-    "Grammar": "Find grammar structures, rules, transformations and exercises. The app decides whether to preserve a source example or generate one later.",
-    "Examples / sentences": "Preserve useful target + exact source-sentence pairs from the material.",
-    "Auto": "Let AI classify each useful candidate as vocabulary, grammar or a source example.",
+    "Provided examples": "Find target + exact source-sentence pairs. Use only when the source really contains useful example sentences.",
+    "Vocabulary": "Extract vocabulary targets only. Source examples are normally left for final card generation.",
+    "Vocabulary + source examples": "Extract vocabulary targets and attach a useful source sentence when one is clearly present.",
+    "Smart vocabulary": "Recommended. Keep explicit lesson vocabulary and expressions, then add only a selective set of high-value reusable items from continuous text.",
+    "Grammar": "Extract clear grammar targets and structures from the source.",
+    "Smart grammar import": "Interpret rules, transformations, exercises and examples intelligently before sending them to Queue.",
+    "Mixed": "Allow vocabulary, grammar and provided-example candidates in the same import.",
+    # Backward-compatible aliases from the simplified product UI.
+    "Vocabulary & expressions": "Same as Vocabulary + source examples.",
+    "Examples / sentences": "Same as Provided examples.",
+    "Auto": "Same as Mixed.",
 }
 OCR_IMPORT_METHODS = ["Local extraction (free)", "Mistral OCR (cloud text only)", "OpenAI Vision OCR (text only)", "Gemini Vision OCR (text only)"]
 OCR_IMAGE_EXTENSIONS = {".png", ".jpg", ".jpeg", ".webp", ".bmp", ".tif", ".tiff"}
 
-# Safety caps for AI candidate extraction. Prompting helps, but providers can
-# still over-extract from long continuous prose. These caps protect Tkinter from
-# trying to render thousands of candidate cards and protect the user from
-# accidentally sending runaway outputs to Batch.
+# Runtime-only runaway guards for a *single* provider response. They are not
+# extraction targets and are never exposed to the model. Candidate count is
+# determined by source content; these guards only catch malformed/extreme
+# responses before Tkinter is asked to render thousands of rows at once.
 OCR_AI_CANDIDATE_HARD_LIMITS = {
-    "vocabulary": 300,
-    "vocabulary + source examples": 250,
-    "smart vocabulary": 180,
-    "provided examples": 160,
-    "grammar": 140,
-    "smart grammar import": 140,
-    "mixed": 180,
+    "vocabulary": 600,
+    "vocabulary + source examples": 600,
+    "smart vocabulary": 600,
+    "provided examples": 600,
+    "grammar": 600,
+    "smart grammar import": 600,
+    "mixed": 600,
 }
 OCR_CANDIDATE_AUTOSELECT_LIMIT = 120
+
+# Source-size guardrails protect users from accidentally sending an entire book
+# through many AI calls. These limits apply to source size, never to the number
+# of useful candidates found. Large sources can still be reviewed section by
+# section by selecting text in the Source text panel.
+IMPORT_SOURCE_SOFT_CHAR_LIMIT = 60000
+IMPORT_SOURCE_SOFT_WORD_LIMIT = 10000
+IMPORT_SOURCE_HARD_CHAR_LIMIT = 180000
+IMPORT_SOURCE_HARD_WORD_LIMIT = 30000
+IMPORT_REVIEW_PAGE_SIZE = 25
+
+# Import Material never silently truncates a source. Long source text is split
+# into bounded AI requests and merged back into one reviewed candidate set.
+IMPORT_AI_CHUNK_SIZE = 20000
+IMPORT_AI_CHUNK_OVERLAP = 500
 
 TOPIC_PRESETS = [
     "",
@@ -163,6 +203,7 @@ class ModernVocabularyGui:
         window_title: str = "AI Anki Language Assistant",
         show_public_header: bool = True,
     ) -> None:
+        LOGGER.info("APP PROCESS STARTED: pid=%s python=%s", os.getpid(), sys.version.split()[0])
         self._root = root
         self._window_title = window_title
         self._show_public_header = show_public_header
@@ -185,7 +226,7 @@ class ModernVocabularyGui:
         self._feedback_language_var = ctk.StringVar(value="Polish")
         self._improvement_level_var = ctk.StringVar(value="Strong B2/C1")
         self._deck_var = ctk.StringVar(value=anki_client.deck_name)
-        # Speech / Audio must not depend on the hidden card-generation top bar.
+        # Speech & Audio must not depend on the hidden card-generation top bar.
         # Keep an explicit deck and language selector inside the audio tab.
         self._speech_deck_var = ctk.StringVar(value=anki_client.deck_name)
         self._speech_language_var = ctk.StringVar(value=default_target_language)
@@ -213,7 +254,9 @@ class ModernVocabularyGui:
         self._speech_write_mode_var = ctk.StringVar(value="Use dedicated audio field")
         self._speech_progress_var = ctk.StringVar(value="Load cards with missing audio from the selected Anki deck.")
         self._speech_summary_var = ctk.StringVar(value="No audio scan loaded yet.")
-        self._speech_preview_text_var = ctk.StringVar(value="Esta es una pequeña muestra de pronunciación.")
+        initial_preview_text = TTS_SAMPLE_TEXTS.get(default_target_language, TTS_SAMPLE_TEXTS["English"])
+        self._speech_preview_text_var = ctk.StringVar(value=initial_preview_text)
+        self._speech_preview_last_auto_text = initial_preview_text
         self._speech_audio_status_by_note_id: dict[int, str] = {}
         self._speech_audio_error_by_note_id: dict[int, str] = {}
         self._speech_audio_path_by_note_id: dict[int, str] = {}
@@ -243,7 +286,7 @@ class ModernVocabularyGui:
         self._conversation_session_expanded = False
         self._conversation_session_title_var = ctk.StringVar(value="Flashcards in this session")
         self._conversation_flashcard_status_var = ctk.StringVar(
-            value="Choose an Anki deck or use the current Batch."
+            value="Choose an Anki deck or use the current Queue."
         )
         self._conversation_language_var = ctk.StringVar(value=default_target_language)
         preferred_conversation_provider = (
@@ -253,6 +296,10 @@ class ModernVocabularyGui:
             else initial_provider
         )
         self._conversation_provider_var = ctk.StringVar(value=preferred_conversation_provider)
+        self._conversation_topic_draft = ""
+        self._conversation_tts_provider_var = ctk.StringVar(value=tts_names[0] if tts_names else "")
+        self._conversation_tts_model_var = ctk.StringVar(value="")
+        self._conversation_tts_voice_var = ctk.StringVar(value="")
         self._conversation_detailed_feedback_var = ctk.BooleanVar(value=False)
         self._conversation_auto_read_tutor_var = ctk.BooleanVar(value=bool(speech_service))
         self._conversation_auto_read_question_var = ctk.BooleanVar(value=bool(speech_service))
@@ -280,7 +327,7 @@ class ModernVocabularyGui:
             value="Select AI suggestions, edit them if needed, then stage them here. Nothing is added to Anki from this panel."
         )
 
-        # Batch mode state.
+        # Queue mode state.
         self._batch_items: list[dict[str, object]] = []
         self._batch_index = 0
         self._batch_generated_card: VocabularyCard | None = None
@@ -290,7 +337,7 @@ class ModernVocabularyGui:
         self._batch_generated_grammar: GrammarAnalysis | None = None
         self._batch_topic_var = ctk.StringVar(value="")
         self._batch_progress_var = ctk.StringVar(value="No list loaded.")
-        self._batch_status_var = ctk.StringVar(value="Choose a Batch mode first, then load a clean TXT/CSV file or paste a list.")
+        self._batch_status_var = ctk.StringVar(value="Choose an input type first, then load a clean TXT/CSV file or paste a list.")
         self._batch_mode_help_var = ctk.StringVar(value="Vocabulary: one clean word or phrase per row.")
         self._batch_source_summary_var = ctk.StringVar(value="No source loaded yet.")
         self._batch_autosave_path: Path | None = None
@@ -315,12 +362,13 @@ class ModernVocabularyGui:
         self._llmops_status_var = ctk.StringVar(value="LLMOps status: not checked yet.")
         self._llmops_project_var = ctk.StringVar(value="Project: ai-anki-language-assistant")
 
-        # OCR / Import workflow state. OCR prepares candidate rows only; Batch
+        # OCR / Import workflow state. OCR prepares candidate rows only; Queue
         # remains the place where cards are generated, reviewed, and added.
         self._ocr_source_paths: list[Path] = []
         self._ocr_status_var = ctk.StringVar(value="Load a PDF, image, TXT/HTML, or paste text to start.")
-        self._ocr_mode_var = ctk.StringVar(value="Vocabulary & expressions")
-        self._ocr_mode_help_var = ctk.StringVar(value=OCR_EXTRACTION_MODE_HELP["Vocabulary & expressions"])
+        self._ocr_size_var = ctk.StringVar(value="No material loaded yet.")
+        self._ocr_mode_var = ctk.StringVar(value="Smart vocabulary")
+        self._ocr_mode_help_var = ctk.StringVar(value=OCR_EXTRACTION_MODE_HELP["Smart vocabulary"])
         self._ocr_method_var = ctk.StringVar(value="Local extraction (free)")
         self._ocr_ai_provider_var = ctk.StringVar(value=initial_provider)
         self._ocr_manual_candidate_type_var = ctk.StringVar(value="vocabulary")
@@ -329,12 +377,20 @@ class ModernVocabularyGui:
         self._ocr_candidate_status_var = ctk.StringVar(value="No candidates yet.")
         self._ocr_candidate_items: list[dict[str, str]] = []
         self._ocr_candidate_vars: list[ctk.BooleanVar] = []
-        self._ocr_route_var = ctk.StringVar(value="TXT/HTML → local text extraction → candidate finder. Images/scans → OCR/vision first.")
+        self._ocr_review_priority_filter_var = ctk.StringVar(value="All priorities")
+        self._ocr_review_type_filter_var = ctk.StringVar(value="All types")
+        self._ocr_review_search_var = ctk.StringVar(value="")
+        self._ocr_review_page = 0
+        self._ocr_review_page_var = ctk.StringVar(value="Page 0 of 0")
+        self._ocr_large_source_notified_signature: tuple[int, int] | None = None
+        self._ocr_large_source_approved_signature: tuple[int, int] | None = None
+        self._ocr_route_var = ctk.StringVar(value="TXT/HTML → read locally (no AI/model) → find candidates. Images/scans → OCR/vision → find candidates.")
         self._ocr_last_ai_request: tuple[str, str] | None = None
+        self._shutdown_started = False
 
         # Existing cards workflow state. This is deliberately separate from
-        # Batch autosave because old Anki notes may have been created before
-        # the app had Batch/audio metadata.
+        # Queue autosave because old Anki notes may have been created before
+        # the app had Queue/audio metadata.
         self._existing_cards: list[dict[str, object]] = []
         self._existing_card_vars: list[ctk.BooleanVar] = []
         self._existing_search_var = ctk.StringVar(value="")
@@ -395,7 +451,8 @@ class ModernVocabularyGui:
         self._root.minsize(980, 680)
         self._root.grid_columnconfigure(0, weight=1)
         self._root.grid_rowconfigure(0, weight=1)
-        self._root.protocol("WM_DELETE_WINDOW", self._on_app_close)
+        self._root.report_callback_exception = self._report_tk_callback_exception
+        self._root.protocol("WM_DELETE_WINDOW", lambda: self._on_app_close(source="wm_delete_window"))
 
     def _build_widgets(self) -> None:
         main = ctk.CTkFrame(self._root, corner_radius=0)
@@ -429,13 +486,13 @@ class ModernVocabularyGui:
         tab_order = [
             "Setup",
             "Create Card",
-            "Batch",
+            "Queue",
             "Import Material",
-            "Speech / Audio",
+            "Speech & Audio",
             "Fix Cards",
             "Practice & Print",
-            "Conversation Practice",
-            "Advanced / LLMOps",
+            "Conversation",
+            "Advanced",
         ]
         for tab_name in tab_order:
             tabs.add(tab_name)
@@ -444,13 +501,13 @@ class ModernVocabularyGui:
 
         self._build_setup_tab(tabs.tab("Setup"))
         self._build_single_flashcard_tab(tabs.tab("Create Card"))
-        self._build_batch_tab(tabs.tab("Batch"))
+        self._build_batch_tab(tabs.tab("Queue"))
         self._build_ocr_tab(tabs.tab("Import Material"))
-        self._build_speech_tab(tabs.tab("Speech / Audio"))
+        self._build_speech_tab(tabs.tab("Speech & Audio"))
         self._build_existing_cards_tab(tabs.tab("Fix Cards"))
         self._build_practice_tab(tabs.tab("Practice & Print"))
-        self._build_conversation_tab(tabs.tab("Conversation Practice"))
-        self._build_llmops_tab(tabs.tab("Advanced / LLMOps"))
+        self._build_conversation_tab(tabs.tab("Conversation"))
+        self._build_llmops_tab(tabs.tab("Advanced"))
         if not self._ai_clients:
             tabs.set("Setup")
         else:
@@ -602,7 +659,7 @@ class ModernVocabularyGui:
         """Release app-owned references and ask Python to collect garbage.
 
         This intentionally does not touch C:\\pagefile.sys. It only clears app
-        state that can keep large OCR/import/batch objects alive. In non-aggressive
+        state that can keep large OCR/import/queue objects alive. In non-aggressive
         mode it keeps current user data; aggressive mode is used on app close.
         """
         if aggressive:
@@ -639,7 +696,7 @@ class ModernVocabularyGui:
             self._practice_questions = []
         else:
             # Safe cleanup: clear stale generated payloads only when there is no
-            # active Batch item using them. Current visible user data stays intact.
+            # active Queue item using them. Current visible user data stays intact.
             if not self._batch_items:
                 self._batch_generated_card = None
                 self._batch_generated_provider_name = None
@@ -669,8 +726,37 @@ class ModernVocabularyGui:
         self._status_var.set(f"Runtime cleanup completed. Collected {collected} object(s).")
         messagebox.showinfo("Runtime cleanup", f"Runtime cleanup completed.\nCollected objects: {collected}\n\n{summary}")
 
-    def _on_app_close(self) -> None:
-        """Stop background loops, release app state, and close the Tk root safely."""
+    def _report_tk_callback_exception(self, exc_type, exc_value, exc_traceback) -> None:
+        """Log otherwise-easy-to-miss Tk callback failures with a real traceback."""
+        LOGGER.critical(
+            "Unhandled Tk callback exception; app remains open unless Tk/OS closes it",
+            exc_info=(exc_type, exc_value, exc_traceback),
+        )
+        try:
+            self._status_var.set("Unexpected UI error. Technical details were saved to logs/ai_anki_app.log.")
+        except Exception:
+            pass
+
+    def _on_app_close(self, source: str = "unknown") -> None:
+        """Stop background loops, release app state, and close the Tk root safely.
+
+        The source is logged *before* cleanup so a future unexpected close can
+        be distinguished from a provider failure or ordinary Queue completion.
+        WM_DELETE_WINDOW can be triggered by the user or by the window manager,
+        so the log deliberately says exactly what Tk reported instead of guessing.
+        """
+        if getattr(self, "_shutdown_started", False):
+            LOGGER.warning("Duplicate shutdown request ignored: source=%s", source)
+            return
+        self._shutdown_started = True
+        LOGGER.warning(
+            "APP SHUTDOWN REQUESTED: source=%s queue_index=%s queue_items=%s auto_generate_running=%s add_all_running=%s",
+            source,
+            getattr(self, "_batch_index", None),
+            len(getattr(self, "_batch_items", []) or []),
+            getattr(self, "_batch_auto_generate_running", False),
+            getattr(self, "_batch_add_all_running", False),
+        )
         self._batch_auto_generate_stop_requested = True
         self._batch_add_all_stop_requested = True
         try:
@@ -684,18 +770,19 @@ class ModernVocabularyGui:
             except Exception:
                 pass
             self._recording_timer_after_id = None
-        self._cleanup_runtime_memory("app close", aggressive=True)
+        self._cleanup_runtime_memory(f"app close ({source})", aggressive=True)
         try:
             self._root.destroy()
+            LOGGER.warning("APP ROOT DESTROYED: source=%s", source)
         except Exception:
-            pass
+            LOGGER.exception("APP ROOT DESTROY FAILED: source=%s", source)
 
 
     def _on_tab_changed(self) -> None:
         """Keep global card-generation settings out of audio-only workflow.
 
         The top bar controls Card AI provider / target language / target deck for
-        card creation. Speech / Audio has its own provider controls and deck
+        card creation. Speech & Audio has its own provider controls and deck
         selector, so showing the card-generation bar there is confusing.
         """
         tabs = getattr(self, "_tabs", None)
@@ -706,26 +793,26 @@ class ModernVocabularyGui:
             current_tab = tabs.get()
         except Exception:
             return
-        if current_tab in {"Setup", "Speech / Audio", "Conversation Practice", "Advanced / LLMOps"}:
+        if current_tab in {"Setup", "Speech & Audio", "Conversation", "Advanced"}:
             top_settings.grid_remove()
         else:
             top_settings.grid(row=getattr(self, "_top_settings_grid_row", 1), column=0, sticky="ew", padx=24, pady=(8, 4))
 
-        if current_tab == "Conversation Practice":
+        if current_tab == "Conversation":
             self._refresh_conversation_flashcard_status()
 
         # Avoid stale global messages from a previous workflow, for example
-        # Conversation status still visible in Speech / Audio.
+        # Conversation status still visible in Speech & Audio.
         context_status = {
             "Setup": "Setup ready. Choose Local, Hybrid/BYOK or API/BYOK and configure your own providers.",
             "Create Card": "Create Card ready. Choose Vocabulary or Grammar.",
-            "Batch": "Batch ready. Choose a mode before loading clean structured input.",
+            "Queue": "Queue ready. Choose an input type before loading clean structured input.",
             "Import Material": "Import Material ready.",
-            "Speech / Audio": "Speech / Audio ready.",
+            "Speech & Audio": "Speech & Audio ready.",
             "Fix Cards": "Fix Cards ready.",
             "Practice & Print": "Practice & Print ready.",
-            "Conversation Practice": "Conversation Practice ready.",
-            "Advanced / LLMOps": "Advanced / LLMOps ready.",
+            "Conversation": "Conversation ready.",
+            "Advanced": "Advanced ready.",
         }.get(current_tab)
         if context_status and not any(
             token in self._status_var.get().lower()
@@ -990,6 +1077,7 @@ class ModernVocabularyGui:
             self._conversation_auto_read_tutor_var.set(False)
             self._conversation_auto_read_question_var.set(False)
         self._sync_tts_defaults()
+        self._sync_conversation_tts_defaults(preserve_voice=True)
         self._refresh_setup_status()
         if ai_clients:
             self._status_var.set(f"Configuration reloaded. Active AI providers: {', '.join(ai_clients)}")
@@ -1057,7 +1145,7 @@ class ModernVocabularyGui:
             info,
             text=(
                 "Current MVP traces vocabulary cards, grammar cards, provided-example cards, conversation start/feedback, "
-                "raw AI extraction calls used by Import Material, and lightweight token/cost estimates. Redaction is ON by default, "
+                "raw AI candidate search calls used by Import Material, and lightweight token/cost estimates. Redaction is ON by default, "
                 "so source text is summarized instead of being sent in full unless you disable LANGSMITH_REDACT_INPUTS."
             ),
             wraplength=1000,
@@ -1445,7 +1533,7 @@ class ModernVocabularyGui:
         """Build the Import Material tab.
 
         This tab only prepares editable candidates. It never adds cards
-        directly to Anki; Batch remains the review/generation step.
+        directly to Anki; Queue remains the review/generation step.
         """
         layout = ctk.CTkFrame(parent, fg_color="transparent")
         layout.grid(row=0, column=0, sticky="nsew", padx=8, pady=8)
@@ -1467,15 +1555,16 @@ class ModernVocabularyGui:
         ).grid(row=0, column=0, sticky="w", padx=18, pady=(18, 8))
         ctk.CTkLabel(
             left,
-            text="Advanced import for lessons and raw material. TXT/HTML are read locally (no OCR); PDFs/images can use OCR/vision. Then AI or the local finder extracts candidates for review before anything goes to Batch.",
+            text="Use this for lessons, web pages, PDFs, screenshots and other raw material. TXT/HTML are simply read on your computer — no model or API is used. AI is only used later when you choose Find candidates with AI.",
             wraplength=280,
             justify="left",
             text_color=("gray35", "gray75"),
         ).grid(row=1, column=0, sticky="w", padx=18, pady=(0, 10))
 
-        ctk.CTkLabel(left, text="Text / OCR step").grid(
-            row=2, column=0, sticky="w", padx=18, pady=(2, 4)
+        self._ocr_method_label = ctk.CTkLabel(
+            left, text="PDF / image reading method", font=ctk.CTkFont(size=12, weight="bold")
         )
+        self._ocr_method_label.grid(row=2, column=0, sticky="w", padx=18, pady=(2, 4))
         self._ocr_method_box = ctk.CTkComboBox(
             left,
             variable=self._ocr_method_var,
@@ -1509,13 +1598,13 @@ class ModernVocabularyGui:
 
         self._ocr_run_button = ctk.CTkButton(
             left,
-            text="Extract text locally",
+            text="Read material locally",
             command=self._run_ocr_import_pipeline,
         )
         self._ocr_run_button.grid(row=5, column=0, sticky="ew", padx=18, pady=(0, 8))
         ctk.CTkButton(
             left,
-            text="Clean extracted text",
+            text="Clean source text",
             command=self._clean_ocr_preview_text,
         ).grid(row=6, column=0, sticky="ew", padx=18, pady=(0, 10))
 
@@ -1557,23 +1646,30 @@ class ModernVocabularyGui:
             state="normal" if self._ai_clients else "disabled",
         )
         self._ocr_ai_button.grid(row=12, column=0, sticky="ew", padx=18, pady=(0, 6))
-        self._ocr_retry_button = ctk.CTkButton(
-            left, text="Retry last AI extraction", command=self._retry_last_ocr_ai_extraction, state="disabled"
+        self._ocr_ai_selection_button = ctk.CTkButton(
+            left,
+            text="Find from selected text",
+            command=self._extract_ocr_candidates_from_selection_with_ai,
+            state="normal" if self._ai_clients else "disabled",
         )
-        self._ocr_retry_button.grid(row=13, column=0, sticky="ew", padx=18, pady=(0, 10))
+        self._ocr_ai_selection_button.grid(row=13, column=0, sticky="ew", padx=18, pady=(0, 6))
+        self._ocr_retry_button = ctk.CTkButton(
+            left, text="Retry AI candidate search", command=self._retry_last_ocr_ai_extraction, state="disabled"
+        )
+        self._ocr_retry_button.grid(row=14, column=0, sticky="ew", padx=18, pady=(0, 10))
 
         ctk.CTkLabel(left, text="Basic local finder (optional)", font=ctk.CTkFont(size=12, weight="bold")).grid(
-            row=14, column=0, sticky="w", padx=18, pady=(2, 3)
+            row=15, column=0, sticky="w", padx=18, pady=(2, 3)
         )
         ctk.CTkLabel(
             left,
-            text="No API call. Useful as a quick fallback, but less selective than AI extraction.",
+            text="No API call. Useful as a quick fallback, but less selective than the AI candidate search.",
             wraplength=280,
             justify="left",
             text_color=("gray35", "gray75"),
-        ).grid(row=15, column=0, sticky="w", padx=18, pady=(0, 5))
+        ).grid(row=16, column=0, sticky="w", padx=18, pady=(0, 5))
         local_buttons = ctk.CTkFrame(left, fg_color="transparent")
-        local_buttons.grid(row=16, column=0, sticky="ew", padx=18, pady=(0, 8))
+        local_buttons.grid(row=17, column=0, sticky="ew", padx=18, pady=(0, 8))
         local_buttons.grid_columnconfigure((0, 1), weight=1)
         ctk.CTkButton(
             local_buttons,
@@ -1587,19 +1683,27 @@ class ModernVocabularyGui:
         ).grid(row=0, column=1, sticky="ew", padx=(5, 0))
 
         ctk.CTkButton(left, text="Clear candidates", command=self._clear_ocr_candidates).grid(
-            row=17, column=0, sticky="ew", padx=18, pady=(0, 6)
+            row=18, column=0, sticky="ew", padx=18, pady=(0, 6)
         )
         ctk.CTkButton(left, text="Clear import", command=self._clear_ocr_import).grid(
-            row=18, column=0, sticky="ew", padx=18, pady=(2, 8)
+            row=19, column=0, sticky="ew", padx=18, pady=(2, 8)
         )
 
+        ctk.CTkLabel(
+            left,
+            textvariable=self._ocr_size_var,
+            wraplength=280,
+            justify="left",
+            font=ctk.CTkFont(size=11, weight="bold"),
+            text_color=("gray30", "gray70"),
+        ).grid(row=20, column=0, sticky="w", padx=18, pady=(2, 6))
         ctk.CTkLabel(
             left,
             textvariable=self._ocr_status_var,
             wraplength=280,
             justify="left",
             text_color=("gray35", "gray75"),
-        ).grid(row=19, column=0, sticky="w", padx=18, pady=(0, 18))
+        ).grid(row=21, column=0, sticky="w", padx=18, pady=(0, 18))
 
         text_panel = ctk.CTkFrame(layout, corner_radius=18)
         text_panel.grid(row=0, column=1, sticky="nsew", padx=(0, 12))
@@ -1607,7 +1711,7 @@ class ModernVocabularyGui:
         text_panel.grid_rowconfigure(1, weight=1)
         ctk.CTkLabel(
             text_panel,
-            text="Reviewed source text",
+            text="Source text",
             font=ctk.CTkFont(size=20, weight="bold"),
         ).grid(row=0, column=0, sticky="w", padx=18, pady=(18, 8))
         self._ocr_textbox = ctk.CTkTextbox(text_panel, wrap="word", font=ctk.CTkFont(size=13))
@@ -1616,47 +1720,94 @@ class ModernVocabularyGui:
             "1.0",
             "Flow:\n"
             "1. Paste text/screenshot or load a file, then review and clean the source text here.\n"
-            "2. Choose what you want to find, then use AI extraction (recommended) or the basic local fallback.\n"
+            "2. Choose what you want to find, then use Find candidates with AI (recommended) or the basic local fallback.\n"
             "3. Edit/remove candidates and cherry-pick the useful rows.\n"
-            "4. Add selected drafts to Batch.\n\n"
+            "4. Send selected candidates to Queue.\n\n"
             "Manual additions are available only as + Add missing candidate.",
         )
 
         candidates_panel = ctk.CTkFrame(layout, corner_radius=18)
         candidates_panel.grid(row=0, column=2, sticky="nsew")
         candidates_panel.grid_columnconfigure(0, weight=1)
-        candidates_panel.grid_rowconfigure(1, weight=1)
+        candidates_panel.grid_rowconfigure(2, weight=1)
         ctk.CTkLabel(
             candidates_panel,
             text="Candidates to review",
             font=ctk.CTkFont(size=20, weight="bold"),
         ).grid(row=0, column=0, sticky="w", padx=18, pady=(18, 8))
+
+        review_filters = ctk.CTkFrame(candidates_panel, fg_color="transparent")
+        review_filters.grid(row=1, column=0, sticky="ew", padx=18, pady=(0, 8))
+        review_filters.grid_columnconfigure(2, weight=1)
+        ctk.CTkComboBox(
+            review_filters,
+            variable=self._ocr_review_priority_filter_var,
+            values=["All priorities", "Recommended", "Useful", "Optional"],
+            state="readonly",
+            width=145,
+            command=lambda _value: self._reset_ocr_review_page_and_render(),
+        ).grid(row=0, column=0, sticky="w", padx=(0, 6))
+        ctk.CTkComboBox(
+            review_filters,
+            variable=self._ocr_review_type_filter_var,
+            values=["All types", "Vocabulary", "Grammar", "Provided example"],
+            state="readonly",
+            width=145,
+            command=lambda _value: self._reset_ocr_review_page_and_render(),
+        ).grid(row=0, column=1, sticky="w", padx=(0, 6))
+        search_entry = ctk.CTkEntry(
+            review_filters,
+            textvariable=self._ocr_review_search_var,
+            placeholder_text="Search candidates",
+        )
+        search_entry.grid(row=0, column=2, sticky="ew", padx=(0, 6))
+        ctk.CTkButton(
+            review_filters, text="Apply", width=62, command=self._reset_ocr_review_page_and_render
+        ).grid(row=0, column=3, sticky="e")
+        ctk.CTkLabel(
+            review_filters,
+            text="Review priority only organizes the list — it never deletes candidates.",
+            font=ctk.CTkFont(size=10),
+            text_color=("gray40", "gray65"),
+        ).grid(row=1, column=0, columnspan=4, sticky="w", pady=(4, 0))
+
         self._ocr_candidates_frame = ctk.CTkScrollableFrame(candidates_panel, fg_color=("gray92", "gray13"))
-        self._ocr_candidates_frame.grid(row=1, column=0, sticky="nsew", padx=18, pady=(0, 10))
+        self._ocr_candidates_frame.grid(row=2, column=0, sticky="nsew", padx=18, pady=(0, 8))
         self._ocr_candidates_frame.grid_columnconfigure(0, weight=1)
 
+        pager = ctk.CTkFrame(candidates_panel, fg_color="transparent")
+        pager.grid(row=3, column=0, sticky="ew", padx=18, pady=(0, 8))
+        pager.grid_columnconfigure(1, weight=1)
+        ctk.CTkButton(pager, text="← Previous", width=90, command=lambda: self._change_ocr_review_page(-1)).grid(
+            row=0, column=0, sticky="w"
+        )
+        ctk.CTkLabel(pager, textvariable=self._ocr_review_page_var).grid(row=0, column=1)
+        ctk.CTkButton(pager, text="Next →", width=90, command=lambda: self._change_ocr_review_page(1)).grid(
+            row=0, column=2, sticky="e"
+        )
+
         candidate_actions = ctk.CTkFrame(candidates_panel, fg_color="transparent")
-        candidate_actions.grid(row=2, column=0, sticky="ew", padx=18, pady=(0, 8))
+        candidate_actions.grid(row=4, column=0, sticky="ew", padx=18, pady=(0, 8))
         candidate_actions.grid_columnconfigure((0, 1, 2, 3), weight=1)
         ctk.CTkButton(
             candidate_actions,
-            text="Select all",
-            command=self._select_all_ocr_candidates,
+            text="Select recommended",
+            command=self._select_recommended_ocr_candidates,
         ).grid(row=0, column=0, sticky="ew", padx=(0, 5), pady=(0, 6))
+        ctk.CTkButton(
+            candidate_actions,
+            text="Select visible",
+            command=self._select_visible_ocr_candidates,
+        ).grid(row=0, column=1, sticky="ew", padx=5, pady=(0, 6))
         ctk.CTkButton(
             candidate_actions,
             text="Deselect all",
             command=self._deselect_all_ocr_candidates,
-        ).grid(row=0, column=1, sticky="ew", padx=5, pady=(0, 6))
+        ).grid(row=0, column=2, sticky="ew", padx=5, pady=(0, 6))
         ctk.CTkButton(
             candidate_actions,
             text="Remove selected",
             command=self._remove_selected_ocr_candidates,
-        ).grid(row=0, column=2, sticky="ew", padx=5, pady=(0, 6))
-        ctk.CTkButton(
-            candidate_actions,
-            text="Clear drafts",
-            command=self._clear_ocr_candidates,
         ).grid(row=0, column=3, sticky="ew", padx=(5, 0), pady=(0, 6))
         ctk.CTkButton(
             candidate_actions,
@@ -1675,7 +1826,12 @@ class ModernVocabularyGui:
         ).grid(row=1, column=2, sticky="ew", padx=5, pady=(0, 6))
         ctk.CTkButton(
             candidate_actions,
-            text="Send selected to Batch",
+            text="Clear all",
+            command=self._clear_ocr_candidates,
+        ).grid(row=1, column=3, sticky="ew", padx=(5, 0), pady=(0, 6))
+        ctk.CTkButton(
+            candidate_actions,
+            text="Send selected to Queue",
             height=40,
             command=self._send_ocr_candidates_to_batch,
         ).grid(row=2, column=0, columnspan=3, sticky="ew", padx=(0, 5))
@@ -1689,8 +1845,10 @@ class ModernVocabularyGui:
         ctk.CTkLabel(
             candidates_panel,
             textvariable=self._ocr_candidate_status_var,
+            wraplength=560,
+            justify="left",
             text_color=("gray35", "gray75"),
-        ).grid(row=3, column=0, sticky="w", padx=18, pady=(0, 18))
+        ).grid(row=5, column=0, sticky="w", padx=18, pady=(0, 18))
         self._render_ocr_candidate_cards()
         self._update_ocr_method_ui()
 
@@ -1701,162 +1859,189 @@ class ModernVocabularyGui:
         layout.grid_columnconfigure(1, weight=2)
         layout.grid_rowconfigure(1, weight=1)
 
-        topic = ctk.CTkFrame(layout, corner_radius=18)
-        topic.grid(row=0, column=0, columnspan=2, sticky="ew", pady=(0, 12))
-        topic.grid_columnconfigure(1, weight=1)
-        ctk.CTkLabel(topic, text="Conversation topic", font=ctk.CTkFont(size=16, weight="bold")).grid(
-            row=0, column=0, padx=(18, 10), pady=14, sticky="w"
-        )
-        self._conversation_topic_entry = ctk.CTkEntry(
-            topic,
-            textvariable=self._topic_var,
-            placeholder_text="e.g. daily life, travel, an interview, cooking...",
-            height=38,
-        )
-        self._conversation_topic_entry.grid(
-            row=0, column=1, padx=(0, 10), pady=14, sticky="ew"
-        )
-        ctk.CTkLabel(topic, text="Answer level").grid(
-            row=0, column=2, padx=(4, 6), pady=14, sticky="e"
-        )
-        ctk.CTkComboBox(
-            topic,
-            variable=self._improvement_level_var,
-            values=IMPROVEMENT_LEVELS,
+        controls = ctk.CTkFrame(layout, corner_radius=18)
+        controls.grid(row=0, column=0, columnspan=2, sticky="ew", pady=(0, 12))
+        controls.grid_columnconfigure((1, 3, 5), weight=1)
+
+        # Step 1: choose the practice mode first. Everything irrelevant to that
+        # mode is hidden rather than merely disabled, so the user cannot confuse
+        # topic settings with flashcard practice.
+        ctk.CTkLabel(
+            controls, text="Practice with", font=ctk.CTkFont(size=17, weight="bold")
+        ).grid(row=0, column=0, padx=(18, 8), pady=(16, 10), sticky="w")
+        self._conversation_mode_box = ctk.CTkComboBox(
+            controls,
+            variable=self._conversation_mode_var,
+            values=CONVERSATION_MODES,
             state="readonly",
-            width=190,
-        ).grid(row=0, column=3, padx=(0, 10), pady=14)
+            width=250,
+            command=self._on_conversation_mode_changed,
+        )
+        self._conversation_mode_box.grid(row=0, column=1, padx=(0, 14), pady=(16, 10), sticky="w")
         self._conversation_start_button = ctk.CTkButton(
-            topic,
-            text="Start topic",
-            width=150,
-            command=self._start_conversation_topic,
+            controls, text="Start conversation", width=165, command=self._start_conversation_topic
         )
-        self._conversation_start_button.grid(
-            row=0, column=4, padx=(0, 10), pady=14
+        self._conversation_start_button.grid(row=0, column=4, padx=(8, 8), pady=(16, 10), sticky="e")
+        ctk.CTkButton(controls, text="Reset", width=82, command=self._reset_conversation).grid(
+            row=0, column=5, padx=(0, 18), pady=(16, 10), sticky="e"
         )
-        ctk.CTkButton(topic, text="Reset", width=80, command=self._reset_conversation).grid(
-            row=0, column=5, padx=(0, 18), pady=14
-        )
-        ctk.CTkLabel(topic, text="Conversation language").grid(
-            row=1, column=0, padx=(18, 8), pady=(0, 14), sticky="w"
+
+        # Shared conversation settings.
+        ctk.CTkLabel(controls, text="Language").grid(
+            row=1, column=0, padx=(18, 8), pady=(0, 10), sticky="w"
         )
         ctk.CTkComboBox(
-            topic,
+            controls,
             variable=self._conversation_language_var,
             values=list(LANGUAGE_TAGS.keys()),
             state="readonly",
             width=180,
-        ).grid(row=1, column=1, padx=(0, 10), pady=(0, 14), sticky="w")
-        ctk.CTkLabel(topic, text="Feedback language").grid(
-            row=1, column=2, padx=(4, 6), pady=(0, 14), sticky="e"
+            command=lambda _value: self._on_conversation_language_changed(),
+        ).grid(row=1, column=1, padx=(0, 14), pady=(0, 10), sticky="ew")
+        ctk.CTkLabel(controls, text="Answer level").grid(
+            row=1, column=2, padx=(8, 8), pady=(0, 10), sticky="e"
         )
         ctk.CTkComboBox(
-            topic,
+            controls,
+            variable=self._improvement_level_var,
+            values=IMPROVEMENT_LEVELS,
+            state="readonly",
+            width=190,
+        ).grid(row=1, column=3, padx=(0, 14), pady=(0, 10), sticky="ew")
+        ctk.CTkLabel(controls, text="Feedback language").grid(
+            row=1, column=4, padx=(8, 8), pady=(0, 10), sticky="e"
+        )
+        ctk.CTkComboBox(
+            controls,
             variable=self._feedback_language_var,
             values=EXPLANATION_LANGUAGES,
             state="readonly",
             width=190,
-        ).grid(row=1, column=3, padx=(0, 10), pady=(0, 14))
-        ctk.CTkLabel(topic, text="Conversation model").grid(
-            row=1, column=4, padx=(0, 6), pady=(0, 14), sticky="e"
-        )
-        self._conversation_provider_box = ctk.CTkComboBox(
-            topic,
-            variable=self._conversation_provider_var,
-            values=list(self._ai_clients.keys()) or ["Not configured"],
-            state="readonly" if self._ai_clients else "disabled",
-            width=190,
-        )
-        self._conversation_provider_box.grid(row=1, column=5, padx=(0, 18), pady=(0, 14), sticky="ew")
+        ).grid(row=1, column=5, padx=(0, 18), pady=(0, 10), sticky="ew")
 
-        ctk.CTkLabel(topic, text="Conversation mode").grid(
-            row=2, column=0, padx=(18, 8), pady=(0, 14), sticky="w"
+        self._conversation_topic_frame = ctk.CTkFrame(controls, fg_color="transparent")
+        self._conversation_topic_frame.grid(row=2, column=0, columnspan=6, sticky="ew", padx=18, pady=(2, 10))
+        self._conversation_topic_frame.grid_columnconfigure(1, weight=1)
+        ctk.CTkLabel(
+            self._conversation_topic_frame, text="Topic", font=ctk.CTkFont(size=13, weight="bold")
+        ).grid(row=0, column=0, padx=(0, 10), sticky="w")
+        self._conversation_topic_entry = ctk.CTkEntry(
+            self._conversation_topic_frame,
+            textvariable=self._topic_var,
+            placeholder_text="e.g. daily life, travel, an interview, cooking...",
+            height=38,
         )
-        self._conversation_mode_box = ctk.CTkComboBox(
-            topic,
-            variable=self._conversation_mode_var,
-            values=CONVERSATION_MODES,
-            state="readonly",
-            width=230,
-            command=self._on_conversation_mode_changed,
+        self._conversation_topic_entry.grid(row=0, column=1, sticky="ew")
+
+        self._conversation_flashcard_settings_frame = ctk.CTkFrame(controls, fg_color="transparent")
+        self._conversation_flashcard_settings_frame.grid(
+            row=2, column=0, columnspan=6, sticky="ew", padx=18, pady=(2, 10)
         )
-        self._conversation_mode_box.grid(
-            row=2, column=1, padx=(0, 10), pady=(0, 14), sticky="w"
-        )
-        ctk.CTkLabel(topic, text="Flashcard source").grid(
-            row=2, column=2, padx=(4, 6), pady=(0, 14), sticky="e"
-        )
+        self._conversation_flashcard_settings_frame.grid_columnconfigure((1, 3, 5), weight=1)
+        ctk.CTkLabel(
+            self._conversation_flashcard_settings_frame, text="Flashcard source", font=ctk.CTkFont(size=13, weight="bold")
+        ).grid(row=0, column=0, padx=(0, 8), pady=(0, 8), sticky="w")
         self._conversation_source_box = ctk.CTkComboBox(
-            topic,
+            self._conversation_flashcard_settings_frame,
             variable=self._conversation_flashcard_source_var,
             values=CONVERSATION_FLASHCARD_SOURCES,
             state="readonly",
-            width=190,
+            width=180,
             command=self._on_conversation_source_changed,
         )
-        self._conversation_source_box.grid(
-            row=2, column=3, padx=(0, 10), pady=(0, 14), sticky="ew"
-        )
-        ctk.CTkLabel(topic, text="Deck").grid(
-            row=2, column=4, padx=(0, 6), pady=(0, 14), sticky="e"
+        self._conversation_source_box.grid(row=0, column=1, padx=(0, 12), pady=(0, 8), sticky="ew")
+        ctk.CTkLabel(self._conversation_flashcard_settings_frame, text="Deck").grid(
+            row=0, column=2, padx=(8, 8), pady=(0, 8), sticky="e"
         )
         self._conversation_deck_box = ctk.CTkComboBox(
-            topic,
+            self._conversation_flashcard_settings_frame,
             variable=self._conversation_deck_var,
             values=[self._anki_client.deck_name],
             state="readonly",
             width=190,
             command=lambda _value: self._on_conversation_source_changed(),
         )
-        self._conversation_deck_box.grid(
-            row=2, column=5, padx=(0, 18), pady=(0, 14), sticky="ew"
-        )
-
+        self._conversation_deck_box.grid(row=0, column=3, padx=(0, 8), pady=(0, 8), sticky="ew")
         self._conversation_refresh_decks_button = ctk.CTkButton(
-            topic,
-            text="Refresh decks",
-            width=135,
-            command=self._refresh_conversation_decks,
+            self._conversation_flashcard_settings_frame, text="Refresh decks", width=125, command=self._refresh_conversation_decks
         )
-        self._conversation_refresh_decks_button.grid(
-            row=3, column=0, padx=(18, 10), pady=(0, 14), sticky="w"
-        )
-        ctk.CTkLabel(topic, text="Card selection").grid(
-            row=3, column=2, padx=(4, 6), pady=(0, 14), sticky="e"
+        self._conversation_refresh_decks_button.grid(row=0, column=4, padx=(0, 8), pady=(0, 8), sticky="e")
+        ctk.CTkLabel(self._conversation_flashcard_settings_frame, text="Selection").grid(
+            row=1, column=0, padx=(0, 8), pady=(0, 4), sticky="w"
         )
         self._conversation_selection_box = ctk.CTkComboBox(
-            topic,
+            self._conversation_flashcard_settings_frame,
             variable=self._conversation_selection_var,
             values=SELECTION_MODES,
             state="readonly",
-            width=190,
             command=lambda _value: self._refresh_conversation_flashcard_status(),
         )
-        self._conversation_selection_box.grid(
-            row=3, column=3, padx=(0, 10), pady=(0, 14), sticky="ew"
+        self._conversation_selection_box.grid(row=1, column=1, padx=(0, 12), pady=(0, 4), sticky="ew")
+        ctk.CTkLabel(
+            self._conversation_flashcard_settings_frame,
+            textvariable=self._conversation_flashcard_status_var,
+            text_color=("gray35", "gray75"),
+            wraplength=760,
+            justify="left",
+        ).grid(row=1, column=2, columnspan=4, padx=(8, 0), pady=(0, 4), sticky="w")
+
+        audio = ctk.CTkFrame(controls, corner_radius=12)
+        audio.grid(row=3, column=0, columnspan=6, sticky="ew", padx=18, pady=(0, 10))
+        audio.grid_columnconfigure((1, 3, 5), weight=1)
+        ctk.CTkLabel(audio, text="Tutor audio", font=ctk.CTkFont(size=13, weight="bold")).grid(
+            row=0, column=0, padx=(12, 8), pady=10, sticky="w"
         )
+        self._conversation_tts_provider_box = ctk.CTkComboBox(
+            audio,
+            variable=self._conversation_tts_provider_var,
+            values=list(self._speech_service.providers) if self._speech_service else [],
+            state="readonly" if self._speech_service else "disabled",
+            width=170,
+            command=lambda _value: self._sync_conversation_tts_defaults(),
+        )
+        self._conversation_tts_provider_box.grid(row=0, column=1, padx=(0, 12), pady=10, sticky="ew")
+        ctk.CTkLabel(audio, text="Voice").grid(row=0, column=2, padx=(8, 8), pady=10, sticky="e")
+        self._conversation_tts_voice_box = ctk.CTkComboBox(
+            audio,
+            variable=self._conversation_tts_voice_var,
+            values=[],
+            state="readonly" if self._speech_service else "disabled",
+            width=210,
+        )
+        self._conversation_tts_voice_box.grid(row=0, column=3, padx=(0, 12), pady=10, sticky="ew")
+        ctk.CTkLabel(audio, text="TTS model").grid(row=0, column=4, padx=(8, 8), pady=10, sticky="e")
+        self._conversation_tts_model_box = ctk.CTkComboBox(
+            audio,
+            variable=self._conversation_tts_model_var,
+            values=[],
+            state="readonly" if self._speech_service else "disabled",
+            width=180,
+        )
+        self._conversation_tts_model_box.grid(row=0, column=5, padx=(0, 12), pady=10, sticky="ew")
+
+        advanced = ctk.CTkFrame(controls, fg_color="transparent")
+        advanced.grid(row=4, column=0, columnspan=6, sticky="ew", padx=18, pady=(0, 14))
+        advanced.grid_columnconfigure(1, weight=1)
+        ctk.CTkLabel(advanced, text="Advanced", text_color=("gray35", "gray75")).grid(
+            row=0, column=0, padx=(0, 8), sticky="w"
+        )
+        self._conversation_provider_box = ctk.CTkComboBox(
+            advanced,
+            variable=self._conversation_provider_var,
+            values=list(self._ai_clients.keys()) or ["Not configured"],
+            state="readonly" if self._ai_clients else "disabled",
+            width=180,
+        )
+        self._conversation_provider_box.grid(row=0, column=1, padx=(0, 12), sticky="w")
         ctk.CTkSwitch(
-            topic,
+            advanced,
             text="Detailed coaching",
             variable=self._conversation_detailed_feedback_var,
             onvalue=True,
             offvalue=False,
-        ).grid(row=3, column=4, columnspan=2, padx=(0, 18), pady=(0, 14), sticky="e")
-        ctk.CTkLabel(
-            topic,
-            textvariable=self._conversation_flashcard_status_var,
-            text_color=("gray35", "gray75"),
-            wraplength=1100,
-            justify="left",
-        ).grid(
-            row=4,
-            column=0,
-            columnspan=6,
-            padx=(18, 18),
-            pady=(0, 14),
-            sticky="w",
-        )
+        ).grid(row=0, column=2, sticky="e")
+
+        self._sync_conversation_tts_defaults()
 
         chat_panel = ctk.CTkFrame(layout, corner_radius=18)
         chat_panel.grid(row=1, column=0, sticky="nsew", padx=(0, 12))
@@ -1880,7 +2065,7 @@ class ModernVocabularyGui:
         self._chat_text.grid(row=1, column=0, sticky="nsew", padx=18, pady=(0, 12))
         self._chat_text.insert(
             "1.0",
-            "Choose a mode. Start with a topic or use flashcards from an Anki deck or Batch.\n",
+            "Choose a mode. Start with a topic or use flashcards from an Anki deck or Queue.\n",
         )
         self._chat_text.configure(state="disabled")
 
@@ -1984,7 +2169,7 @@ class ModernVocabularyGui:
         )
         self._conversation_suggestions_help_label = ctk.CTkLabel(
             vocab_panel,
-            text="Checkbox → edit/remove → stage here → send to Batch. No direct Anki write here.",
+            text="Checkbox → edit/remove → stage here → send to Queue. No direct Anki write here.",
             text_color=("gray35", "gray75"),
             wraplength=430,
             justify="left",
@@ -2065,7 +2250,7 @@ class ModernVocabularyGui:
 
         ctk.CTkLabel(
             vocab_panel,
-            text="Staged for Batch",
+            text="Staged for Queue",
             font=ctk.CTkFont(size=16, weight="bold"),
         ).grid(row=9, column=0, sticky="sw", padx=18, pady=(0, 4))
         ctk.CTkLabel(
@@ -2087,12 +2272,12 @@ class ModernVocabularyGui:
         )
         ctk.CTkButton(
             queue_buttons,
-            text="Send to Batch",
+            text="Send to Queue",
             command=self._send_conversation_queue_to_batch,
         ).grid(row=1, column=0, sticky="ew", pady=(0, 6))
         ctk.CTkButton(
             queue_buttons,
-            text="Open Batch",
+            text="Open Queue",
             command=self._open_batch_queue_tab,
         ).grid(row=2, column=0, sticky="ew")
 
@@ -2127,13 +2312,13 @@ class ModernVocabularyGui:
 
     def _open_batch_queue_tab(self) -> None:
         try:
-            self._tabs.set("Batch")
-            self._status_var.set("Batch opened. Review staged conversation items there before adding to Anki.")
+            self._tabs.set("Queue")
+            self._status_var.set("Queue opened. Review staged conversation items there before adding to Anki.")
         except Exception:
-            self._status_var.set("Could not switch to Batch automatically.")
+            self._status_var.set("Could not switch to Queue automatically.")
 
     def _build_batch_tab(self, parent: ctk.CTkFrame) -> None:
-        """Build the structured Batch workflow."""
+        """Build the structured Queue workflow."""
         layout = ctk.CTkFrame(parent, fg_color="transparent")
         layout.grid(row=0, column=0, sticky="nsew", padx=8, pady=8)
         layout.grid_columnconfigure(0, weight=0)
@@ -2144,19 +2329,19 @@ class ModernVocabularyGui:
         left.grid(row=0, column=0, sticky="nsw", padx=(0, 12))
         left.grid_columnconfigure(0, weight=1)
 
-        ctk.CTkLabel(left, text="Batch", font=ctk.CTkFont(size=22, weight="bold")).grid(
+        ctk.CTkLabel(left, text="Queue", font=ctk.CTkFont(size=22, weight="bold")).grid(
             row=0, column=0, sticky="w", padx=18, pady=(18, 4)
         )
         ctk.CTkLabel(
             left,
-            text="Fast path for clean, structured input. Choose the mode BEFORE loading. For lessons, HTML, PDFs, screenshots or messy material, use Import Material instead.",
+            text="Fast path for clean, structured input. Choose the input type BEFORE loading. For lessons, HTML, PDFs, screenshots or messy material, use Import Material instead.",
             wraplength=345, justify="left", text_color=("gray35", "gray75"),
         ).grid(row=1, column=0, sticky="w", padx=18, pady=(0, 12))
 
         mode_card = ctk.CTkFrame(left, corner_radius=12)
         mode_card.grid(row=2, column=0, sticky="ew", padx=18, pady=(0, 12))
         mode_card.grid_columnconfigure(0, weight=1)
-        ctk.CTkLabel(mode_card, text="1 · Choose input mode", font=ctk.CTkFont(size=13, weight="bold")).grid(
+        ctk.CTkLabel(mode_card, text="1 · Choose input type", font=ctk.CTkFont(size=13, weight="bold")).grid(
             row=0, column=0, sticky="w", padx=12, pady=(10, 4)
         )
         ctk.CTkComboBox(
@@ -2197,7 +2382,7 @@ class ModernVocabularyGui:
             text_color=("gray35", "gray75"),
         ).grid(row=5, column=0, sticky="w", padx=12, pady=(0, 10))
 
-        ctk.CTkLabel(left, text="Batch topic / context (optional)").grid(
+        ctk.CTkLabel(left, text="Queue topic / context (optional)").grid(
             row=4, column=0, sticky="w", padx=18, pady=(2, 4)
         )
         self._batch_topic_box = ctk.CTkComboBox(left, variable=self._batch_topic_var, values=TOPIC_PRESETS)
@@ -2222,7 +2407,7 @@ class ModernVocabularyGui:
         ctk.CTkButton(session_buttons, text="Resume session", command=self._resume_batch_session).grid(
             row=0, column=1, sticky="ew", padx=(5, 0)
         )
-        ctk.CTkButton(left, text="Clear batch", command=self._clear_batch).grid(
+        ctk.CTkButton(left, text="Clear queue", command=self._clear_batch).grid(
             row=10, column=0, sticky="ew", padx=18, pady=(0, 18)
         )
 
@@ -2237,7 +2422,12 @@ class ModernVocabularyGui:
         ctk.CTkLabel(header, text="Review before generation", font=ctk.CTkFont(size=22, weight="bold")).grid(
             row=0, column=0, sticky="w"
         )
-        ctk.CTkLabel(header, textvariable=self._batch_progress_var).grid(row=0, column=1, sticky="e")
+        ctk.CTkLabel(
+            header, textvariable=self._batch_progress_var, justify="right", anchor="e", wraplength=640
+        ).grid(row=0, column=1, sticky="e")
+        self._batch_progress_bar = ctk.CTkProgressBar(header, height=8)
+        self._batch_progress_bar.grid(row=1, column=0, columnspan=2, sticky="ew", pady=(8, 0))
+        self._batch_progress_bar.set(0)
 
         ctk.CTkLabel(right, text="Current parsed item").grid(row=1, column=0, sticky="w", padx=18, pady=(4, 4))
         current_row = ctk.CTkFrame(right, fg_color="transparent")
@@ -2285,7 +2475,7 @@ class ModernVocabularyGui:
                 row=row, column=col, sticky="ew", padx=4, pady=4
             )
 
-        ctk.CTkLabel(right, text="Batch actions", text_color=("gray35", "gray75")).grid(
+        ctk.CTkLabel(right, text="All queue actions", text_color=("gray35", "gray75")).grid(
             row=7, column=0, sticky="w", padx=18, pady=(0, 4)
         )
         bulk_buttons = ctk.CTkFrame(right, fg_color="transparent")
@@ -2428,7 +2618,7 @@ class ModernVocabularyGui:
 
     @staticmethod
     def _batch_rows_from_csv(rows: list[list[str]], mode: str) -> list[str]:
-        """Convert clean CSV rows into Batch text rows without guessing after load."""
+        """Convert clean CSV rows into Queue text rows without guessing after load."""
         result: list[str] = []
         mode = (mode or "Vocabulary").strip()
         for index, row in enumerate(rows):
@@ -2452,9 +2642,9 @@ class ModernVocabularyGui:
         return result
 
     def _on_batch_mode_changed(self, selected: str | None = None) -> None:
-        """Apply a user-selected Batch mode to not-yet-generated items.
+        """Apply a user-selected Queue mode to not-yet-generated items.
 
-        The Batch mode combobox is a session-level setting. In v8.1.5.3 it
+        The Queue mode combobox is a session-level setting. In v8.1.5.3 it
         could be overwritten by the currently selected item's stored
         ``batch_mode`` after loading a list, so clicking Grammar and then
         Generate appeared to switch back to Vocabulary. This handler makes
@@ -2469,6 +2659,10 @@ class ModernVocabularyGui:
 
         changed = 0
         for item in self._batch_items:
+            if bool(item.get("mode_locked")):
+                # Import Material already classified this row. The Queue-wide
+                # input type is only for manually loaded clean files.
+                continue
             status = str(item.get("status", "pending"))
             has_generated_payload = bool(item.get("card") or item.get("grammar_card"))
             if has_generated_payload or status in {
@@ -2489,9 +2683,9 @@ class ModernVocabularyGui:
 
         if self._batch_items:
             self._show_current_batch_item(generate=False)
-            self._autosave_batch_session("batch mode changed")
+            self._autosave_batch_session("queue mode changed")
             if changed:
-                self._record_activity(f"Batch mode set to {mode} for {changed} pending item(s)")
+                self._record_activity(f"Queue mode set to {mode} for {changed} pending item(s)")
 
 
     @staticmethod
@@ -2530,19 +2724,19 @@ class ModernVocabularyGui:
         self._batch_generated_provider_name = None
         self._batch_generated_grammar = None
         self._show_current_batch_item(generate=False)
-        self._cleanup_runtime_memory("batch list loaded", aggressive=False)
+        self._cleanup_runtime_memory("queue list loaded", aggressive=False)
         self._batch_source_summary_var.set(
             f"Loaded {len(clean_words)} row(s) from {source_label} as {batch_mode}. Review the parsed rows before Generate pending."
         )
         self._batch_status_var.set(
             f"Loaded {len(clean_words)} row(s) as {batch_mode}. Nothing has been generated yet."
         )
-        self._record_activity(f"Loaded {len(clean_words)} batch item(s) as {batch_mode} without generation")
+        self._record_activity(f"Loaded {len(clean_words)} queue item(s) as {batch_mode} without generation")
         self._autosave_batch_session("list loaded")
 
     def _load_batch_txt(self) -> None:
         filename = filedialog.askopenfilename(
-            title="Load clean Batch TXT",
+            title="Load clean Queue TXT",
             filetypes=[("Text files", "*.txt"), ("All files", "*.*")],
         )
         if not filename:
@@ -2556,7 +2750,7 @@ class ModernVocabularyGui:
 
     def _load_batch_csv(self) -> None:
         filename = filedialog.askopenfilename(
-            title="Load clean Batch CSV",
+            title="Load clean Queue CSV",
             filetypes=[("CSV files", "*.csv"), ("All files", "*.*")],
         )
         if not filename:
@@ -2578,41 +2772,63 @@ class ModernVocabularyGui:
     def _ocr_set_source_paths(self, paths: list[str]) -> None:
         self._ocr_source_paths = [Path(path) for path in paths]
         if not self._ocr_source_paths:
+            method_label = getattr(self, "_ocr_method_label", None)
+            method_box = getattr(self, "_ocr_method_box", None)
+            if method_label is not None:
+                method_label.grid()
+            if method_box is not None:
+                method_box.grid()
             self._ocr_status_var.set("No import source selected.")
-            self._ocr_route_var.set("Choose a source to see the import route.")
+            self._ocr_route_var.set("Choose a source to see how it will be read.")
             return
         names = ", ".join(path.name for path in self._ocr_source_paths[:3])
         if len(self._ocr_source_paths) > 3:
             names += f" + {len(self._ocr_source_paths) - 3} more"
         suffixes = {path.suffix.casefold() for path in self._ocr_source_paths}
         text_like = bool(suffixes) and suffixes <= (TEXT_EXTENSIONS | HTML_EXTENSIONS)
+        method_label = getattr(self, "_ocr_method_label", None)
+        method_box = getattr(self, "_ocr_method_box", None)
         if text_like:
+            # Reading plain text is not an OCR/model choice. Hide those controls
+            # completely so the user cannot mistake local file reading for AI.
+            if method_label is not None:
+                method_label.grid_remove()
+            if method_box is not None:
+                method_box.grid_remove()
             # TXT/HTML are already text sources. Never make the user route them
             # through OCR just because an OCR provider was selected earlier.
             self._ocr_method_var.set("Local extraction (free)")
-            self._ocr_route_var.set("TXT/HTML → local text extraction → review → candidate finder. No OCR/API call for text extraction.")
-            action = "Extract text locally"
-            self._ocr_status_var.set(f"Text source selected: {names}. No OCR is needed. Click {action}.")
+            self._ocr_route_var.set("TXT/HTML → read locally → review text → find candidates. No model, OCR or API is used to read the file.")
+            action = "Read material locally"
+            self._ocr_status_var.set(f"Text source selected: {names}. It will be read locally; no AI/model is used. Click {action}.")
             button = getattr(self, "_ocr_run_button", None)
             if button is not None:
                 button.configure(text=action)
         elif suffixes and suffixes <= OCR_IMAGE_EXTENSIONS:
+            if method_label is not None:
+                method_label.grid()
+            if method_box is not None:
+                method_box.grid()
             action = self._ocr_import_action_label()
             self._ocr_route_var.set("Image/scan → selected OCR/vision method → review text → candidate finder.")
             self._ocr_status_var.set(
                 f"Image loaded: {names}. No OCR has started. Choose an OCR method, then click {action}."
             )
         else:
+            if method_label is not None:
+                method_label.grid()
+            if method_box is not None:
+                method_box.grid()
             action = self._ocr_import_action_label()
-            self._ocr_route_var.set("PDF/mixed source → text extraction or OCR/vision → review → candidate finder.")
-            self._ocr_status_var.set(f"Selected: {names}. No extraction has started. Click {action}.")
-        self._ocr_candidate_status_var.set("Source loaded only. Review the route/settings, then extract text explicitly.")
+            self._ocr_route_var.set("PDF/mixed source → read text locally when possible, otherwise OCR/vision → review → candidate search.")
+            self._ocr_status_var.set(f"Selected: {names}. Nothing has been read yet. Click {action}.")
+        self._ocr_candidate_status_var.set("Source selected. Read/load the material first, then choose what candidates to find.")
         self._scroll_import_text_to_top()
 
     def _open_paste_material_dialog(self) -> None:
         """Paste raw text or a clipboard screenshot into the Import Material flow.
 
-        Text is written directly to Reviewed source text. Clipboard images are
+        Text is written directly to Source text. Clipboard images are
         saved into .import_cache and staged only. OCR/import must be started by
         an explicit button click, so loading a screenshot never spends credits or
         freezes the UI by surprise.
@@ -2770,7 +2986,7 @@ class ModernVocabularyGui:
                     f"Pasted {len(text_value.split())} word(s). OCR quality: {label} — {reason}. "
                     "Review text, then find candidates."
                 )
-                self._ocr_candidate_status_var.set("Reviewed source text updated. Find candidates next.")
+                self._ocr_candidate_status_var.set("Source text updated. Find candidates next.")
                 self._record_activity("Import material pasted as text")
                 dialog.destroy()
                 return
@@ -2899,7 +3115,112 @@ class ModernVocabularyGui:
             return "Run OpenAI Vision OCR"
         if "Gemini" in method and ("Vision OCR" in method or "multimodal" in method):
             return "Run Gemini Vision OCR"
-        return "Extract text locally"
+        return "Read material locally"
+
+    @staticmethod
+    def _split_import_text_for_ai(text: str, max_chars: int = IMPORT_AI_CHUNK_SIZE, overlap: int = IMPORT_AI_CHUNK_OVERLAP) -> list[str]:
+        """Split long import text without silently dropping the tail.
+
+        Prefer paragraph/newline boundaries and keep a small overlap so a
+        phrase crossing a chunk boundary is still visible. Candidate merge
+        deduplication removes duplicates caused by that overlap.
+        """
+        value = (text or "").strip()
+        if not value:
+            return []
+        if len(value) <= max_chars:
+            return [value]
+        chunks: list[str] = []
+        start = 0
+        length = len(value)
+        while start < length:
+            end = min(length, start + max_chars)
+            if end < length:
+                floor = start + max_chars // 2
+                boundary = max(value.rfind("\n\n", floor, end), value.rfind("\n", floor, end))
+                if boundary > start:
+                    end = boundary
+            chunk = value[start:end].strip()
+            if chunk:
+                chunks.append(chunk)
+            if end >= length:
+                break
+            next_start = max(start + 1, end - overlap)
+            if next_start <= start:
+                next_start = end
+            start = next_start
+        return chunks
+
+    @staticmethod
+    def _import_source_size_level(text: str) -> str:
+        value = (text or "").strip()
+        chars = len(value)
+        words = len(value.split())
+        if chars > IMPORT_SOURCE_HARD_CHAR_LIMIT or words > IMPORT_SOURCE_HARD_WORD_LIMIT:
+            return "hard"
+        if chars > IMPORT_SOURCE_SOFT_CHAR_LIMIT or words > IMPORT_SOURCE_SOFT_WORD_LIMIT:
+            return "soft"
+        return "normal"
+
+    @staticmethod
+    def _import_source_signature(text: str) -> tuple[int, int]:
+        value = (text or "").strip()
+        return len(value), len(value.split())
+
+    @classmethod
+    def _import_material_size_summary(cls, text: str) -> str:
+        value = (text or "").strip()
+        if not value:
+            return "No material loaded yet."
+        chunks = cls._split_import_text_for_ai(value)
+        chars = len(value)
+        words = len(value.split())
+        level = cls._import_source_size_level(value)
+        if level == "hard":
+            guard = "Very large source: full-source AI search is blocked. Select a chapter/section in Source text and use Find from selected text."
+        elif level == "soft":
+            guard = "Large source: review the size before AI search. A chapter/section is recommended, but full-source analysis can be confirmed."
+        else:
+            guard = "Source size is suitable for one import workflow."
+        if len(chunks) <= 1:
+            parts = "AI candidate search will analyse the entire source in 1 part."
+        else:
+            parts = f"AI candidate search will analyse the entire source in {len(chunks)} parts. Nothing will be silently cut off."
+        return (
+            f"Material: {chars:,} characters · ~{words:,} words · {parts} "
+            f"{guard} No fixed candidate count: the result depends on the material."
+        )
+
+    def _notify_large_import_source(self, text: str) -> None:
+        value = (text or "").strip()
+        if not value:
+            return
+        level = self._import_source_size_level(value)
+        if level == "normal":
+            return
+        signature = self._import_source_signature(value)
+        if getattr(self, "_ocr_large_source_notified_signature", None) == signature:
+            return
+        self._ocr_large_source_notified_signature = signature
+        chars, words = signature
+        chunks = len(self._split_import_text_for_ai(value))
+        if level == "hard":
+            title = "Very large source loaded"
+            message = (
+                f"This material contains about {words:,} words ({chars:,} characters).\n\n"
+                "Full-source AI candidate search is blocked so an entire book cannot accidentally create dozens of API calls and an unmanageable review list.\n\n"
+                "Highlight one chapter/section in Source text and click 'Find from selected text'."
+            )
+        else:
+            title = "Large source loaded"
+            message = (
+                f"This material contains about {words:,} words ({chars:,} characters) and would require about {chunks} AI analysis parts.\n\n"
+                "For cleaner results, one lesson/chapter at a time is recommended. You can still confirm full-source analysis when you click Find candidates with AI."
+            )
+        try:
+            messagebox.showwarning(title, message)
+        except Exception:
+            pass
 
     def _set_ocr_text(self, text: str) -> None:
         textbox = getattr(self, "_ocr_textbox", None)
@@ -2907,6 +3228,10 @@ class ModernVocabularyGui:
             return
         textbox.delete("1.0", "end")
         textbox.insert("1.0", text or "")
+        size_var = getattr(self, "_ocr_size_var", None)
+        if size_var is not None:
+            size_var.set(self._import_material_size_summary(text or ""))
+        self._notify_large_import_source(text or "")
         self._scroll_import_text_to_top()
 
     def _get_ocr_text(self) -> str:
@@ -2922,7 +3247,7 @@ class ModernVocabularyGui:
         structured candidate records and renders them as cherry-pick cards.
         This method remains as a compatibility bridge for AI responses/tests.
         """
-        default_mode = self._ocr_internal_mode(self._ocr_mode_var.get().strip() or "Vocabulary & expressions")
+        default_mode = self._ocr_internal_mode(self._ocr_mode_var.get().strip() or "Smart vocabulary")
         items: list[dict[str, str]] = []
         for line in (text or "").splitlines():
             parsed = self._parse_ocr_candidate_row(line, default_mode)
@@ -2945,22 +3270,119 @@ class ModernVocabularyGui:
             for item in self._ocr_candidate_items
         )
 
+    @staticmethod
+    def _candidate_review_priority(item: dict[str, str]) -> str:
+        """Return a lightweight review tier without changing extraction semantics.
+
+        This is intentionally a UI organization heuristic, not an AI quality
+        verdict and not a candidate-count limit. It uses metadata already
+        returned by the import pipeline plus a few obvious review-risk signals.
+        """
+        needs_review = str(item.get("needs_review") or "").strip().casefold() in {"true", "yes", "1"}
+        confidence = str(item.get("confidence") or "").strip().casefold()
+        target = " ".join(str(item.get("target") or "").split())
+        sentence = " ".join(str(item.get("sentence") or "").split())
+        source_section = str(item.get("source_section") or "").strip().casefold().replace(" ", "_")
+        candidate_kind = str(item.get("candidate_kind") or "").strip().casefold().replace(" ", "_")
+        candidate_type = ModernVocabularyGui._normalize_ocr_candidate_type(item.get("type", "vocabulary"))
+
+        if needs_review or confidence in {"low", "0", "0.0"}:
+            return "Optional"
+        word_count = len(target.split())
+        if word_count >= 8:
+            return "Optional"
+        # Obvious named entities / document-specific labels are worth keeping
+        # available, but should not dominate the first review screen.
+        if target.startswith("The ") and word_count >= 2 and sum(1 for w in target.split() if w[:1].isupper()) >= 2:
+            return "Optional"
+
+        if source_section in {"vocabulary_list", "colloquial_expressions", "highlighted_item", "key_terms", "expressions"}:
+            return "Recommended"
+        if candidate_kind in {"idiom", "collocation", "expression", "phrasal_verb", "phrase", "fixed_expression", "multiword_expression"}:
+            return "Recommended"
+        if candidate_type == "grammar" and (target or sentence):
+            return "Recommended"
+        if candidate_type == "provided_example" and target and sentence:
+            return "Recommended"
+        if target and sentence and ModernVocabularyGui._import_source_sentence_uses_target(target, sentence):
+            return "Recommended"
+        return "Useful"
+
+    @staticmethod
+    def _candidate_review_type_label(item: dict[str, str]) -> str:
+        kind = ModernVocabularyGui._normalize_ocr_candidate_type(item.get("type", "vocabulary"))
+        return {
+            "vocabulary": "Vocabulary",
+            "grammar": "Grammar",
+            "provided_example": "Provided example",
+        }.get(kind, "Vocabulary")
+
+    def _ocr_filtered_candidate_indices(self) -> list[int]:
+        priority_filter = getattr(self, "_ocr_review_priority_filter_var", None)
+        type_filter = getattr(self, "_ocr_review_type_filter_var", None)
+        search_var = getattr(self, "_ocr_review_search_var", None)
+        wanted_priority = priority_filter.get().strip() if priority_filter is not None else "All priorities"
+        wanted_type = type_filter.get().strip() if type_filter is not None else "All types"
+        search = search_var.get().strip().casefold() if search_var is not None else ""
+        indices: list[int] = []
+        for index, item in enumerate(self._ocr_candidate_items):
+            priority = self._candidate_review_priority(item)
+            type_label = self._candidate_review_type_label(item)
+            if wanted_priority != "All priorities" and priority != wanted_priority:
+                continue
+            if wanted_type != "All types" and type_label != wanted_type:
+                continue
+            if search:
+                haystack = " ".join(
+                    str(item.get(key) or "")
+                    for key in ("target", "sentence", "source", "reason", "candidate_kind", "source_section")
+                ).casefold()
+                if search not in haystack:
+                    continue
+            indices.append(index)
+        return indices
+
+    def _ocr_visible_candidate_indices(self) -> list[int]:
+        filtered = self._ocr_filtered_candidate_indices()
+        if not filtered:
+            return []
+        page_count = max(1, (len(filtered) + IMPORT_REVIEW_PAGE_SIZE - 1) // IMPORT_REVIEW_PAGE_SIZE)
+        self._ocr_review_page = max(0, min(getattr(self, "_ocr_review_page", 0), page_count - 1))
+        start = self._ocr_review_page * IMPORT_REVIEW_PAGE_SIZE
+        return filtered[start : start + IMPORT_REVIEW_PAGE_SIZE]
+
+    def _reset_ocr_review_page_and_render(self) -> None:
+        self._ocr_review_page = 0
+        self._render_ocr_candidate_cards()
+        self._update_ocr_candidate_status()
+
+    def _change_ocr_review_page(self, delta: int) -> None:
+        filtered = self._ocr_filtered_candidate_indices()
+        page_count = max(1, (len(filtered) + IMPORT_REVIEW_PAGE_SIZE - 1) // IMPORT_REVIEW_PAGE_SIZE)
+        self._ocr_review_page = max(0, min(getattr(self, "_ocr_review_page", 0) + int(delta), page_count - 1))
+        self._render_ocr_candidate_cards()
+        self._update_ocr_candidate_status()
+        self._scroll_import_candidates_to_top()
+
     def _set_ocr_candidate_items(self, items: list[dict[str, str]]) -> None:
-        # AI extraction can return the same grammar point twice: once as a
+        # AI candidate search can return the same grammar point twice: once as a
         # grammar target/rule and once as a provided example. Keep one editable
         # grammar draft and attach the real example sentence to it instead of
         # showing duplicate candidates.
         items = self._merge_ocr_grammar_candidate_items(items)
+        for item in items:
+            item["review_priority"] = self._candidate_review_priority(item)
         self._ocr_candidate_items = items
         auto_select = len(items) <= OCR_CANDIDATE_AUTOSELECT_LIMIT
         self._ocr_candidate_vars = [ctk.BooleanVar(value=auto_select) for _ in items]
+        self._ocr_review_page = 0
         self._render_ocr_candidate_cards()
         self._scroll_import_candidates_to_top()
         self._update_ocr_candidate_status()
         if items and not auto_select:
             self._ocr_candidate_status_var.set(
-                f"Extracted {len(items)} candidate(s). Large import: nothing selected by default. "
-                "Review, then use Select all or select only the useful items."
+                f"Found {len(items)} candidates. Large review: nothing selected by default. "
+                "Start with Recommended, then inspect Useful/Optional if you want more."
             )
 
     def _make_ocr_candidate_item(
@@ -3109,7 +3531,7 @@ class ModernVocabularyGui:
         """Convert duplicated grammar rule + example pairs into sentence-first drafts.
 
         Grammar import should be sentence-first because every grammar Anki note
-        needs its own sentence/audio target. AI extraction can return both:
+        needs its own sentence/audio target. AI candidate search can return both:
         1. a rule-like Grammar target, for example ``should have + past participle``;
         2. one or more Provided example rows that use that target.
 
@@ -3196,11 +3618,13 @@ class ModernVocabularyGui:
             child.destroy()
 
         if not self._ocr_candidate_items:
+            if hasattr(self, "_ocr_review_page_var"):
+                self._ocr_review_page_var.set("Page 0 of 0")
             ctk.CTkLabel(
                 frame,
                 text=(
                     "No candidates yet.\n\n"
-                    "Use the free local buttons: Look for words / phrases or Look for sentences.\nThen cherry-pick and mark each item as word, grammar, or sentence."
+                    "Load/read material first, then use Find candidates with AI or the basic local finder."
                 ),
                 justify="left",
                 wraplength=420,
@@ -3213,20 +3637,48 @@ class ModernVocabularyGui:
         if len(self._ocr_candidate_vars) > len(self._ocr_candidate_items):
             self._ocr_candidate_vars = self._ocr_candidate_vars[: len(self._ocr_candidate_items)]
 
-        for index, item in enumerate(self._ocr_candidate_items):
+        filtered = self._ocr_filtered_candidate_indices()
+        page_count = max(1, (len(filtered) + IMPORT_REVIEW_PAGE_SIZE - 1) // IMPORT_REVIEW_PAGE_SIZE) if filtered else 0
+        if page_count:
+            self._ocr_review_page = max(0, min(getattr(self, "_ocr_review_page", 0), page_count - 1))
+            start = self._ocr_review_page * IMPORT_REVIEW_PAGE_SIZE
+            visible_indices = filtered[start : start + IMPORT_REVIEW_PAGE_SIZE]
+            if hasattr(self, "_ocr_review_page_var"):
+                self._ocr_review_page_var.set(
+                    f"Page {self._ocr_review_page + 1} of {page_count} · showing {start + 1}-{start + len(visible_indices)} of {len(filtered)} filtered"
+                )
+        else:
+            visible_indices = []
+            if hasattr(self, "_ocr_review_page_var"):
+                self._ocr_review_page_var.set("No matching candidates")
+
+        if not visible_indices:
+            ctk.CTkLabel(
+                frame,
+                text="No candidates match the current filters. Clear or change the filters to see the rest.",
+                justify="left",
+                wraplength=440,
+                text_color=("gray35", "gray75"),
+            ).grid(row=0, column=0, sticky="nw", padx=12, pady=12)
+            return
+
+        for display_row, index in enumerate(visible_indices):
+            item = self._ocr_candidate_items[index]
             card = ctk.CTkFrame(frame, corner_radius=12)
-            card.grid(row=index, column=0, sticky="ew", padx=8, pady=(8, 4))
+            card.grid(row=display_row, column=0, sticky="ew", padx=8, pady=(8, 4))
             card.grid_columnconfigure(1, weight=1)
 
             var = self._ocr_candidate_vars[index]
             ctk.CTkCheckBox(card, text="", variable=var, width=22, command=self._update_ocr_candidate_status).grid(
-                row=0, column=0, rowspan=6, sticky="nw", padx=(10, 4), pady=10
+                row=0, column=0, rowspan=7, sticky="nw", padx=(10, 4), pady=10
             )
 
             label = self._ocr_candidate_display_type(item.get("type", "vocabulary"), item.get("target", ""), item.get("sentence", ""))
+            priority = self._candidate_review_priority(item)
+            item["review_priority"] = priority
             ctk.CTkLabel(
                 card,
-                text=label,
+                text=f"{label} · {priority}",
                 font=ctk.CTkFont(size=12, weight="bold"),
                 text_color=("gray30", "gray70"),
             ).grid(row=0, column=1, sticky="w", padx=(4, 10), pady=(8, 0))
@@ -3255,9 +3707,9 @@ class ModernVocabularyGui:
             if sentence:
                 example_text = f"{example_label}: {sentence}"
             elif candidate_kind == "grammar" and source_type == "rule":
-                example_text = "Example / audio: AI will generate a natural example in Batch"
+                example_text = "Example / audio: AI will generate a natural example in Queue"
             elif candidate_kind == "grammar" and strategy == "generated_example_from_rule":
-                example_text = "Example / audio: AI will generate a natural example in Batch"
+                example_text = "Example / audio: AI will generate a natural example in Queue"
             else:
                 example_text = f"{example_label}: —"
             ctk.CTkLabel(
@@ -3316,42 +3768,38 @@ class ModernVocabularyGui:
 
             mark_buttons = ctk.CTkFrame(card, fg_color="transparent")
             mark_buttons.grid(row=5, column=1, sticky="ew", padx=(4, 10), pady=(4, 8))
-            mark_buttons.grid_columnconfigure((0, 1, 2, 3, 4), weight=1)
-            ctk.CTkButton(
+            mark_buttons.grid_columnconfigure(1, weight=1)
+            ctk.CTkLabel(
+                mark_buttons, text="Type", font=ctk.CTkFont(size=11, weight="bold")
+            ).grid(row=0, column=0, sticky="w", padx=(0, 6))
+            display_type = {
+                "vocabulary": "Vocabulary",
+                "grammar": "Grammar",
+                "provided_example": "Provided example",
+            }.get(candidate_kind, "Vocabulary")
+            type_box = ctk.CTkComboBox(
                 mark_buttons,
-                text="As word/phrase",
-                width=92,
-                height=28,
-                command=lambda i=index: self._mark_ocr_candidate_as(i, "vocabulary"),
-            ).grid(row=0, column=0, sticky="ew", padx=(0, 4))
-            ctk.CTkButton(
-                mark_buttons,
-                text="Use for Grammar",
-                width=100,
-                height=28,
-                command=lambda i=index: self._mark_ocr_candidate_as(i, "grammar"),
-            ).grid(row=0, column=1, sticky="ew", padx=4)
-            ctk.CTkButton(
-                mark_buttons,
-                text="As sentence",
-                width=82,
-                height=28,
-                command=lambda i=index: self._mark_ocr_candidate_as(i, "provided_example"),
-            ).grid(row=0, column=2, sticky="ew", padx=4)
+                values=["Vocabulary", "Grammar", "Provided example"],
+                state="readonly",
+                width=180,
+                command=lambda value, i=index: self._set_ocr_candidate_type_from_ui(i, value),
+            )
+            type_box.set(display_type)
+            type_box.grid(row=0, column=1, sticky="w", padx=(0, 8))
             ctk.CTkButton(
                 mark_buttons,
                 text="Edit",
                 width=68,
                 height=28,
                 command=lambda i=index: self._open_ocr_candidate_editor(i),
-            ).grid(row=0, column=3, sticky="ew", padx=4)
+            ).grid(row=0, column=2, sticky="e", padx=4)
             ctk.CTkButton(
                 mark_buttons,
                 text="Remove",
                 width=68,
                 height=28,
                 command=lambda i=index: self._remove_ocr_candidate(i),
-            ).grid(row=0, column=4, sticky="ew", padx=(4, 0))
+            ).grid(row=0, column=3, sticky="e", padx=(4, 0))
 
 
     def _open_missing_ocr_candidate_dialog(self) -> None:
@@ -3389,14 +3837,14 @@ class ModernVocabularyGui:
         def fill_target_from_selection() -> None:
             selected = clean_ocr_text(self._ocr_get_selected_text()).replace("\n", " ").strip()
             if not selected:
-                messagebox.showwarning("Add missing candidate", "Highlight text in Reviewed source text first.")
+                messagebox.showwarning("Add missing candidate", "Highlight text in Source text first.")
                 return
             target_var.set(selected)
 
         def fill_example_from_selection() -> None:
             selected = clean_ocr_text(self._ocr_get_selected_text()).replace("\n", " ").strip()
             if not selected:
-                messagebox.showwarning("Add missing candidate", "Highlight an example in Reviewed source text first.")
+                messagebox.showwarning("Add missing candidate", "Highlight an example in Source text first.")
                 return
             sentence_box.delete("1.0", "end")
             sentence_box.insert("1.0", selected)
@@ -3516,13 +3964,37 @@ class ModernVocabularyGui:
             self._ocr_candidate_status_var.set("No candidates yet.")
             return
         selected = sum(1 for var in self._ocr_candidate_vars if var.get())
+        priority_counts = {"Recommended": 0, "Useful": 0, "Optional": 0}
+        type_counts = {"Vocabulary": 0, "Grammar": 0, "Provided example": 0}
+        for item in self._ocr_candidate_items:
+            priority_counts[self._candidate_review_priority(item)] += 1
+            type_counts[self._candidate_review_type_label(item)] += 1
+        filtered = self._ocr_filtered_candidate_indices()
         self._ocr_candidate_status_var.set(
-            f"Candidate drafts: {selected}/{total} selected · visible: {total}. Cherry-pick, then send to Batch."
+            f"{total} candidates · {priority_counts['Recommended']} Recommended · {priority_counts['Useful']} Useful · "
+            f"{priority_counts['Optional']} Optional · {selected} selected · {len(filtered)} match current filters. "
+            f"Types: {type_counts['Vocabulary']} Vocabulary · {type_counts['Grammar']} Grammar · "
+            f"{type_counts['Provided example']} Examples."
         )
 
     def _select_all_ocr_candidates(self) -> None:
+        # Backward-compatible action used by older tests/UI callbacks.
         for var in self._ocr_candidate_vars:
             var.set(True)
+        self._update_ocr_candidate_status()
+
+    def _select_recommended_ocr_candidates(self) -> None:
+        for var in self._ocr_candidate_vars:
+            var.set(False)
+        for index, item in enumerate(self._ocr_candidate_items):
+            if self._candidate_review_priority(item) == "Recommended" and index < len(self._ocr_candidate_vars):
+                self._ocr_candidate_vars[index].set(True)
+        self._update_ocr_candidate_status()
+
+    def _select_visible_ocr_candidates(self) -> None:
+        for index in self._ocr_visible_candidate_indices():
+            if index < len(self._ocr_candidate_vars):
+                self._ocr_candidate_vars[index].set(True)
         self._update_ocr_candidate_status()
 
     def _deselect_all_ocr_candidates(self) -> None:
@@ -3532,12 +4004,12 @@ class ModernVocabularyGui:
 
     @staticmethod
     def _ocr_fields_for_candidate_type(candidate_type: str, target: str, sentence: str) -> tuple[str, str]:
-        """Normalize candidate fields for the selected Batch intention.
+        """Normalize candidate fields for the selected Queue intention.
 
         UX rule for Import Material:
         - If a grammar candidate already has a target/pattern, preserve it.
         - If it only has a sentence/example, treat it as "Grammar from sentence"
-          and let Batch infer the grammar focus later.
+          and let Queue infer the grammar focus later.
         - Never destroy a useful AI-found target when the user marks an item for Grammar.
         """
         kind = ModernVocabularyGui._normalize_ocr_candidate_type(candidate_type)
@@ -3557,8 +4029,23 @@ class ModernVocabularyGui:
             return target, sentence or ("" if target else target)
         return target, sentence
 
+    def _set_ocr_candidate_type_from_ui(self, index: int, selected: str) -> None:
+        mapping = {
+            "Vocabulary": "vocabulary",
+            "Grammar": "grammar",
+            "Provided example": "provided_example",
+        }
+        self._mark_ocr_candidate_as(index, mapping.get(selected, "vocabulary"))
+        if 0 <= index < len(self._ocr_candidate_items):
+            visible = self._ocr_candidate_display_type(
+                self._ocr_candidate_items[index].get("type", "vocabulary"),
+                self._ocr_candidate_items[index].get("target", ""),
+                self._ocr_candidate_items[index].get("sentence", ""),
+            )
+            self._ocr_candidate_status_var.set(f"Candidate type changed to {visible}. This type will be preserved in Queue.")
+
     def _mark_ocr_candidate_as(self, index: int, candidate_type: str) -> None:
-        """Change a cherry-picked local candidate into a Batch intention."""
+        """Change a cherry-picked local candidate into a Queue intention."""
         if index < 0 or index >= len(self._ocr_candidate_items):
             return
         item = self._ocr_candidate_items[index]
@@ -3647,12 +4134,12 @@ class ModernVocabularyGui:
             return ""
 
     def _update_ocr_mode_help(self) -> None:
-        mode = (self._ocr_mode_var.get() or "Vocabulary & expressions").strip()
+        mode = (self._ocr_mode_var.get() or "Smart vocabulary").strip()
         self._ocr_mode_help_var.set(OCR_EXTRACTION_MODE_HELP.get(mode, "Choose what AI should extract from the reviewed source."))
 
     @staticmethod
     def _ocr_internal_mode(mode: str) -> str:
-        value = (mode or "Vocabulary & expressions").strip()
+        value = (mode or "Smart vocabulary").strip()
         return OCR_EXTRACTION_MODE_INTERNAL.get(value, value)
 
     @staticmethod
@@ -3666,7 +4153,7 @@ class ModernVocabularyGui:
         return value in {"vocabulary", "vocabulary + source examples", "smart vocabulary", "vocabulary & expressions"}
 
     @staticmethod
-    def _normalize_ocr_candidate_type(candidate_type: str, default_mode: str = "Vocabulary") -> str:
+    def _normalize_ocr_candidate_type(candidate_type: str, default_mode: str = "") -> str:
         raw = (candidate_type or default_mode or "vocabulary").strip().casefold().replace("_", " ")
         default_raw = (default_mode or "").strip().casefold().replace("_", " ")
         if default_raw in {"vocabulary", "vocabulary + source examples"}:
@@ -3678,7 +4165,7 @@ class ModernVocabularyGui:
         if raw in {"provided", "provided example", "provided examples", "sentence", "source sentence", "example"}:
             # Smart Grammar and Grammar modes must never silently downgrade to
             # Provided example. A sentence-only grammar candidate is still a
-            # grammar candidate; Batch will infer the focus later.
+            # grammar candidate; Queue will infer the focus later.
             if default_raw in {"grammar", "smart grammar import", "smart grammar", "grammar import"}:
                 return "grammar"
             return "provided_example"
@@ -3719,7 +4206,7 @@ class ModernVocabularyGui:
         if target and sentence:
             # Vocabulary + source examples must keep the source sentence when
             # candidates are serialized/reparsed. Older versions returned only
-            # the target here, so Batch later regenerated a new example and
+            # the target here, so Queue later regenerated a new example and
             # wasted a provider call.
             return f"{label} | {target} | {sentence}"
         return f"{label} | {target or sentence}"
@@ -3734,7 +4221,7 @@ class ModernVocabularyGui:
         self._update_ocr_candidate_status()
 
     def _ocr_append_candidate_row(self, row: str) -> None:
-        parsed = self._parse_ocr_candidate_row(row, self._ocr_internal_mode(self._ocr_mode_var.get().strip() or "Vocabulary & expressions"))
+        parsed = self._parse_ocr_candidate_row(row, self._ocr_internal_mode(self._ocr_mode_var.get().strip() or "Smart vocabulary"))
         if parsed is None:
             return
         candidate_type, target, sentence = parsed
@@ -3776,19 +4263,19 @@ class ModernVocabularyGui:
         return None
 
     def _reject_runaway_ai_candidates(self, count: int, limit: int, mode: str, source: str) -> None:
-        """Refuse a runaway AI extraction result before it breaks the UI."""
+        """Refuse a runaway AI candidate search result before it breaks the UI."""
         message = (
             f"AI returned {count} candidate(s), above the safety limit of {limit} for {mode}. "
             "Nothing was imported. Use a smaller selected section, explicit Vocabulary mode, or split the lesson."
         )
         self._ocr_status_var.set("Large extraction blocked to protect the UI.")
         self._ocr_candidate_status_var.set(message)
-        LOGGER.warning("Blocked runaway OCR candidate extraction: count=%s limit=%s mode=%s source=%s", count, limit, mode, source)
+        LOGGER.warning("Blocked runaway OCR candidate search: count=%s limit=%s mode=%s source=%s", count, limit, mode, source)
         try:
             messagebox.showwarning("Large extraction blocked", message)
         except Exception:
             pass
-        self._record_activity(f"OCR candidate extraction blocked: {count}>{limit}")
+        self._record_activity(f"OCR candidate search blocked: {count}>{limit}")
 
     def _add_ocr_candidate_items(self, items: list[dict[str, str]]) -> int:
         """Append new candidates while avoiding exact duplicates."""
@@ -3826,7 +4313,7 @@ class ModernVocabularyGui:
 
     @staticmethod
     def _ocr_quality_label(text: str) -> tuple[str, str]:
-        """Return a lightweight OCR quality estimate for local candidate extraction.
+        """Return a lightweight OCR quality estimate for local candidate search.
 
         This does not judge the lesson content. It only catches obvious OCR
         garbage before the app creates dozens of useless candidate rows. Short,
@@ -3871,7 +4358,7 @@ class ModernVocabularyGui:
         if suspicious_ratio > 0.35 or avg_len < 2.6:
             return "Poor", "many tokens look like OCR noise"
         if suspicious_ratio > 0.22:
-            return "Medium", "text may need manual review before candidate extraction"
+            return "Medium", "text may need manual review before candidate search"
         if sentence_like < 2 and len(tokens) >= 20:
             return "Medium", "word-list style text; review candidates manually"
         return "Good", "text looks readable enough for local cherry-pick"
@@ -3884,7 +4371,7 @@ class ModernVocabularyGui:
         if label == "Medium":
             self._ocr_status_var.set(f"OCR quality: Medium — review candidates carefully ({reason}).")
             return True
-        self._ocr_status_var.set(f"OCR quality: Poor — candidate extraction may produce garbage ({reason}).")
+        self._ocr_status_var.set(f"OCR quality: Poor — candidate search may produce garbage ({reason}).")
         return messagebox.askyesno(
             "OCR quality looks poor",
             "The extracted text looks unreliable. Candidate extraction may produce garbage.\n\n"
@@ -3902,6 +4389,15 @@ class ModernVocabularyGui:
         text, source = self._ocr_text_for_local_search()
         if not text.strip():
             messagebox.showwarning("Import Material", "There is no text to search. Load/extract text or paste it first.")
+            return
+        if source == "all text" and self._import_source_size_level(text) == "hard":
+            self._ocr_candidate_status_var.set(
+                "Source is too large for one review run. Highlight a chapter/section in Source text first."
+            )
+            messagebox.showwarning(
+                "Source too large",
+                "This source is too large for one candidate review. Highlight a chapter/section in Source text, then run the local finder again.",
+            )
             return
         if not self._confirm_ocr_quality_for_candidates(text):
             self._ocr_candidate_status_var.set("Word/phrase extraction cancelled because OCR quality looked poor.")
@@ -3925,6 +4421,15 @@ class ModernVocabularyGui:
         if not text.strip():
             messagebox.showwarning("Import Material", "There is no text to search. Load/extract text or paste it first.")
             return
+        if source == "all text" and self._import_source_size_level(text) == "hard":
+            self._ocr_candidate_status_var.set(
+                "Source is too large for one review run. Highlight a chapter/section in Source text first."
+            )
+            messagebox.showwarning(
+                "Source too large",
+                "This source is too large for one candidate review. Highlight a chapter/section in Source text, then run the local finder again.",
+            )
+            return
         if not self._confirm_ocr_quality_for_candidates(text):
             self._ocr_candidate_status_var.set("Sentence extraction cancelled because OCR quality looked poor.")
             return
@@ -3936,7 +4441,7 @@ class ModernVocabularyGui:
                 items.append(item)
         added = self._add_ocr_candidate_items(items)
         if added:
-            self._ocr_candidate_status_var.set(f"Added {added} local sentence candidate(s). Cherry-pick; use To Grammar Batch if these should become grammar cards.")
+            self._ocr_candidate_status_var.set(f"Added {added} local sentence candidate(s). Cherry-pick; use To Grammar Queue if these should become grammar cards.")
             self._record_activity(f"Local sentence candidates: {added}")
         else:
             self._ocr_candidate_status_var.set("No new sentence candidates found. Try selecting a cleaner paragraph or use manual builder.")
@@ -4042,7 +4547,7 @@ class ModernVocabularyGui:
     def _ocr_use_selection_as_target(self) -> None:
         selected = self._ocr_get_selected_text()
         if not selected:
-            messagebox.showwarning("Import Material", "Highlight a word or phrase in extracted text first.")
+            messagebox.showwarning("Import Material", "Highlight a word or phrase in the source text first.")
             return
         target = clean_ocr_text(selected).replace("\n", " ").strip()
         self._ocr_manual_target_var.set(target)
@@ -4117,23 +4622,23 @@ class ModernVocabularyGui:
 
     def _run_local_ocr_import(self) -> None:
         if not self._ocr_source_paths:
-            # Allow pasted text as a valid source for candidate extraction.
+            # Allow pasted text as a valid source for candidate search.
             pasted = self._get_ocr_text()
             if pasted.strip():
-                self._ocr_status_var.set("Using pasted text. Click Look for words/phrases or Look for sentences.")
+                self._ocr_status_var.set("Pasted text is already loaded. Choose what you want to find next.")
                 return
             messagebox.showwarning("Import Material", "Load a TXT/HTML, PDF, image, or paste text first.")
             return
-        self._ocr_status_var.set("Extracting text locally...")
+        self._ocr_status_var.set("Reading material locally...")
         self._root.update_idletasks()
         try:
             text = extract_text_from_paths(self._ocr_source_paths)
         except OcrExtractionError as exc:
-            self._ocr_status_var.set("Local extraction failed.")
+            self._ocr_status_var.set("Local reading failed.")
             messagebox.showerror("Import Material", str(exc))
             return
         except Exception as exc:
-            self._ocr_status_var.set("Local extraction failed.")
+            self._ocr_status_var.set("Local reading failed.")
             messagebox.showerror("Import Material", f"Unexpected import error: {exc}")
             return
         if not text.strip():
@@ -4143,10 +4648,10 @@ class ModernVocabularyGui:
         self._set_ocr_text(text)
         label, reason = self._ocr_quality_label(text)
         self._ocr_status_var.set(
-            f"Extracted {len(text.split())} word(s). OCR quality: {label} — {reason}. "
-            "Click Look for words/phrases or Look for sentences."
+            f"Read {len(text.split())} word(s) locally. Text quality: {label} — {reason}. "
+            "Now choose what you want to find, then use AI search or the local finder."
         )
-        self._record_activity("Import text extracted")
+        self._record_activity("Import material read locally")
 
     def _run_mistral_ocr_auto_candidates(self) -> None:
         """Run cloud OCR through Mistral only. Candidate picking stays local/manual by default."""
@@ -4174,7 +4679,7 @@ class ModernVocabularyGui:
                 messagebox.showerror("Import Material", f"Text import failed: {exc}")
                 return
             self._set_ocr_text(text)
-            self._ocr_status_var.set(f"Loaded {len(text.split())} word(s). Click Look for words/sentences.")
+            self._ocr_status_var.set(f"Read {len(text.split())} word(s) locally. Choose what you want to find next.")
             return
 
         if text_like_paths and image_or_pdf_paths:
@@ -4244,7 +4749,7 @@ class ModernVocabularyGui:
                 names += f" + {len(self._ocr_source_paths) - 3} more"
             self._ocr_status_var.set(f"Running {provider} Vision OCR on: {names}")
             self._ocr_candidate_status_var.set(
-                f"{provider} Vision OCR will return text only. It will not create candidates or Batch items."
+                f"{provider} Vision OCR will return text only. It will not create candidates or Queue items."
             )
             self._root.update_idletasks()
             raw_text = extract_text_with_multimodal(
@@ -4297,7 +4802,7 @@ class ModernVocabularyGui:
         returns only text and requires a separate Find candidates click.
         """
         if self._ocr_ai_running:
-            self._ocr_candidate_status_var.set("Direct image candidate extraction is already running. Wait for it to finish.")
+            self._ocr_candidate_status_var.set("Direct image candidate search is already running. Wait for it to finish.")
             return
         if not self._ocr_source_paths:
             pasted = self._get_ocr_text()
@@ -4318,7 +4823,7 @@ class ModernVocabularyGui:
             )
             return
 
-        ui_mode = self._ocr_mode_var.get().strip() or "Vocabulary & expressions"
+        ui_mode = self._ocr_mode_var.get().strip() or "Smart vocabulary"
         mode = self._ocr_internal_mode(ui_mode)
         self._ocr_ai_running = True
         run_button = getattr(self, "_ocr_run_button", None)
@@ -4331,7 +4836,7 @@ class ModernVocabularyGui:
             names = ", ".join(path.name for path in self._ocr_source_paths[:3])
             if len(self._ocr_source_paths) > 3:
                 names += f" + {len(self._ocr_source_paths) - 3} more"
-            self._ocr_status_var.set(f"Running direct image candidate extraction with {provider} on: {names}")
+            self._ocr_status_var.set(f"Running direct image candidate search with {provider} on: {names}")
             self._ocr_candidate_status_var.set(
                 f"{provider} is extracting candidates directly from the image. This is an advanced API workflow."
             )
@@ -4391,7 +4896,7 @@ class ModernVocabularyGui:
         self._set_ocr_candidate_items(items)
         selected_note = "selected by default" if total <= OCR_CANDIDATE_AUTOSELECT_LIMIT else "not selected by default"
         self._ocr_candidate_status_var.set(
-            f"{provider} direct image extraction found {total} candidate(s); all visible, {selected_note}. Review/cherry-pick before Batch."
+            f"{provider} direct image extraction found {total} candidate(s); all visible, {selected_note}. Review/cherry-pick before Queue."
         )
         self._record_activity(f"{provider} direct image candidates: {len(items)}")
 
@@ -4420,8 +4925,8 @@ class ModernVocabularyGui:
     def _clean_ocr_preview_text(self) -> None:
         original = self._get_ocr_text()
         if not original.strip():
-            self._ocr_status_var.set("No extracted text to clean.")
-            self._ocr_candidate_status_var.set("No extracted text to clean.")
+            self._ocr_status_var.set("No source text to clean.")
+            self._ocr_candidate_status_var.set("No source text to clean.")
             return
         text = clean_ocr_text(original)
         text = re.sub(r"!\[[^\]]*\]\([^)]*\)", "", text)
@@ -4433,7 +4938,7 @@ class ModernVocabularyGui:
         if text == original.strip():
             message = f"Text already looks clean: {len(text.split())} word(s)."
         else:
-            message = f"Cleaned extracted text: {len(text.split())} word(s), removed {removed_chars} character(s)/artifact(s)."
+            message = f"Cleaned source text: {len(text.split())} word(s), removed {removed_chars} character(s)/artifact(s)."
         self._ocr_status_var.set(message)
         self._ocr_candidate_status_var.set(message)
         self._scroll_import_text_to_top()
@@ -4444,14 +4949,14 @@ class ModernVocabularyGui:
     def _extract_ocr_candidates_from_selection_with_ai(self) -> None:
         selected = self._ocr_get_selected_text()
         if not selected.strip():
-            messagebox.showwarning("Import Material", "Highlight a fragment in extracted text first.")
+            messagebox.showwarning("Import Material", "Highlight a fragment in the source text first.")
             return
         self._extract_ocr_candidates_with_ai_from_text(selected, source="selection")
 
     def _retry_last_ocr_ai_extraction(self) -> None:
         request = self._ocr_last_ai_request
         if request is None:
-            self._ocr_candidate_status_var.set("No previous AI extraction request is available.")
+            self._ocr_candidate_status_var.set("No previous AI candidate search request is available.")
             return
         text, source = request
         self._extract_ocr_candidates_with_ai_from_text(text, source=source, retry_attempt=0)
@@ -4472,27 +4977,90 @@ class ModernVocabularyGui:
             return f"{provider_name} timed out. Your source text and previous candidates were preserved."
         return f"Candidate extraction failed with {provider_name}. The technical details were saved to the log."
 
+    @staticmethod
+    def _dedupe_import_candidate_items(items: list[dict[str, str]]) -> list[dict[str, str]]:
+        """Deduplicate candidate rows merged from overlapping AI chunks."""
+        result: list[dict[str, str]] = []
+        seen: set[str] = set()
+        for item in items:
+            kind = ModernVocabularyGui._normalize_ocr_candidate_type(item.get("type", "vocabulary"))
+            target = " ".join(str(item.get("target") or "").split()).casefold()
+            sentence = " ".join(str(item.get("sentence") or "").split()).casefold()
+            key = f"{kind}::{target}::{sentence}"
+            if key in seen:
+                continue
+            seen.add(key)
+            result.append(item)
+        return result
+
+    @classmethod
+    def _limit_merged_import_candidates(
+        cls,
+        items: list[dict[str, str]],
+        mode: str,
+    ) -> tuple[list[dict[str, str]], str]:
+        """Deduplicate whole-document results without imposing a target count.
+
+        Candidate count is content-driven. A short page may legitimately yield
+        only a few useful items, while a dense glossary or advanced lesson may
+        yield well over one hundred. The model is responsible for quality
+        selection; this merge step only removes exact duplicates created by
+        overlapping chunks.
+        """
+        clean = cls._dedupe_import_candidate_items(items)
+        return clean, ""
+
     def _extract_ocr_candidates_with_ai_from_text(self, text: str, source: str, retry_attempt: int = 0) -> None:
         if not self._ai_clients:
             messagebox.showwarning("Import Material", "No AI provider is configured. Open Setup and configure Local, Hybrid/BYOK or API/BYOK first.")
-            self._ocr_candidate_status_var.set("AI extraction unavailable until a provider is configured in Setup.")
+            self._ocr_candidate_status_var.set("AI candidate search unavailable until a provider is configured in Setup.")
             return
         if self._ocr_ai_running:
             self._ocr_candidate_status_var.set("Candidate extraction is already running. Wait for it to finish.")
             return
-        text = text or ""
-        if not text.strip():
-            messagebox.showwarning("Import Material", "There is no extracted text to analyze.")
+        full_text = text or ""
+        if not full_text.strip():
+            messagebox.showwarning("Import Material", "There is no source text to analyze.")
             return
-        ui_mode = self._ocr_mode_var.get().strip() or "Vocabulary & expressions"
-        mode = self._ocr_internal_mode(ui_mode)
-        text_char_limit = 60000 if self._is_vocabulary_import_mode(mode) else 24000
-        if len(text) > text_char_limit:
-            text = text[:text_char_limit]
-            self._ocr_status_var.set(
-                f"Text was long; sending the first {text_char_limit:,} characters to AI for this extraction."
+
+        size_level = self._import_source_size_level(full_text)
+        signature = self._import_source_signature(full_text)
+        chars, words = signature
+        if size_level == "hard":
+            message = (
+                f"This {source} contains about {words:,} words ({chars:,} characters). "
+                "It is too large for one candidate-search run. Highlight a smaller chapter/section in Source text "
+                "and use Find from selected text."
             )
-        self._ocr_last_ai_request = (text, source)
+            self._ocr_candidate_status_var.set(message)
+            messagebox.showwarning("Source too large", message)
+            return
+        if (
+            size_level == "soft"
+            and retry_attempt == 0
+            and getattr(self, "_ocr_large_source_approved_signature", None) != signature
+        ):
+            chunks_for_warning = len(self._split_import_text_for_ai(full_text))
+            proceed = messagebox.askyesno(
+                "Analyse large source?",
+                f"This {source} contains about {words:,} words ({chars:,} characters) and will require about "
+                f"{chunks_for_warning} AI analysis calls.\n\n"
+                "For cleaner review, analysing one lesson/chapter at a time is recommended.\n\n"
+                "Analyse the entire source anyway?",
+            )
+            if not proceed:
+                self._ocr_candidate_status_var.set(
+                    "Large-source analysis cancelled. Highlight a chapter/section and use Find from selected text."
+                )
+                return
+            self._ocr_large_source_approved_signature = signature
+
+        ui_mode = self._ocr_mode_var.get().strip() or "Smart vocabulary"
+        mode = self._ocr_internal_mode(ui_mode)
+        chunks = self._split_import_text_for_ai(full_text)
+        if not chunks:
+            return
+        self._ocr_last_ai_request = (full_text, source)
         retry_button = getattr(self, "_ocr_retry_button", None)
         if retry_button is not None:
             retry_button.configure(state="normal")
@@ -4502,55 +5070,71 @@ class ModernVocabularyGui:
         previous_provider = self._provider_var.get()
         model_name = self._current_ai_model_name(provider_name, workflow="import")
         attempt_label = f" · attempt {retry_attempt + 1}/3" if retry_attempt else ""
-        self._ocr_candidate_status_var.set(f"Extracting candidates from {source} with {provider_name} import model {model_name}{attempt_label}...")
+        part_label = f" · {len(chunks)} part(s)" if len(chunks) > 1 else ""
+        self._ocr_candidate_status_var.set(
+            f"Finding candidates from the entire {source} with {provider_name} import model {model_name}{part_label}{attempt_label}..."
+        )
         self._ocr_ai_running = True
         ai_button = getattr(self, "_ocr_ai_button", None)
-        items: list[dict[str, str]] = []
+        merged_items: list[dict[str, str]] = []
         try:
             if ai_button is not None:
-                ai_button.configure(state="disabled", text="Extracting...")
+                ai_button.configure(state="disabled", text="Finding...")
             self._root.update_idletasks()
-            prompt = build_ocr_candidate_extraction_prompt(
-                extracted_text=text,
-                target_language=self._language_var.get(),
-                explanation_language=self._explanation_language_var.get(),
-                extraction_mode=mode,
-                topic_context=self._batch_topic_var.get(),
-            )
             client = self._ai_clients[provider_name]
             generate_text = getattr(client, "_generate_text", None)
             if generate_text is None:
                 messagebox.showerror("Import Material", f"{provider_name} client does not expose text generation.")
                 return
-            try:
-                raw_text = generate_text(prompt, workflow="import")
-            except TypeError:
-                raw_text = generate_text(prompt)
-            raw_count = self._count_ai_json_candidates(raw_text)
-            hard_limit = self._ocr_candidate_hard_limit(mode)
-            if raw_count is not None and raw_count > hard_limit:
-                self._reject_runaway_ai_candidates(raw_count, hard_limit, mode, source)
-                return
-            items = self._ocr_candidate_items_from_ai_response(raw_text, default_mode=mode, source=source)
-            if len(items) > hard_limit:
-                self._reject_runaway_ai_candidates(len(items), hard_limit, mode, source)
-                return
+
+            per_request_hard_limit = self._ocr_candidate_hard_limit(mode)
+            for part_index, chunk in enumerate(chunks, start=1):
+                self._ocr_candidate_status_var.set(
+                    f"Analysing part {part_index} of {len(chunks)} · {len(chunk):,} characters · {provider_name} {model_name}..."
+                )
+                self._root.update_idletasks()
+                prompt = build_ocr_candidate_extraction_prompt(
+                    extracted_text=chunk,
+                    target_language=self._language_var.get(),
+                    explanation_language=self._explanation_language_var.get(),
+                    extraction_mode=mode,
+                    topic_context=self._batch_topic_var.get(),
+                )
+                try:
+                    raw_text = generate_text(prompt, workflow="import")
+                except TypeError:
+                    raw_text = generate_text(prompt)
+                raw_count = self._count_ai_json_candidates(raw_text)
+                if raw_count is not None and raw_count > per_request_hard_limit:
+                    self._reject_runaway_ai_candidates(raw_count, per_request_hard_limit, mode, f"{source} part {part_index}")
+                    return
+                part_items = self._ocr_candidate_items_from_ai_response(
+                    raw_text,
+                    default_mode=mode,
+                    source=f"{source} · part {part_index}/{len(chunks)}",
+                )
+                if len(part_items) > per_request_hard_limit:
+                    self._reject_runaway_ai_candidates(len(part_items), per_request_hard_limit, mode, f"{source} part {part_index}")
+                    return
+                for item in part_items:
+                    item.setdefault("source_part", f"{part_index}/{len(chunks)}")
+                merged_items.extend(part_items)
         except Exception as exc:
             LOGGER.exception("Candidate extraction failed")
             friendly = self._friendly_import_error_message(exc, provider_name)
             if self._is_retryable_import_error(exc) and retry_attempt < 2:
                 delay_seconds = (60, 90)[retry_attempt]
                 self._ocr_candidate_status_var.set(
-                    f"{friendly} Automatic retry in {delay_seconds}s ({retry_attempt + 1}/2 retries). You can also click Retry last AI extraction."
+                    f"{friendly} Automatic retry in {delay_seconds}s ({retry_attempt + 1}/2 retries). You can also click Retry AI candidate search."
                 )
                 self._root.after(
                     delay_seconds * 1000,
-                    lambda t=text, src=source, attempt=retry_attempt + 1: self._extract_ocr_candidates_with_ai_from_text(
+                    lambda t=full_text, src=source, attempt=retry_attempt + 1: self._extract_ocr_candidates_with_ai_from_text(
                         t, source=src, retry_attempt=attempt
                     ),
                 )
             else:
-                self._ocr_candidate_status_var.set(friendly + " Use Retry last AI extraction when ready.")
+                self._ocr_candidate_status_var.set(friendly + " Use Retry AI candidate search when ready.")
                 messagebox.showerror("Import Material", friendly)
             return
         finally:
@@ -4558,16 +5142,20 @@ class ModernVocabularyGui:
             self._ocr_ai_running = False
             if ai_button is not None:
                 ai_button.configure(state="normal", text="Find candidates with AI")
+
+        items, limit_note = self._limit_merged_import_candidates(merged_items, mode)
         if not items:
             self._ocr_candidate_status_var.set("No candidates found. Edit the source text, try another mode, or use the basic local finder.")
             self._set_ocr_candidate_items([])
             return
         total = len(items)
         self._set_ocr_candidate_items(items)
+        selected_note = "selected by default" if total <= OCR_CANDIDATE_AUTOSELECT_LIMIT else "not selected by default"
+        suffix = f" {limit_note}" if limit_note else ""
         self._ocr_candidate_status_var.set(
-            f"AI found {total} candidate(s); all {len(items)} are visible and selected by default."
+            f"AI analysed all {len(chunks)} part(s) and found {total} reviewed candidate(s); {selected_note}.{suffix}"
         )
-        self._record_activity(f"Import candidates: {len(items)}")
+        self._record_activity(f"Import candidates: {len(items)} from {len(chunks)} part(s)")
 
     @staticmethod
     def _ocr_clean_json_text(raw_text: str) -> str:
@@ -4620,7 +5208,7 @@ class ModernVocabularyGui:
     def _infer_smart_grammar_source_type(cls, candidate_type: str, target: str, sentence: str, source_rule: str = "") -> str:
         """Best-effort classifier for AI/fallback candidate rows.
 
-        This only drives UI labels and Batch metadata. It should not block the
+        This only drives UI labels and Queue metadata. It should not block the
         user from editing/cherry-picking the candidate.
         """
         kind = cls._normalize_ocr_candidate_type(candidate_type)
@@ -4977,9 +5565,37 @@ class ModernVocabularyGui:
             return "grammar", value, ""
         return "vocabulary", value, ""
 
+    @classmethod
+    def _import_source_sentence_uses_target(cls, target: str, sentence: str) -> bool:
+        """Conservatively distinguish a real usage example from a definition.
+
+        Smart Vocabulary sometimes receives glossary definitions in the same
+        JSON field as source examples. A definition such as "The practice of
+        favouring close friends..." for *cronyism* is useful context, but it is
+        not a Provided Example because it never uses the target.
+        """
+        target = clean_ocr_text(str(target or "")).strip()
+        sentence = clean_ocr_text(str(sentence or "")).strip()
+        if not target or not sentence:
+            return False
+        if cls._text_contains_any_focus_fragment(sentence, target):
+            return True
+        # Light morphology fallback for single lexical anchors (amputar -> amputó,
+        # prescribe -> prescribed). It is intentionally conservative.
+        target_tokens = [
+            token for token in re.findall(r"[A-Za-zÀ-ÖØ-öø-ÿĄ-ž]+", target.casefold())
+            if len(token) >= 5 and token not in {"someone", "something", "alguien", "algo"}
+        ]
+        sentence_tokens = re.findall(r"[A-Za-zÀ-ÖØ-öø-ÿĄ-ž]+", sentence.casefold())
+        for token in target_tokens:
+            prefix = token[: max(5, min(7, len(token) - 2))]
+            if len(prefix) >= 5 and any(candidate.startswith(prefix) for candidate in sentence_tokens):
+                return True
+        return False
+
     def _send_ocr_candidates_to_batch(self) -> None:
         if not self._ocr_candidate_items:
-            messagebox.showwarning("Import Material", "There are no candidates to send to Batch.")
+            messagebox.showwarning("Import Material", "There are no candidates to send to Queue.")
             return
         topic = self._batch_topic_var.get().strip()
         target_language = self._language_var.get()
@@ -5046,12 +5662,12 @@ class ModernVocabularyGui:
                 elif source_type == "rule" and strategy == "generated_example_from_rule" and target:
                     # Do not trust a rule candidate's sentence unless the Smart
                     # Grammar contract explicitly marks it as generated_from_rule.
-                    # Batch will generate the natural example from target + source_rule.
+                    # Queue will generate the natural example from target + source_rule.
                     word = target
                     item_extra["grammar_target"] = target
                     if sentence and not source_rule_meta:
                         item_extra["source_rule"] = sentence
-                    item_extra.setdefault("source_focus_warning", "Rule-only candidate: Batch must generate the learner example/audio sentence.")
+                    item_extra.setdefault("source_focus_warning", "Rule-only candidate: Queue must generate the learner example/audio sentence.")
                 elif target and sentence and not sentence_is_rule and not target_is_sentence:
                     # Best case: explicit grammar pattern + one real sentence.
                     word = f"{target} | {sentence}"
@@ -5076,22 +5692,27 @@ class ModernVocabularyGui:
                     if sentence and self._looks_like_complete_sentence(sentence):
                         item_extra["provided_sentence"] = sentence
             else:
-                if sentence and target:
-                    # Vocabulary + source examples / Smart Vocabulary may keep a
-                    # real source sentence without changing the visible candidate
-                    # type in Import Material. Once the user sends it to Batch,
-                    # however, this must be generated with the sentence-based
-                    # prompt so the provider preserves the example instead of
-                    # spending tokens inventing a new one.
-                    word = f"{target} | {sentence}"
-                    batch_mode = "Provided examples"
+                # Vocabulary remains Vocabulary even when Smart Vocabulary found
+                # a source example. Type is a property of the candidate, not of
+                # the generation prompt used later.
+                word = target or sentence
+                batch_mode = "Vocabulary"
+                if target:
                     item_extra["provided_target"] = target
-                    item_extra["provided_sentence"] = sentence
-                    item_extra["source_sentence"] = sentence
-                    item_extra.setdefault("source_reason", reason_meta or "Vocabulary source example routed to sentence-based Batch to preserve the imported example.")
-                else:
-                    word = target or sentence
-                    batch_mode = "Vocabulary"
+                if sentence and target:
+                    if self._import_source_sentence_uses_target(target, sentence):
+                        item_extra["source_sentence"] = sentence
+                        item_extra["provided_sentence"] = sentence
+                        item_extra["generation_strategy"] = "preserve_source_sentence"
+                    else:
+                        # Keep glossary/definition text as context only. Queue will
+                        # generate a real example that actually uses the target.
+                        item_extra["source_definition"] = sentence
+                        item_extra["generation_strategy"] = "generate_example_from_definition"
+                        item_extra.setdefault(
+                            "source_reason",
+                            reason_meta or "Imported text explains the target but does not use it as an example.",
+                        )
             word = word.strip()
             if not word:
                 continue
@@ -5100,6 +5721,8 @@ class ModernVocabularyGui:
                 "status": "pending",
                 "topic": topic,
                 "batch_mode": batch_mode,
+                "mode_locked": True,
+                "candidate_type": candidate_type,
                 "target_language": target_language,
                 "explanation_language": explanation_language,
                 "source": f"ocr_import/{candidate.get('source', 'candidate')}",
@@ -5112,7 +5735,7 @@ class ModernVocabularyGui:
             messagebox.showwarning("Import Material", "No selected usable candidates were found.")
             return
         # Keep duplicates in the candidate list visible to the user, but remove
-        # exact duplicate Batch rows to avoid accidental double calls.
+        # exact duplicate Queue rows to avoid accidental double calls.
         clean_items: list[dict[str, object]] = []
         seen: set[str] = set()
         for item in items:
@@ -5131,16 +5754,29 @@ class ModernVocabularyGui:
             self._batch_mode_var.set(first_mode)
         self._show_current_batch_item(generate=False)
         modes = sorted({str(item.get("batch_mode") or "Vocabulary") for item in clean_items})
+        mode_counts = {mode: sum(1 for item in clean_items if str(item.get("batch_mode") or "Vocabulary") == mode) for mode in modes}
+        mode_summary = " · ".join(f"{mode_counts[mode]} {mode}" for mode in modes)
+        mixed_note = " Each imported item keeps its own type." if len(modes) > 1 else " Imported item type is preserved."
         self._batch_source_summary_var.set(
-            f"Received {len(clean_items)} reviewed candidate(s) from Import Material · mode(s): {', '.join(modes)}."
+            f"Received {len(clean_items)} reviewed candidate(s) from Import Material · {mode_summary}.{mixed_note}"
         )
         self._update_batch_mode_help()
-        self._autosave_batch_session("ocr candidates sent to batch")
-        self._ocr_candidate_status_var.set(f"Sent {len(clean_items)} selected candidate(s) to Batch.")
-        self._cleanup_runtime_memory("ocr candidates sent to batch", aggressive=False)
-        self._record_activity(f"OCR → Batch: {len(clean_items)}")
+        if len(modes) > 1:
+            self._batch_mode_help_var.set(
+                "Mixed import from Import Material: each Queue item keeps its own Vocabulary / Grammar / Provided example type. "
+                "The Input type selector is only for clean TXT/CSV loaded directly into Queue."
+            )
+        else:
+            self._batch_mode_help_var.set(
+                f"Import Material classified these items as {modes[0]}. Their type is preserved in Queue; "
+                "the Input type selector is for manually loaded clean files."
+            )
+        self._autosave_batch_session("ocr candidates sent to queue")
+        self._ocr_candidate_status_var.set(f"Sent {len(clean_items)} selected candidate(s) to Queue.")
+        self._cleanup_runtime_memory("ocr candidates sent to queue", aggressive=False)
+        self._record_activity(f"OCR → Queue: {len(clean_items)}")
         try:
-            self._tabs.set("Batch")
+            self._tabs.set("Queue")
         except Exception:
             pass
 
@@ -5150,7 +5786,8 @@ class ModernVocabularyGui:
         self._set_ocr_text("")
         self._clear_ocr_candidates()
         self._ocr_status_var.set("Load a PDF, image, TXT/HTML, or paste text to start.")
-        self._ocr_route_var.set("TXT/HTML → local text extraction → candidate finder. Images/scans → OCR/vision first.")
+        self._ocr_size_var.set("No material loaded yet.")
+        self._ocr_route_var.set("TXT/HTML → read locally (no AI/model) → find candidates. Images/scans → OCR/vision → find candidates.")
         self._ocr_candidate_status_var.set("No candidates yet.")
         self._ocr_manual_target_var.set("")
         self._ocr_manual_example_var.set("")
@@ -5162,7 +5799,7 @@ class ModernVocabularyGui:
         if not self._batch_items:
             self._batch_word_var.set("")
             self._batch_progress_var.set("No list loaded.")
-            self._batch_status_var.set("Choose a Batch mode first, then load clean TXT/CSV or paste prepared rows.")
+            self._batch_status_var.set("Choose an input type first, then load clean TXT/CSV or paste prepared rows.")
             return
         self._batch_index = max(0, min(self._batch_index, len(self._batch_items) - 1))
         item = self._batch_items[self._batch_index]
@@ -5176,10 +5813,9 @@ class ModernVocabularyGui:
         )
         if item_mode in BATCH_MODES and (item_has_generated_payload or item_status != "pending" or explicit_import_mode):
             self._batch_mode_var.set(item_mode)
-        elif item_status == "pending":
-            # Manual pending rows follow the current session mode. OCR/Smart Import
-            # rows keep their own mode so Mixed imports can contain Vocabulary,
-            # Grammar, and Provided examples in one queue.
+        elif item_status == "pending" and not bool(item.get("mode_locked")):
+            # Only manually loaded clean rows follow the Queue-wide input type.
+            # Import Material rows already carry a per-item type.
             item["batch_mode"] = self._batch_mode_var.get().strip() or "Vocabulary"
             item.pop("resolved_mode", None)
         self._batch_word_var.set(str(item["word"]))
@@ -5202,7 +5838,7 @@ class ModernVocabularyGui:
         else:
             mode = self._batch_mode_for_item(item)
             self._set_batch_status_card(
-                title=f"BATCH ITEM · {mode.upper()}",
+                title=f"QUEUE ITEM · {mode.upper()}",
                 word=str(item.get("word", "")),
                 status=str(item.get("status", "pending")),
                 detail=self._friendly_batch_item_detail(item),
@@ -5241,7 +5877,7 @@ class ModernVocabularyGui:
             preview += f"\nTopic status: {topic_status}"
         # _format_card_preview() already renders the active QUALITY WARNINGS
         # from preview_card. Do not append the same warning list again here,
-        # otherwise Batch cards show duplicated warnings in the preview.
+        # otherwise Queue cards show duplicated warnings in the preview.
         if item.get("quality_override"):
             preview += "\n\nQUALITY OVERRIDE\nApproved manually by user; hard warning will not block Add all ready."
         return preview
@@ -5281,6 +5917,9 @@ class ModernVocabularyGui:
         provided_sentence = str(item.get("provided_sentence", "")).strip()
         if provided_sentence:
             preview += f"\n\nSOURCE SENTENCE / AUDIO\n{provided_sentence}"
+        source_definition = str(item.get("source_definition", "")).strip()
+        if source_definition:
+            preview += f"\n\nSOURCE DEFINITION / CONTEXT\n{source_definition}"
         error = str(item.get("error", "")).strip()
         if error:
             preview += f"\n\nDETAILS\n{error}"
@@ -5290,16 +5929,16 @@ class ModernVocabularyGui:
     def _save_current_batch_item_edit(self) -> None:
         """Persist edits made in the Current item entry before generation.
 
-        Older UX let the user edit the entry visually, but the saved Batch row
+        Older UX let the user edit the entry visually, but the saved Queue row
         could still keep stale generated payloads or old status. This makes the
-        current entry the source of truth for the selected Batch item.
+        current entry the source of truth for the selected Queue item.
         """
         if not self._batch_items:
-            messagebox.showwarning("Batch edit", "Load Batch items first.")
+            messagebox.showwarning("Queue edit", "Load Queue items first.")
             return
         new_word = clean_ocr_text(self._batch_word_var.get()).replace("\n", " ").strip()
         if not new_word:
-            messagebox.showwarning("Batch edit", "Current item cannot be empty.")
+            messagebox.showwarning("Queue edit", "Current item cannot be empty.")
             return
         item = self._batch_items[self._batch_index]
         old_word = str(item.get("word", "")).strip()
@@ -5308,7 +5947,8 @@ class ModernVocabularyGui:
         item["topic"] = topic_context
         item["target_language"] = self._language_var.get().strip()
         item["explanation_language"] = self._explanation_language_var.get().strip()
-        item["batch_mode"] = self._batch_mode_var.get().strip() or "Vocabulary"
+        if not bool(item.get("mode_locked")):
+            item["batch_mode"] = self._batch_mode_var.get().strip() or "Vocabulary"
         item["edited"] = True
 
         if new_word != old_word:
@@ -5334,14 +5974,14 @@ class ModernVocabularyGui:
             self._batch_generated_provider_name = None
 
         self._show_current_batch_item(generate=False)
-        self._autosave_batch_session(f"batch item edited: {new_word}")
-        message = "Batch item saved. Generation will use the edited value."
+        self._autosave_batch_session(f"queue item edited: {new_word}")
+        message = "Queue item saved. Generation will use the edited value."
         self._batch_status_var.set(message)
         self._status_var.set(message)
-        self._record_activity(f"Batch item edited: {new_word}")
+        self._record_activity(f"Queue item edited: {new_word}")
 
     def _open_batch_card_editor(self) -> None:
-        """Open a small editor for the currently generated Batch card."""
+        """Open a small editor for the currently generated Queue card."""
         if not self._batch_items:
             return
         grammar_card = self._batch_generated_grammar or self._grammar_from_batch_payload(
@@ -5460,7 +6100,7 @@ class ModernVocabularyGui:
         tk.Button(button_row, text="Cancel", command=editor.destroy).pack(side="left", padx=(8, 0))
 
     def _open_batch_grammar_editor(self, card: GrammarAnalysis) -> None:
-        """Open a small editor for the currently generated Batch grammar card."""
+        """Open a small editor for the currently generated Queue grammar card."""
         editor = tk.Toplevel(self._root)
         editor.title(f"Edit grammar card: {card.sentence}")
         editor.geometry("760x700")
@@ -5551,6 +6191,7 @@ class ModernVocabularyGui:
         tk.Button(button_row, text="Cancel", command=editor.destroy).pack(side="left", padx=(8, 0))
 
     def _update_batch_progress(self) -> None:
+        """Show queue progress as human-readable stages instead of a developer counter dump."""
         total = len(self._batch_items)
         counts = {
             name: 0
@@ -5576,20 +6217,66 @@ class ModernVocabularyGui:
         for item in self._batch_items:
             status = str(item.get("status", "pending"))
             counts[status] = counts.get(status, 0) + 1
-        current = self._batch_index + 1 if total else 0
-        remaining = counts.get("pending", 0) + counts.get("ready", 0) + counts.get("rate_limited", 0)
+
+        if not total:
+            self._batch_progress_var.set("No items in queue.")
+            bar = getattr(self, "_batch_progress_bar", None)
+            if bar is not None:
+                bar.set(0)
+            self._refresh_batch_issue_visibility()
+            return
+
+        waiting = counts.get("pending", 0)
+        prepared = max(0, total - waiting)
         added_total = counts.get("added", 0) + counts.get("added_to_anki", 0)
-        duplicate_total = counts.get("duplicate", 0) + counts.get("duplicate_found", 0) + counts.get("duplicate_uncertain", 0) + counts.get("duplicate_skipped", 0)
-        self._batch_progress_var.set(
-            f"{current}/{total} · Added {added_total} · Updated {counts.get('updated_in_anki', 0)} · "
-            f"Duplicates {duplicate_total} · Skipped {counts.get('skipped', 0)} · Invalid {counts.get('invalid', 0)} · "
-            f"Failed {counts.get('error', 0) + counts.get('provider_failed', 0) + counts.get('add_failed', 0) + counts.get('blocked_quality_warning', 0)} · "
-            f"Rate limited {counts.get('rate_limited', 0)} · Remaining {remaining}"
+        updated_total = counts.get("updated_in_anki", 0)
+        duplicate_total = (
+            counts.get("duplicate", 0)
+            + counts.get("duplicate_found", 0)
+            + counts.get("duplicate_uncertain", 0)
+            + counts.get("duplicate_skipped", 0)
         )
+        failed_total = (
+            counts.get("error", 0)
+            + counts.get("provider_failed", 0)
+            + counts.get("add_failed", 0)
+            + counts.get("blocked_quality_warning", 0)
+        )
+
+        summary = [f"Prepared {prepared} of {total}", f"{waiting} waiting"]
+        results: list[str] = []
+        if counts.get("ready", 0):
+            results.append(f"Ready {counts['ready']}")
+        if added_total:
+            results.append(f"Added {added_total}")
+        if updated_total:
+            results.append(f"Updated {updated_total}")
+        if duplicate_total:
+            results.append(f"Duplicates {duplicate_total}")
+        if counts.get("skipped", 0):
+            results.append(f"Skipped {counts['skipped']}")
+        if counts.get("invalid", 0):
+            results.append(f"Invalid {counts['invalid']}")
+        if failed_total:
+            results.append(f"Failed {failed_total}")
+        if counts.get("rate_limited", 0):
+            results.append(f"Rate limited {counts['rate_limited']}")
+
+        line = " · ".join(summary)
+        if results:
+            line += "\n" + " · ".join(results)
+        self._batch_progress_var.set(line)
+
+        bar = getattr(self, "_batch_progress_bar", None)
+        if bar is not None:
+            try:
+                bar.set(prepared / total)
+            except Exception:
+                pass
         self._refresh_batch_issue_visibility()
 
     def _refresh_batch_issue_visibility(self) -> None:
-        """Show problem navigation only when the current Batch actually has problems."""
+        """Show problem navigation only when the current Queue actually has problems."""
         frame = getattr(self, "_batch_issue_buttons_frame", None)
         label = getattr(self, "_batch_issue_label", None)
         if frame is None or label is None:
@@ -5603,7 +6290,7 @@ class ModernVocabularyGui:
 
     @staticmethod
     def _clean_batch_visible_message(message: str, max_chars: int = 360) -> str:
-        """Keep Batch labels short and stop raw JSON/provider dumps from breaking the layout."""
+        """Keep Queue labels short and stop raw JSON/provider dumps from breaking the layout."""
         if not message:
             return ""
         clean = str(message).strip()
@@ -5643,7 +6330,7 @@ class ModernVocabularyGui:
         mode: str = "",
         item: dict[str, object] | None = None,
     ) -> None:
-        """Show a stable card-like Batch preview for non-ready states.
+        """Show a stable card-like Queue preview for non-ready states.
 
         Grammar items must not be rendered with the vocabulary label
         "WORD / PHRASE". Import Material often sends grammar rows as
@@ -5733,7 +6420,7 @@ class ModernVocabularyGui:
         """Return True for provider billing/credit errors hidden behind 400s.
 
         Some APIs, especially Anthropic, report exhausted credits as HTTP 400
-        invalid_request_error instead of a 402. That is fatal for an Auto Batch
+        invalid_request_error instead of a 402. That is fatal for an Auto Queue
         run: retrying the next items will just burn time and spam logs.
         """
         lowered = detail.lower()
@@ -5776,7 +6463,7 @@ class ModernVocabularyGui:
         """Convert provider raw errors into concise UI text.
 
         The raw exception remains in logs/autosave; this summary is for the
-        Batch preview/status area so users are not shown huge JSON payloads.
+        Queue preview/status area so users are not shown huge JSON payloads.
         """
         lowered = detail.lower()
         provider = provider_name or "Provider"
@@ -5809,7 +6496,7 @@ class ModernVocabularyGui:
         if ModernVocabularyGui._is_provider_billing_detail(detail):
             return (
                 f"{provider} credits/billing problem for {model}. "
-                "Auto Batch was stopped and progress was saved. "
+                "Auto Queue was stopped and progress was saved. "
                 "Add credits in the provider dashboard or switch Card AI provider, then retry failed/rate-limited items."
             )
         status = ModernVocabularyGui._http_status_from_detail(detail)
@@ -5841,6 +6528,9 @@ class ModernVocabularyGui:
                 self._current_ai_model_name(),
             )
         if status == "pending":
+            mode = str(item.get("batch_mode") or "Vocabulary")
+            if bool(item.get("mode_locked")):
+                return f"Imported as {mode}. This item keeps its own type. Click Generate selected or Auto-generate pending."
             return "Not generated yet. Click Generate selected or Auto-generate pending."
         if status == "ready":
             return "Generated and ready for review."
@@ -5867,7 +6557,7 @@ class ModernVocabularyGui:
         provider_name: str,
         model_name: str = "",
     ) -> None:
-        """Stop Auto Batch and keep one stable UI state after fatal provider errors."""
+        """Stop Auto Queue and keep one stable UI state after fatal provider errors."""
         self._batch_auto_generate_running = False
         self._batch_auto_generate_paused = False
         self._batch_auto_generate_stop_requested = True
@@ -5875,14 +6565,14 @@ class ModernVocabularyGui:
         autosave = str(self._batch_autosave_path) if self._batch_autosave_path else "not available"
         friendly_detail = self._friendly_generation_error_detail(detail, provider_name, model_name)
         message = (
-            "Auto Batch stopped: provider error. "
+            "Auto Queue stopped: provider error. "
             "Progress saved. Switch provider and retry failed/rate-limited items, or resume later."
         )
         self._batch_status_var.set(f"{message} Autosaved.")
         self._status_var.set(message)
         status_name = "rate_limited" if self._is_provider_rate_limit_detail(detail) else "provider_failed"
         self._set_batch_status_card(
-            title="AUTO BATCH STOPPED",
+            title="QUEUE PROCESS STOPPED",
             word=word,
             status=status_name,
             detail=f"{friendly_detail}\n\nAutosaved.",
@@ -5893,8 +6583,8 @@ class ModernVocabularyGui:
                 "- Resume later from autosave"
             ),
         )
-        self._record_activity("Auto Batch stopped: provider error")
-        LOGGER.warning("Auto Batch stopped because of provider error for word=%s detail=%s", word, detail)
+        self._record_activity("Auto Queue stopped: provider error")
+        LOGGER.warning("Auto Queue stopped because of provider error for word=%s detail=%s", word, detail)
 
     def _stop_batch_on_rate_limit(self, word: str, detail: str) -> None:
         """Backward-compatible wrapper for older call sites."""
@@ -5916,7 +6606,8 @@ class ModernVocabularyGui:
         item["topic"] = topic_context
         item["target_language"] = target_language
         item["explanation_language"] = explanation_language
-        item["batch_mode"] = self._batch_mode_var.get().strip() or "Vocabulary"
+        if not bool(item.get("mode_locked")):
+            item["batch_mode"] = self._batch_mode_var.get().strip() or "Vocabulary"
         resolved_mode = self._batch_mode_for_item(item, word)
         item["resolved_mode"] = resolved_mode
         provider_name = self._provider_var.get()
@@ -5961,7 +6652,7 @@ class ModernVocabularyGui:
                 return
 
         LOGGER.info(
-            "Batch generation start: trigger=%s index=%s word=%s provider=%s",
+            "Queue generation start: trigger=%s index=%s word=%s provider=%s",
             generation_trigger,
             self._batch_index,
             word,
@@ -5972,8 +6663,19 @@ class ModernVocabularyGui:
         )
         self._status_var.set(self._batch_status_var.get())
         self._root.update_idletasks()
-        if resolved_mode == "Provided examples":
-            provided_target, provided_sentence = self._parse_provided_example_item(word)
+        preserve_vocab_source = (
+            resolved_mode == "Vocabulary"
+            and str(item.get("generation_strategy") or "") == "preserve_source_sentence"
+            and bool(str(item.get("source_sentence") or "").strip())
+        )
+        if resolved_mode == "Provided examples" or preserve_vocab_source:
+            if preserve_vocab_source:
+                provided_target = str(item.get("provided_target") or word).strip()
+                provided_sentence = str(item.get("source_sentence") or "").strip()
+                sentence_request_word = f"{provided_target} | {provided_sentence}"
+            else:
+                provided_target, provided_sentence = self._parse_provided_example_item(word)
+                sentence_request_word = word
             if not provided_sentence:
                 item["status"] = "invalid"
                 item["error"] = "Provided examples mode needs a sentence. Use: target | sentence, or paste a sentence."
@@ -5986,7 +6688,7 @@ class ModernVocabularyGui:
             item["provided_sentence"] = provided_sentence
             try:
                 card = self._current_ai_client().generate_sentence_card(
-                    word,
+                    sentence_request_word,
                     target_language,
                     explanation_language,
                     topic_context,
@@ -6017,9 +6719,9 @@ class ModernVocabularyGui:
                     self._update_batch_progress()
                     self._autosave_batch_session(f"provided-example generation error: {word}")
                 if self._is_provider_rate_limit_detail(detail) or self._is_fatal_long_generation_detail(detail):
-                    LOGGER.warning("Batch provided-example provider error for item=%s detail=%s", word, detail)
+                    LOGGER.warning("Queue provided-example provider error for item=%s detail=%s", word, detail)
                 else:
-                    LOGGER.exception("Batch provided-example generation failed for item=%s", word)
+                    LOGGER.exception("Queue provided-example generation failed for item=%s", word)
                 return
             if not card.is_valid:
                 item["status"] = "invalid"
@@ -6052,10 +6754,16 @@ class ModernVocabularyGui:
             self._batch_generated_grammar = None
             self._batch_generated_provider_name = provider_name
             self._set_batch_preview(self._format_batch_card_preview(item, card))
-            self._batch_status_var.set(f"Provided-example card ready to review: {card.word_or_phrase}")
+            if preserve_vocab_source:
+                item["resolved_mode"] = "Vocabulary"
+                self._batch_status_var.set(f"Vocabulary card ready with preserved source example: {card.word_or_phrase}")
+                autosave_label = "generated vocabulary with source example"
+            else:
+                self._batch_status_var.set(f"Provided-example card ready to review: {card.word_or_phrase}")
+                autosave_label = "generated provided example"
             self._status_var.set(self._batch_status_var.get())
             self._update_batch_progress()
-            self._autosave_batch_session(f"generated provided example: {card.word_or_phrase}")
+            self._autosave_batch_session(f"{autosave_label}: {card.word_or_phrase}")
             return
 
         if resolved_mode == "Grammar":
@@ -6093,9 +6801,9 @@ class ModernVocabularyGui:
                     self._update_batch_progress()
                     self._autosave_batch_session(f"grammar generation error: {word}")
                 if self._is_provider_rate_limit_detail(detail) or self._is_fatal_long_generation_detail(detail):
-                    LOGGER.warning("Batch grammar provider error for item=%s detail=%s", word, detail)
+                    LOGGER.warning("Queue grammar provider error for item=%s detail=%s", word, detail)
                 else:
-                    LOGGER.exception("Batch grammar generation failed for item=%s", word)
+                    LOGGER.exception("Queue grammar generation failed for item=%s", word)
                 return
             grammar_card, focus_warnings = self._grammar_card_with_source_focus_guard(item, grammar_card)
             if focus_warnings:
@@ -6153,9 +6861,9 @@ class ModernVocabularyGui:
                 self._update_batch_progress()
                 self._autosave_batch_session(f"generation error: {word}")
             if self._is_provider_rate_limit_detail(detail) or self._is_fatal_long_generation_detail(detail):
-                LOGGER.warning("Batch provider error for word=%s detail=%s", word, detail)
+                LOGGER.warning("Queue provider error for word=%s detail=%s", word, detail)
             else:
-                LOGGER.exception("Batch generation failed for word=%s", word)
+                LOGGER.exception("Queue generation failed for word=%s", word)
             return
         if not card.is_valid:
             item["status"] = "invalid"
@@ -6319,7 +7027,7 @@ class ModernVocabularyGui:
             item=word,
             card_type=str(self._batch_items[self._batch_index].get("mode") or "batch_item"),
             source="batch_queue",
-            detail="User skipped Batch item after review.",
+            detail="User skipped Queue item after review.",
         )
         self._update_batch_progress()
         self._root.after(250, self._advance_batch_after_action)
@@ -6329,7 +7037,7 @@ class ModernVocabularyGui:
             self._batch_index += 1
             self._show_current_batch_item(generate=False)
         else:
-            self._batch_status_var.set("Batch finished. Review progress or save the session.")
+            self._batch_status_var.set("Queue finished. Review progress or save the session.")
             self._status_var.set(self._batch_status_var.get())
 
     def _batch_previous(self) -> None:
@@ -6338,7 +7046,7 @@ class ModernVocabularyGui:
             self._show_current_batch_item(generate=False)
 
     def _batch_issue_indexes(self) -> list[int]:
-        """Return indexes that need user attention in the current Batch queue."""
+        """Return indexes that need user attention in the current Queue queue."""
         issue_statuses = {
             "blocked_quality_warning",
             "invalid",
@@ -6364,9 +7072,9 @@ class ModernVocabularyGui:
         return indexes
 
     def _go_to_batch_index(self, index: int, *, reason: str = "") -> None:
-        """Safely navigate to a Batch item and show it in the preview."""
+        """Safely navigate to a Queue item and show it in the preview."""
         if not self._batch_items:
-            self._batch_status_var.set("No batch loaded.")
+            self._batch_status_var.set("No queue loaded.")
             return
         self._batch_index = max(0, min(index, len(self._batch_items) - 1))
         self._show_current_batch_item(generate=False)
@@ -6375,10 +7083,10 @@ class ModernVocabularyGui:
             self._status_var.set(reason)
 
     def _go_to_first_blocked_batch_item(self) -> None:
-        """Jump to the first blocked/invalid Batch item."""
+        """Jump to the first blocked/invalid Queue item."""
         indexes = self._batch_issue_indexes()
         if not indexes:
-            message = "No blocked, failed, invalid, rate-limited, or uncertain duplicate cards in this Batch."
+            message = "No blocked, failed, invalid, rate-limited, or uncertain duplicate cards in this Queue."
             self._batch_status_var.set(message)
             self._status_var.set(message)
             return
@@ -6386,10 +7094,10 @@ class ModernVocabularyGui:
         self._go_to_batch_index(index, reason=f"Showing issue {index + 1}/{len(self._batch_items)}. Use Edit card or Regenerate, then Add all ready again.")
 
     def _go_to_next_batch_issue(self) -> None:
-        """Jump to the next blocked/failed/invalid Batch item after the current one."""
+        """Jump to the next blocked/failed/invalid Queue item after the current one."""
         indexes = self._batch_issue_indexes()
         if not indexes:
-            message = "No blocked, failed, invalid, rate-limited, or uncertain duplicate cards in this Batch."
+            message = "No blocked, failed, invalid, rate-limited, or uncertain duplicate cards in this Queue."
             self._batch_status_var.set(message)
             self._status_var.set(message)
             return
@@ -6398,7 +7106,7 @@ class ModernVocabularyGui:
         self._go_to_batch_index(index, reason=f"Showing issue {index + 1}/{len(self._batch_items)}. Use Edit card or Regenerate, then Add all ready again.")
 
     def _show_batch_issue_summary(self) -> None:
-        """Show a concise issue summary for the current Batch.
+        """Show a concise issue summary for the current Queue.
 
         The progress line counts both real problems and safe duplicates that
         were skipped before provider calls. The old popup only listed blocking
@@ -6421,10 +7129,10 @@ class ModernVocabularyGui:
         }, limit=25)
 
         if not problem_details and not duplicate_details:
-            message = "No blocked, failed, invalid, rate-limited, or duplicate cards in this Batch."
+            message = "No blocked, failed, invalid, rate-limited, or duplicate cards in this Queue."
             self._batch_status_var.set(message)
             self._status_var.set(message)
-            messagebox.showinfo("Batch summary", message)
+            messagebox.showinfo("Queue summary", message)
             return
 
         sections: list[str] = []
@@ -6447,12 +7155,12 @@ class ModernVocabularyGui:
             )
 
         message = "\n\n".join(sections)
-        self._batch_status_var.set("Batch summary shown.")
+        self._batch_status_var.set("Queue summary shown.")
         self._status_var.set(self._batch_status_var.get())
-        messagebox.showinfo("Batch summary", message)
+        messagebox.showinfo("Queue summary", message)
 
     def _remove_current_batch_item(self) -> None:
-        """Remove only the current Batch row without rebuilding expensive views."""
+        """Remove only the current Queue row without rebuilding expensive views."""
         if not self._batch_items:
             return
         index = max(0, min(self._batch_index, len(self._batch_items) - 1))
@@ -6468,16 +7176,16 @@ class ModernVocabularyGui:
 
         if self._batch_items:
             self._show_current_batch_item(generate=False)
-            message = f"Removed from Batch: {removed_word}."
+            message = f"Removed from Queue: {removed_word}."
         else:
             self._show_current_batch_item(generate=False)
-            self._set_batch_preview("Batch is empty. Load or send candidates to start again.")
-            message = f"Removed from Batch: {removed_word}. Batch is now empty."
+            self._set_batch_preview("Queue is empty. Load or send candidates to start again.")
+            message = f"Removed from Queue: {removed_word}. Queue is now empty."
 
         self._batch_status_var.set(message)
         self._status_var.set(message)
-        self._record_activity(f"Batch item removed: {removed_word}")
-        self._schedule_batch_autosave("batch item removed")
+        self._record_activity(f"Queue item removed: {removed_word}")
+        self._schedule_batch_autosave("queue item removed")
 
     def _batch_next(self) -> None:
         if self._batch_items and self._batch_index < len(self._batch_items) - 1:
@@ -6508,12 +7216,12 @@ class ModernVocabularyGui:
             pass
         self._batch_source_summary_var.set("No source loaded yet.")
         self._update_batch_mode_help()
-        self._cleanup_runtime_memory("clear batch", aggressive=False)
-        self._record_activity("Batch cleared")
+        self._cleanup_runtime_memory("clear queue", aggressive=False)
+        self._record_activity("Queue cleared")
 
 
     def _batch_session_data(self) -> dict[str, object]:
-        """Return the current Batch session payload."""
+        """Return the current Queue session payload."""
         return {
             "items": self._batch_items,
             "index": self._batch_index,
@@ -6528,7 +7236,7 @@ class ModernVocabularyGui:
         }
 
     def _ensure_batch_autosave_path(self) -> Path:
-        """Create and return the autosave path for the current Batch session."""
+        """Create and return the autosave path for the current Queue session."""
         if self._batch_autosave_path is None:
             autosave_dir = Path("batch_autosaves")
             autosave_dir.mkdir(exist_ok=True)
@@ -6559,7 +7267,7 @@ class ModernVocabularyGui:
             self._autosave_batch_session(reason)
 
     def _autosave_batch_session(self, reason: str) -> None:
-        """Save the current Batch session automatically."""
+        """Save the current Queue session automatically."""
         if not self._batch_items:
             return
         path = self._ensure_batch_autosave_path()
@@ -6568,14 +7276,14 @@ class ModernVocabularyGui:
                 json.dumps(self._batch_session_data(), ensure_ascii=False, indent=2),
                 encoding="utf-8",
             )
-            LOGGER.info("Batch autosaved: reason=%s path=%s", reason, path)
+            LOGGER.info("Queue autosaved: reason=%s path=%s", reason, path)
         except Exception as exc:
-            LOGGER.exception("Batch autosave failed: reason=%s", reason)
+            LOGGER.exception("Queue autosave failed: reason=%s", reason)
             self._record_activity(f"Autosave failed: {exc}")
             return
 
     def _card_from_batch_payload(self, payload: object) -> VocabularyCard | None:
-        """Rebuild a vocabulary card stored inside a Batch item."""
+        """Rebuild a vocabulary card stored inside a Queue item."""
         if not isinstance(payload, dict):
             return None
         try:
@@ -6585,7 +7293,7 @@ class ModernVocabularyGui:
 
     @staticmethod
     def _card_to_batch_payload(card: VocabularyCard) -> dict[str, object]:
-        """Serialize a generated card into the Batch session."""
+        """Serialize a generated card into the Queue session."""
         return {
             "word_or_phrase": card.word_or_phrase,
             "target_language": card.target_language,
@@ -6614,7 +7322,7 @@ class ModernVocabularyGui:
         }
 
     def _grammar_from_batch_payload(self, payload: object) -> GrammarAnalysis | None:
-        """Rebuild a grammar card stored inside a Batch item."""
+        """Rebuild a grammar card stored inside a Queue item."""
         if not isinstance(payload, dict):
             return None
         try:
@@ -6624,7 +7332,7 @@ class ModernVocabularyGui:
 
     @staticmethod
     def _grammar_to_batch_payload(card: GrammarAnalysis) -> dict[str, object]:
-        """Serialize a generated grammar card into the Batch session."""
+        """Serialize a generated grammar card into the Queue session."""
         return card.model_dump()
 
     @staticmethod
@@ -6654,9 +7362,9 @@ class ModernVocabularyGui:
 
     @classmethod
     def _split_batch_grammar_item(cls, value: str) -> tuple[str, str]:
-        """Return (grammar_target, sentence_to_read) from a Batch grammar row.
+        """Return (grammar_target, sentence_to_read) from a Queue grammar row.
 
-        Batch grammar rows may be either:
+        Queue grammar rows may be either:
         - "target | sentence" from Import Material, or
         - a plain sentence, or
         - a plain grammar pattern.
@@ -6856,7 +7564,7 @@ class ModernVocabularyGui:
     def _quality_expected_input_for_item(self, item: dict[str, object], card: VocabularyCard) -> str:
         """Return the expected lexical item for quality validation.
 
-        In Provided examples mode, the raw Batch row may be
+        In Provided examples mode, the raw Queue row may be
         ``target | sentence``. The quality validator must check only the
         target item, otherwise valid cards get a false HARD warning like
         ``expected 'microorganisms | ...', got 'microorganisms'``.
@@ -6875,7 +7583,7 @@ class ModernVocabularyGui:
         return raw_word or card.word_or_phrase
 
     def _sync_quality_warnings_for_item(self, item: dict[str, object], card: VocabularyCard) -> list[str]:
-        """Recompute and store the active quality warnings for a Batch card.
+        """Recompute and store the active quality warnings for a Queue card.
 
         This is the single source of truth used by preview, Approve warning,
         Add this card, and Add all ready. It also rewrites the stored card
@@ -6921,7 +7629,7 @@ class ModernVocabularyGui:
         return warnings
 
     def _batch_tags_for_item(self, item: dict[str, object] | None = None) -> list[str]:
-        """Return topic + card-type tags for one Batch item."""
+        """Return topic + card-type tags for one Queue item."""
         tags = self._topic_tags_for_batch_item(item)
         mode = str((item or {}).get("resolved_mode") or (item or {}).get("batch_mode") or "").strip()
         if mode == "Grammar":
@@ -6934,7 +7642,7 @@ class ModernVocabularyGui:
 
     @staticmethod
     def _looks_like_grammar_item(value: str) -> bool:
-        """Conservative heuristic for Mixed Batch mode.
+        """Conservative heuristic for Mixed Queue mode.
 
         It detects common grammar/writing structures without pretending to be a
         full classifier. Ambiguous items stay vocabulary to avoid surprising the
@@ -6953,7 +7661,7 @@ class ModernVocabularyGui:
         return any(marker in text for marker in grammar_markers)
 
     def _batch_mode_for_item(self, item: dict[str, object] | None = None, word: str = "") -> str:
-        """Return the effective Batch mode for an item."""
+        """Return the effective Queue mode for an item."""
         selected = str((item or {}).get("batch_mode") or self._batch_mode_var.get() or "Vocabulary").strip()
         if selected not in BATCH_MODES:
             selected = "Vocabulary"
@@ -7045,7 +7753,7 @@ class ModernVocabularyGui:
         *,
         reason: str = "before generation",
     ) -> bool:
-        """Mark one pending Batch item as duplicate before a provider call.
+        """Mark one pending Queue item as duplicate before a provider call.
 
         Returns True when the item was marked and should not be generated.
         Returns False when no duplicate was found.
@@ -7151,7 +7859,7 @@ class ModernVocabularyGui:
         return warnings
 
     def _block_hard_quality_warnings_for_batch_indexes(self, indexes: list[int]) -> int:
-        """Mark ready Batch cards with hard warnings as blocked before Anki writes."""
+        """Mark ready Queue cards with hard warnings as blocked before Anki writes."""
         blocked = 0
         for index in indexes:
             item = self._batch_items[index]
@@ -7278,7 +7986,7 @@ class ModernVocabularyGui:
         )
 
     def _auto_generate_pending_batch_cards(self) -> None:
-        """Generate pending Batch cards one by one using Tk after()."""
+        """Generate pending Queue cards one by one using Tk after()."""
         if self._batch_auto_generate_running:
             self._batch_status_var.set("Auto-generation is already running.")
             return
@@ -7287,7 +7995,7 @@ class ModernVocabularyGui:
             return
 
         resume = self._batch_auto_generate_paused
-        # Always precheck remaining pending items before Auto Batch calls a provider.
+        # Always precheck remaining pending items before Auto Queue calls a provider.
         # This also covers paused/resumed sessions and old autosaves created before
         # duplicate precheck metadata existed.
         precheck_result = self._mark_pending_duplicates_before_auto_generation()
@@ -7309,7 +8017,7 @@ class ModernVocabularyGui:
         self._root.after(50, self._auto_generate_next_pending_batch_card)
 
     def _auto_generate_next_pending_batch_card(self) -> None:
-        """Generate the next pending Batch card and schedule the following one."""
+        """Generate the next pending Queue card and schedule the following one."""
         if self._batch_auto_generate_stop_requested:
             self._batch_auto_generate_running = False
             self._batch_auto_generate_stop_requested = False
@@ -7379,12 +8087,12 @@ class ModernVocabularyGui:
             return
         if current_status == "error":
             # A failed item must not be retried immediately. It remains for manual review.
-            LOGGER.info("Skipping failed batch item after one attempt: %s", word)
+            LOGGER.info("Skipping failed queue item after one attempt: %s", word)
 
         self._root.after(1600, self._auto_generate_next_pending_batch_card)
 
     def _pause_batch_process(self) -> None:
-        """Pause the currently running Batch operation without clearing results."""
+        """Pause the currently running Queue operation without clearing results."""
         if self._batch_auto_generate_running:
             self._batch_auto_generate_paused = True
             self._batch_auto_generate_running = False
@@ -7396,13 +8104,13 @@ class ModernVocabularyGui:
             self._autosave_batch_session("add all ready paused")
             message = f"Add all ready paused. Progress saved: {self._batch_autosave_path}"
         else:
-            message = "No Batch process is currently running."
+            message = "No Queue process is currently running."
         self._batch_status_var.set(message)
         self._status_var.set(message)
         self._record_activity(message)
 
     def _stop_batch_process(self) -> None:
-        """Stop the current Batch operation while preserving generated results."""
+        """Stop the current Queue operation while preserving generated results."""
         if self._batch_auto_generate_running or self._batch_auto_generate_paused:
             self._batch_auto_generate_stop_requested = True
             self._batch_auto_generate_paused = False
@@ -7416,13 +8124,13 @@ class ModernVocabularyGui:
             self._autosave_batch_session("add all ready stopped")
             message = self._format_add_all_summary("Add all ready stopped")
         else:
-            message = "No Batch process is currently running."
+            message = "No Queue process is currently running."
         self._batch_status_var.set(message)
         self._status_var.set(message)
         self._record_activity(message)
 
     def _retry_failed_or_rate_limited_batch_cards(self) -> None:
-        """Retry failed/rate-limited Batch items with the currently selected provider."""
+        """Retry failed/rate-limited Queue items with the currently selected provider."""
         if not self._batch_items:
             messagebox.showerror("No list", "Load a vocabulary list first.")
             return
@@ -7497,7 +8205,7 @@ class ModernVocabularyGui:
         indexes: list[int],
         existing_map: dict[str, dict[str, object]],
     ) -> tuple[str, dict[str, int]]:
-        """Build duplicate precheck text and counts for ready Batch items."""
+        """Build duplicate precheck text and counts for ready Queue items."""
         counts = {"new": 0, "safe_duplicates": 0, "uncertain_duplicates": 0}
         examples: list[str] = []
         for index in indexes:
@@ -7594,7 +8302,7 @@ class ModernVocabularyGui:
         rate_limited = counts.get("rate_limited", 0)
         remaining = counts.get("pending", 0) + counts.get("ready", 0) + rate_limited
         message = (
-            f"{label}. Batch summary: {total} total · {added} added · {updated} updated · "
+            f"{label}. Queue summary: {total} total · {added} added · {updated} updated · "
             f"{duplicates} duplicates skipped/reviewed · {invalid} invalid/blocked · "
             f"{failed} failed · {rate_limited} rate limited · {remaining} remaining. "
             f"Add step: {step['added']} added, {step['updated']} updated, "
@@ -7617,7 +8325,7 @@ class ModernVocabularyGui:
         return self._clean_batch_visible_message(message, max_chars=520)
 
     def _mark_pending_duplicates_before_auto_generation(self) -> int:
-        """Mark pending Batch items that already exist in Anki before any API call.
+        """Mark pending Queue items that already exist in Anki before any API call.
 
         Returns:
             Number of duplicate pending items marked. Returns -1 if duplicate
@@ -7636,9 +8344,9 @@ class ModernVocabularyGui:
             self._set_selected_deck()
             existing_map = self._anki_client.existing_note_map_broad(include_all_decks=True)
         except Exception as exc:
-            LOGGER.exception("Duplicate precheck before Auto Batch failed")
+            LOGGER.exception("Duplicate precheck before Auto Queue failed")
             message = (
-                "Auto Batch cancelled before API calls: duplicate precheck failed. "
+                "Auto Queue cancelled before API calls: duplicate precheck failed. "
                 "Open Anki/AnkiConnect or use Generate selected manually. "
                 + self._friendly_anki_error_message(exc)
             )
@@ -7663,7 +8371,7 @@ class ModernVocabularyGui:
         return marked
 
     def _start_add_all_ready_batch_cards(self) -> None:
-        """Start safe step-by-step adding of all ready Batch cards."""
+        """Start safe step-by-step adding of all ready Queue cards."""
         if self._batch_add_all_running:
             self._batch_status_var.set("Add all ready is already running.")
             return
@@ -7770,7 +8478,7 @@ class ModernVocabularyGui:
         self._root.after(50, self._add_next_ready_batch_card)
 
     def _add_next_ready_batch_card(self) -> None:
-        """Add one ready Batch card, then schedule the next one."""
+        """Add one ready Queue card, then schedule the next one."""
         if self._batch_add_all_stop_requested:
             self._batch_add_all_running = False
             self._batch_add_all_stop_requested = False
@@ -7789,7 +8497,7 @@ class ModernVocabularyGui:
             self._batch_add_all_running = False
             self._update_batch_progress()
             self._show_current_batch_item(generate=False)
-            self._batch_word_var.set("Batch completed")
+            self._batch_word_var.set("Queue completed")
             self._autosave_batch_session("add all ready finished")
             message = self._format_add_all_summary("Add all ready finished")
             self._batch_status_var.set(message)
@@ -7956,10 +8664,10 @@ class ModernVocabularyGui:
 
     def _save_batch_session(self) -> None:
         if not self._batch_items:
-            messagebox.showwarning("No session", "There is no batch session to save.")
+            messagebox.showwarning("No session", "There is no queue session to save.")
             return
         filename = filedialog.asksaveasfilename(
-            title="Save batch session",
+            title="Save queue session",
             defaultextension=".json",
             filetypes=[("JSON files", "*.json")],
         )
@@ -7974,12 +8682,12 @@ class ModernVocabularyGui:
             messagebox.showerror("Save error", str(exc))
             return
         self._batch_autosave_path = Path(filename)
-        self._record_activity("Batch session saved")
-        self._batch_status_var.set(f"Batch session saved: {filename}")
+        self._record_activity("Queue session saved")
+        self._batch_status_var.set(f"Queue session saved: {filename}")
 
     def _resume_batch_session(self) -> None:
         filename = filedialog.askopenfilename(
-            title="Resume batch session",
+            title="Resume queue session",
             filetypes=[("JSON files", "*.json")],
         )
         if not filename:
@@ -8004,8 +8712,8 @@ class ModernVocabularyGui:
             messagebox.showerror("Resume error", str(exc))
             return
         self._show_current_batch_item(generate=False)
-        self._record_activity("Batch session resumed")
-        self._batch_status_var.set("Batch session resumed.")
+        self._record_activity("Queue session resumed")
+        self._batch_status_var.set("Queue session resumed.")
 
     def _practice_query(self) -> str:
         deck = self._deck_var.get().strip().replace('"', '\"')
@@ -8392,7 +9100,7 @@ class ModernVocabularyGui:
         if self._existing_cards:
             self._preview_existing_card(0)
         else:
-            self._set_existing_preview("No matching cards found. Try a broader tag/query or use Speech / Audio for missing-audio search.")
+            self._set_existing_preview("No matching cards found. Try a broader tag/query or use Speech & Audio for missing-audio search.")
 
     def _set_existing_selection(self, selected: bool) -> None:
         for var in self._existing_card_vars:
@@ -9174,7 +9882,7 @@ class ModernVocabularyGui:
         """Return a safe plain-text preview from Anki field values.
 
         Anki fields often contain HTML snippets, line breaks, and [sound:...] tags.
-        The Fix Cards and Speech / Audio views use this helper only for preview
+        The Fix Cards and Speech & Audio views use this helper only for preview
         and source-text extraction, so it must be conservative and never raise.
         """
         if value is None:
@@ -9306,7 +10014,7 @@ class ModernVocabularyGui:
         if not self._conversation_deck_var.get().strip():
             self._conversation_deck_var.set(self._deck_var.get() or self._anki_client.deck_name)
         self._status_var.set(
-            "Decks loaded. Select a target deck for cards, audio, or Conversation Practice."
+            "Decks loaded. Select a target deck for cards, audio, or Conversation."
         )
 
     def _set_selected_deck(self) -> str:
@@ -9317,21 +10025,21 @@ class ModernVocabularyGui:
         return deck_name
 
     def _set_speech_selected_deck(self) -> str:
-        """Select the deck used by Speech / Audio without relying on the hidden top bar."""
+        """Select the deck used by Speech & Audio without relying on the hidden top bar."""
         deck_name = self._speech_deck_var.get().strip() or self._deck_var.get().strip()
         if not deck_name:
-            raise ValueError("Select or type an Anki deck to scan in Speech / Audio.")
+            raise ValueError("Select or type an Anki deck to scan in Speech & Audio.")
         self._anki_client.set_deck(deck_name)
         return deck_name
 
     def _current_speech_language(self) -> str:
-        """Language fallback for Speech / Audio when a note has no language field."""
+        """Language fallback for Speech & Audio when a note has no language field."""
         return self._speech_language_var.get().strip() or self._language_var.get().strip()
 
     def _current_tts_default_language(self) -> str:
         """Choose the language for TTS presets/previews in the active workflow."""
         try:
-            if getattr(self, "_tabs", None) is not None and self._tabs.get() == "Speech / Audio":
+            if getattr(self, "_tabs", None) is not None and self._tabs.get() == "Speech & Audio":
                 return self._current_speech_language()
         except Exception:
             pass
@@ -9380,7 +10088,7 @@ class ModernVocabularyGui:
 
     @staticmethod
     def _format_card_preview(card: VocabularyCard, audio_status: object | None = None) -> str:
-        """Return a readable pseudo-card preview for single and Batch workflows."""
+        """Return a readable pseudo-card preview for single and Queue workflows."""
         synonyms = ", ".join(card.synonyms) if card.synonyms else "—"
         collocations = "\n".join(f"  • {item}" for item in card.collocations) if card.collocations else "—"
         audio_line = str(audio_status or card.audio or "not generated")
@@ -9535,7 +10243,17 @@ class ModernVocabularyGui:
         self._tts_provider_var.set(provider_name)
         self._sync_tts_defaults()
 
+    def _sync_speech_preview_text(self) -> None:
+        """Update Voice Lab sample when its text is still the previous automatic sample."""
+        language = self._current_speech_language()
+        new_sample = TTS_SAMPLE_TEXTS.get(language, TTS_SAMPLE_TEXTS["English"])
+        current = self._speech_preview_text_var.get().strip()
+        if not current or current == self._speech_preview_last_auto_text:
+            self._speech_preview_text_var.set(new_sample)
+            self._speech_preview_last_auto_text = new_sample
+
     def _sync_tts_defaults(self) -> None:
+        self._sync_speech_preview_text()
         if not self._speech_service or not self._tts_provider_var.get():
             self._tts_model_var.set("")
             self._tts_voice_var.set("")
@@ -9573,7 +10291,7 @@ class ModernVocabularyGui:
             return selected
 
     def _test_tts_provider(self, *, preflight: bool = False) -> bool:
-        """Run a tiny shared TTS diagnostic before preview/batch work."""
+        """Run a tiny shared TTS diagnostic before preview/queue work."""
         if not self._speech_service or not self._tts_provider_var.get():
             message = "Audio provider diagnostics failed: no audio provider is configured."
             self._speech_progress_var.set(message)
@@ -9703,13 +10421,10 @@ class ModernVocabularyGui:
             messagebox.showerror("Audio provider unavailable", "Configure at least one audio provider.")
             return
 
-        sample_by_language = {
-            "English": "This is a short pronunciation sample.",
-            "Spanish": "Esta es una pequeña muestra de pronunciación.",
-            "Polish": "To jest krótka próbka wymowy.",
-        }
         language = self._current_tts_default_language()
-        sample_text = self._speech_preview_text_var.get().strip() or sample_by_language.get(language, "This is a short pronunciation sample.")
+        sample_text = self._speech_preview_text_var.get().strip() or TTS_SAMPLE_TEXTS.get(
+            language, TTS_SAMPLE_TEXTS["English"]
+        )
         provider_name = self._tts_provider_var.get()
         model_name = self._tts_model_var.get()
         voice_label = self._tts_voice_var.get()
@@ -9751,7 +10466,7 @@ class ModernVocabularyGui:
         self._play_audio_in_app(result.path, context=f"Voice preview · {voice_label}")
 
     def _set_audio_batch_controls_state(self, running: bool) -> None:
-        """Enable Pause/Stop only while a long audio batch is running."""
+        """Enable Pause/Stop only while a long audio queue is running."""
         for name, state in (
             ("_pause_audio_button", "normal" if running else "disabled"),
             ("_stop_audio_button", "normal" if running else "disabled"),
@@ -9813,7 +10528,7 @@ class ModernVocabularyGui:
         return "[sound:" in str(fields.get(field_name, "")).casefold()
 
     def _speech_note_readiness(self, note: dict[str, object]) -> tuple[bool, str, str, str, str]:
-        """Return readiness tuple for UI and batch selection.
+        """Return readiness tuple for UI and queue selection.
 
         Returns:
             can_generate, status, detail, source_text, target_field
@@ -9887,7 +10602,7 @@ class ModernVocabularyGui:
         """Load missing/malformed audio from all supported note types in the deck."""
         try:
             self._set_speech_selected_deck()
-            # Make sure grammar note types created by Batch Grammar expose Audio/ExampleAudio
+            # Make sure grammar note types created by Queue Grammar expose Audio/ExampleAudio
             # before the broad missing-audio scan runs. This is idempotent.
             try:
                 self._anki_client.ensure_grammar_model_exists()
@@ -10030,7 +10745,7 @@ class ModernVocabularyGui:
 
     def _pause_existing_audio_batch(self) -> None:
         if not self._speech_audio_running:
-            self._speech_progress_var.set("No audio batch is currently running.")
+            self._speech_progress_var.set("No audio queue is currently running.")
             return
         self._speech_audio_pause_requested.set()
         self._autosave_audio_progress("audio paused")
@@ -10040,7 +10755,7 @@ class ModernVocabularyGui:
 
     def _stop_existing_audio_batch(self) -> None:
         if not self._speech_audio_running:
-            self._speech_progress_var.set("No audio batch is currently running.")
+            self._speech_progress_var.set("No audio queue is currently running.")
             return
         self._speech_audio_stop_requested.set()
         self._speech_audio_pause_requested.clear()
@@ -10094,7 +10809,7 @@ class ModernVocabularyGui:
         voice_label = self._tts_voice_var.get()
         voice_value = self._selected_tts_voice()
         if not self._test_tts_provider(preflight=True):
-            message = "Audio batch not started because audio provider diagnostics failed. Fix the provider/key/voice or switch provider."
+            message = "Audio queue not started because audio provider diagnostics failed. Fix the provider/key/voice or switch provider."
             self._speech_progress_var.set(message)
             self._record_activity(message)
             return
@@ -10185,8 +10900,8 @@ class ModernVocabularyGui:
         errors = 0
 
         def publish_progress(message: str) -> None:
-            # Keep rapid audio progress inside Speech / Audio. The global activity
-            # footer is reserved for final summaries so Batch and Audio logs do not
+            # Keep rapid audio progress inside Speech & Audio. The global activity
+            # footer is reserved for final summaries so Queue and Audio logs do not
             # blur into one unreadable line.
             self._root.after(0, self._render_speech_notes, message)
 
@@ -10200,7 +10915,7 @@ class ModernVocabularyGui:
                 if self._speech_audio_stop_requested.is_set():
                     stopped = True
                     failed_index = index
-                    stop_message = "User stopped audio batch."
+                    stop_message = "User stopped audio queue."
                     break
 
                 while self._speech_audio_pause_requested.is_set():
@@ -10219,7 +10934,7 @@ class ModernVocabularyGui:
                     if self._speech_audio_stop_requested.is_set():
                         stopped = True
                         failed_index = index
-                        stop_message = "User stopped audio batch."
+                        stop_message = "User stopped audio queue."
                         break
                     time.sleep(0.25)
                 if stopped:
@@ -10335,7 +11050,7 @@ class ModernVocabularyGui:
                     if self._is_fatal_tts_error(exc):
                         stopped = True
                         LOGGER.warning(
-                            "Stopping existing-card TTS batch after fatal provider error: provider=%s model=%s voice_label=%s voice_value=%s status=%s failed_index=%s note_id=%s",
+                            "Stopping existing-card TTS queue after fatal provider error: provider=%s model=%s voice_label=%s voice_value=%s status=%s failed_index=%s note_id=%s",
                             provider_name,
                             model_name,
                             voice_label,
@@ -10351,7 +11066,7 @@ class ModernVocabularyGui:
                 )
 
             self._autosave_audio_progress(
-                "audio batch finished" if not stopped else "audio batch stopped",
+                "audio queue finished" if not stopped else "audio queue stopped",
                 provider_name,
                 model_name,
                 voice_label,
@@ -10359,7 +11074,7 @@ class ModernVocabularyGui:
             )
 
             if stopped:
-                if stop_message == "User stopped audio batch.":
+                if stop_message == "User stopped audio queue.":
                     final_message = (
                         f"Audio stopped by user at item {failed_index}. Progress saved. "
                         f"Summary: {completed} updated, {errors} failed, {skipped_done} skipped."
@@ -10484,7 +11199,7 @@ class ModernVocabularyGui:
 
 
     def _conversation_ai_client(self) -> VocabularyAiClient:
-        """Return the AI client selected for Conversation Practice."""
+        """Return the AI client selected for Conversation."""
         provider_name = self._conversation_provider_var.get() or self._provider_var.get()
         try:
             return self._ai_clients[provider_name]
@@ -10492,7 +11207,7 @@ class ModernVocabularyGui:
             raise ValueError(f"Conversation provider is not configured: {provider_name}") from exc
 
     def _start_conversation_recording(self) -> None:
-        """Start microphone recording for Conversation Practice."""
+        """Start microphone recording for Conversation."""
         self._stop_conversation_audio(silent=True)
         if not self._stt_service:
             messagebox.showerror(
@@ -10533,7 +11248,11 @@ class ModernVocabularyGui:
     def _build_conversation_stt_prompt(self) -> str:
         """Build a short dynamic Whisper prompt from the active conversation context."""
         language = self._conversation_language_var.get().strip()
-        topic = self._topic_var.get().strip()
+        topic = (
+            ""
+            if self._conversation_mode_var.get() == CONVERSATION_MODE_FLASHCARDS
+            else self._topic_var.get().strip()
+        )
         vocabulary = dedupe_expressions(
             [
                 *self._conversation_flashcard_targets[:16],
@@ -10647,19 +11366,74 @@ class ModernVocabularyGui:
             subprocess.Popen(["xdg-open", str(folder)])
         self._status_var.set(f"Opened last recording location: {path}")
 
-    def _conversation_audio_configuration(self) -> tuple[str, str, str]:
-        if not self._speech_service or not self._tts_provider_var.get():
-            raise ValueError(
-                "Configure a TTS provider first in Speech / Audio. "
-                "Conversation playback uses the same provider, model and voice."
+    def _on_conversation_language_changed(self) -> None:
+        """Refresh tutor voices when the learner changes the conversation language."""
+        self._sync_conversation_tts_defaults(preserve_voice=False)
+
+    def _sync_conversation_tts_defaults(self, *, preserve_voice: bool = True) -> None:
+        """Populate conversation-specific provider/model/voice selectors."""
+        if not self._speech_service:
+            self._conversation_tts_model_var.set("")
+            self._conversation_tts_voice_var.set("")
+            return
+
+        providers = list(self._speech_service.providers)
+        if hasattr(self, "_conversation_tts_provider_box"):
+            self._conversation_tts_provider_box.configure(
+                values=providers,
+                state="readonly" if providers else "disabled",
             )
-        provider_name = self._tts_provider_var.get()
+        provider_name = self._conversation_tts_provider_var.get().strip()
+        if provider_name not in self._speech_service.providers:
+            provider_name = providers[0] if providers else ""
+            self._conversation_tts_provider_var.set(provider_name)
+        if not provider_name:
+            return
+
+        provider = self._speech_service.providers[provider_name]
+        if hasattr(self, "_conversation_tts_model_box"):
+            self._conversation_tts_model_box.configure(values=provider.models)
+        current_model = self._conversation_tts_model_var.get().strip()
+        if current_model not in provider.models:
+            self._conversation_tts_model_var.set(provider.default_model)
+
+        language = self._conversation_language_var.get().strip()
+        voice_labels = get_voice_labels(provider_name, language)
+        if not voice_labels:
+            voice_labels = get_voice_labels(provider_name)
+        if not voice_labels:
+            voice_labels = list(provider.voices)
+        if hasattr(self, "_conversation_tts_voice_box"):
+            self._conversation_tts_voice_box.configure(
+                values=voice_labels,
+                state="readonly" if voice_labels else "disabled",
+            )
+        current_voice = self._conversation_tts_voice_var.get().strip()
+        if not preserve_voice or current_voice not in voice_labels:
+            self._conversation_tts_voice_var.set(
+                voice_labels[0] if voice_labels else provider.default_voice
+            )
+
+    def _selected_conversation_tts_voice(self) -> str:
+        provider_name = self._conversation_tts_provider_var.get().strip()
+        selected = self._conversation_tts_voice_var.get().strip()
+        try:
+            return get_voice_by_label(provider_name, selected)
+        except ValueError:
+            return selected
+
+    def _conversation_audio_configuration(self) -> tuple[str, str, str]:
+        if not self._speech_service or not self._conversation_tts_provider_var.get().strip():
+            raise ValueError(
+                "Configure tutor audio in Conversation or add a TTS provider in Speech & Audio."
+            )
+        provider_name = self._conversation_tts_provider_var.get().strip()
         try:
             provider = self._speech_service.providers[provider_name]
         except KeyError as exc:
             raise ValueError(f"TTS provider is not configured: {provider_name}") from exc
-        model_name = self._tts_model_var.get().strip() or provider.default_model
-        voice_name = self._selected_tts_voice().strip() or provider.default_voice
+        model_name = self._conversation_tts_model_var.get().strip() or provider.default_model
+        voice_name = self._selected_conversation_tts_voice().strip() or provider.default_voice
         return provider_name, model_name, voice_name
 
     def _play_existing_conversation_audio(self, path: Path, *, label: str) -> None:
@@ -10825,7 +11599,7 @@ class ModernVocabularyGui:
         try:
             save_rotation_state(self._conversation_rotation_state_path, self._conversation_rotation_state)
         except OSError:
-            LOGGER.exception("Could not save Conversation Practice rotation state")
+            LOGGER.exception("Could not save Conversation rotation state")
         self._conversation_pending_rotation_state = None
 
     def _conversation_flashcard_records(
@@ -10863,7 +11637,7 @@ class ModernVocabularyGui:
         else:
             deck_name = self._conversation_deck_var.get().strip()
             if not deck_name:
-                raise ValueError("Select an Anki deck for Conversation Practice.")
+                raise ValueError("Select an Anki deck for Conversation.")
             try:
                 notes = self._anki_client.list_notes_for_conversation(deck_name)
             except Exception as exc:
@@ -10951,7 +11725,7 @@ class ModernVocabularyGui:
         return rows, targets, total
 
     def _refresh_conversation_decks(self) -> None:
-        """Reload Anki deck names for the Conversation Practice selector."""
+        """Reload Anki deck names for the Conversation selector."""
         self._load_decks()
         self._refresh_conversation_flashcard_status()
 
@@ -10972,11 +11746,11 @@ class ModernVocabularyGui:
             )
             if total == 0:
                 self._conversation_flashcard_status_var.set(
-                    "No usable Batch items. Load or create flashcards there first."
+                    "No usable Queue items. Load or create flashcards there first."
                 )
             else:
                 self._conversation_flashcard_status_var.set(
-                    f"{total} usable Batch item(s). Selection: {selection_mode}. "
+                    f"{total} usable Queue item(s). Selection: {selection_mode}. "
                     f"Up to {min(CONVERSATION_FLASHCARD_LIMIT, total)} will be used."
                 )
             return
@@ -11125,7 +11899,7 @@ class ModernVocabularyGui:
             self._conversation_suggestions_title_label.configure(text="AI suggestions")
             self._conversation_suggestions_help_label.configure(
                 text=(
-                    "Checkbox → edit/remove → stage here → send to Batch. "
+                    "Checkbox → edit/remove → stage here → send to Queue. "
                     "No direct Anki write here."
                 )
             )
@@ -11136,19 +11910,31 @@ class ModernVocabularyGui:
             self._conversation_session_text.grid_remove()
 
     def _on_conversation_mode_changed(self, selected: str | None = None) -> None:
-        """Update Conversation controls and side-panel semantics for each mode."""
+        """Show only controls that belong to the selected conversation mode."""
         mode = (selected or self._conversation_mode_var.get()).strip()
         flashcard_mode = mode == CONVERSATION_MODE_FLASHCARDS
-        self._conversation_start_button.configure(
-            text="Start from flashcards" if flashcard_mode else "Start topic"
-        )
-        self._conversation_topic_entry.configure(
-            placeholder_text=(
-                "optional focus, e.g. work, travel, daily life..."
-                if flashcard_mode
-                else "e.g. daily life, travel, an interview, cooking..."
-            )
-        )
+        self._conversation_start_button.configure(text="Start conversation")
+
+        topic_frame = getattr(self, "_conversation_topic_frame", None)
+        flashcard_frame = getattr(self, "_conversation_flashcard_settings_frame", None)
+
+        if flashcard_mode:
+            current_topic = self._topic_var.get().strip()
+            if current_topic:
+                self._conversation_topic_draft = current_topic
+            self._topic_var.set("")
+            if topic_frame is not None:
+                topic_frame.grid_remove()
+            if flashcard_frame is not None:
+                flashcard_frame.grid()
+        else:
+            if flashcard_frame is not None:
+                flashcard_frame.grid_remove()
+            if topic_frame is not None:
+                topic_frame.grid()
+            if not self._topic_var.get().strip() and self._conversation_topic_draft:
+                self._topic_var.set(self._conversation_topic_draft)
+
         self._conversation_source_box.configure(
             state="readonly" if flashcard_mode else "disabled"
         )
@@ -11195,7 +11981,7 @@ class ModernVocabularyGui:
         if not rows:
             if source == CONVERSATION_FLASHCARD_SOURCE_BATCH:
                 raise ValueError(
-                    "No usable flashcards are loaded in Batch. "
+                    "No usable flashcards are loaded in Queue. "
                     "Load a list or create cards there first."
                 )
             deck_name = self._conversation_deck_var.get().strip()
@@ -11208,13 +11994,12 @@ class ModernVocabularyGui:
         self._conversation_flashcard_targets = list(targets)
         self._conversation_practised_targets.clear()
         self._rebuild_conversation_flashcard_context()
-        focus = topic or "natural situations inferred from the flashcards"
         if source == CONVERSATION_FLASHCARD_SOURCE_BATCH:
-            source_label = "Current Batch"
+            source_label = "Current Queue"
         else:
             source_label = f"Anki deck: {self._conversation_deck_var.get().strip()}"
         return (
-            f"{source_label} ({total} usable) · {self._conversation_selection_summary} · focus: {focus}",
+            f"{source_label} ({total} usable) · {self._conversation_selection_summary} · flashcard targets only",
             self._conversation_flashcard_context,
         )
 
@@ -11234,7 +12019,8 @@ class ModernVocabularyGui:
             messagebox.showerror("Conversation", str(exc))
             return
 
-        topic = self._topic_var.get().strip()
+        flashcard_mode = self._conversation_mode_var.get() == CONVERSATION_MODE_FLASHCARDS
+        topic = "" if flashcard_mode else self._topic_var.get().strip()
         provider_name = self._conversation_provider_var.get()
         self._conversation_history.clear()
         self._conversation_question = None
@@ -11337,7 +12123,11 @@ class ModernVocabularyGui:
             ).strip()
         try:
             feedback = self._conversation_ai_client().review_conversation_answer(
-                topic=self._topic_var.get().strip(),
+                topic=(
+                    ""
+                    if self._conversation_mode_var.get() == CONVERSATION_MODE_FLASHCARDS
+                    else self._topic_var.get().strip()
+                ),
                 question=self._conversation_question,
                 answer=answer,
                 target_language=self._conversation_language_var.get(),
@@ -11522,7 +12312,11 @@ class ModernVocabularyGui:
             "Exported": datetime.now().astimezone().isoformat(timespec="seconds"),
             "Language": self._conversation_language_var.get().strip(),
             "Mode": self._conversation_mode_var.get().strip(),
-            "Topic": self._topic_var.get().strip(),
+            "Topic": (
+                ""
+                if self._conversation_mode_var.get() == CONVERSATION_MODE_FLASHCARDS
+                else self._topic_var.get().strip()
+            ),
             "Conversation model": self._conversation_provider_var.get().strip(),
             "Feedback language": self._feedback_language_var.get().strip(),
         }
@@ -11537,7 +12331,7 @@ class ModernVocabularyGui:
         return metadata
 
     def _export_conversation(self) -> None:
-        """Export the visible Conversation Practice session as Markdown or TXT."""
+        """Export the visible Conversation session as Markdown or TXT."""
         if not self._conversation_export_entries:
             messagebox.showinfo("Nothing to export", "Start a conversation before exporting it.")
             return
@@ -11548,7 +12342,7 @@ class ModernVocabularyGui:
             topic=self._topic_var.get(),
         )
         selected = filedialog.asksaveasfilename(
-            title="Export Conversation Practice",
+            title="Export Conversation",
             initialdir=str(export_dir.resolve()),
             initialfile=default_name,
             defaultextension=".md",
@@ -11724,9 +12518,9 @@ class ModernVocabularyGui:
         self._refresh_queue_text()
         total = len(self._flashcard_queue)
         self._conversation_queue_log_var.set(
-            f"Staged {added} new expression(s). Total staged: {total}. Review the list below, then send it to Batch."
+            f"Staged {added} new expression(s). Total staged: {total}. Review the list below, then send it to Queue."
         )
-        self._status_var.set(f"Staged {added} expression(s) for Batch. Nothing added to Anki yet.")
+        self._status_var.set(f"Staged {added} expression(s) for Queue. Nothing added to Anki yet.")
 
     def _refresh_queue_text(self) -> None:
         self._queue_text.configure(state="normal")
@@ -11734,15 +12528,15 @@ class ModernVocabularyGui:
         if self._flashcard_queue:
             lines = [
                 f"STAGED — NOT SENT YET ({len(self._flashcard_queue)} item(s))",
-                "These will go to Batch only after you click Add staged to Batch.",
+                "These will go to Queue only after you click Add staged to Queue.",
                 "",
             ]
             lines.extend(f"{idx}. {item}" for idx, item in enumerate(self._flashcard_queue, start=1))
             self._queue_text.insert("1.0", "\n".join(lines))
         elif self._conversation_last_batch_send:
             lines = [
-                f"LAST SENT TO BATCH / QUEUE ({len(self._conversation_last_batch_send)} item(s))",
-                "Nothing was added directly to Anki. Review/generate/add these in the Batch tab.",
+                f"LAST SENT TO QUEUE ({len(self._conversation_last_batch_send)} item(s))",
+                "Nothing was added directly to Anki. Review/generate/add these in the Queue tab.",
                 "",
             ]
             lines.extend(f"{idx}. {item}" for idx, item in enumerate(self._conversation_last_batch_send, start=1))
@@ -11751,7 +12545,7 @@ class ModernVocabularyGui:
             self._queue_text.insert(
                 "1.0",
                 "No staged expressions yet. Use Stage selected / Stage all above.\n\n"
-                "After staging, this box will show the exact items before they are sent to Batch.",
+                "After staging, this box will show the exact items before they are sent to Queue.",
             )
         self._queue_text.configure(state="disabled")
 
@@ -11766,21 +12560,21 @@ class ModernVocabularyGui:
         self._status_var.set("Conversation staged expressions cleared.")
 
     def _send_conversation_queue_to_batch(self) -> None:
-        """Move staged conversation suggestions into the central Batch flow.
+        """Move staged conversation suggestions into the central Queue flow.
 
-        Conversation Practice should not silently generate cards or write to Anki.
-        It only prepares vocabulary candidates. The Batch tab remains the
+        Conversation should not silently generate cards or write to Anki.
+        It only prepares vocabulary candidates. The Queue tab remains the
         single visible place where cards are generated, reviewed, duplicate-checked,
         and finally added to the selected Anki deck.
         """
         if not self._flashcard_queue:
-            messagebox.showerror("Nothing staged", "Stage at least one expression before sending it to Batch.")
+            messagebox.showerror("Nothing staged", "Stage at least one expression before sending it to Queue.")
             return
 
         deck_name = self._deck_var.get().strip() or self._anki_client.deck_name
         conversation_provider = self._conversation_provider_var.get().strip()
         if conversation_provider in self._ai_clients:
-            # Make the next Batch generation match the provider used in this
+            # Make the next Queue generation match the provider used in this
             # conversation, and make that visible in the top bar.
             self._provider_var.set(conversation_provider)
         provider_name = self._provider_var.get().strip()
@@ -11817,9 +12611,9 @@ class ModernVocabularyGui:
 
         if not new_items:
             self._conversation_queue_log_var.set(
-                f"Nothing new sent. {len(skipped_duplicates)} duplicate staged expression(s) were already in Batch."
+                f"Nothing new sent. {len(skipped_duplicates)} duplicate staged expression(s) were already in Queue."
             )
-            messagebox.showinfo("Batch", "All staged expressions are already in Batch.")
+            messagebox.showinfo("Queue", "All staged expressions are already in Queue.")
             return
 
         append_mode = bool(self._batch_items)
@@ -11833,26 +12627,26 @@ class ModernVocabularyGui:
         self._batch_generated_grammar = None
         self._batch_mode_var.set("Vocabulary")
         self._batch_topic_var.set(topic)
-        self._batch_source_summary_var.set(f"Received {len(new_items)} clean vocabulary item(s) from Conversation Practice.")
+        self._batch_source_summary_var.set(f"Received {len(new_items)} clean vocabulary item(s) from Conversation.")
         self._update_batch_mode_help()
         self._show_current_batch_item(generate=False)
         self._batch_status_var.set(
-            f"Conversation Practice sent {len(new_items)} item(s). Review/generate them here, then add to Anki deck: {deck_name}."
+            f"Conversation sent {len(new_items)} item(s). Review/generate them here, then add to Anki deck: {deck_name}."
         )
-        self._autosave_batch_session("conversation suggestions sent to batch")
+        self._autosave_batch_session("conversation suggestions sent to queue")
 
         sent_preview = ", ".join(item["word"] for item in new_items[:4])
         if len(new_items) > 4:
             sent_preview += f", +{len(new_items) - 4} more"
         duplicate_note = f" Skipped duplicates: {len(skipped_duplicates)}." if skipped_duplicates else ""
         log_message = (
-            f"Sent {len(new_items)} expression(s) to Batch. Nothing added to Anki yet. "
+            f"Sent {len(new_items)} expression(s) to Queue. Nothing added to Anki yet. "
             f"Deck for final Anki add: {deck_name}. Provider: {provider_name}. Items: {sent_preview}.{duplicate_note}"
         )
         self._conversation_queue_log_var.set(log_message)
         self._status_var.set(log_message)
         self._append_chat("QUEUE LOG", log_message)
-        self._record_activity(f"Conversation → Batch: {len(new_items)}")
+        self._record_activity(f"Conversation → Queue: {len(new_items)}")
         self._conversation_last_batch_send = [str(item.get("word", "")).strip() for item in new_items if str(item.get("word", "")).strip()]
         if self._conversation_mode_var.get() == CONVERSATION_MODE_FLASHCARDS:
             sent_keys = {normalize_expression(item) for item in self._conversation_last_batch_send}
@@ -11865,16 +12659,16 @@ class ModernVocabularyGui:
         self._refresh_queue_text()
         self._cleanup_runtime_memory("clear conversation staged queue", aggressive=False)
         try:
-            self._tabs.set("Batch")
+            self._tabs.set("Queue")
         except Exception:
             pass
         messagebox.showinfo(
-            "Sent to Batch",
-            f"Sent {len(new_items)} expression(s) to Batch.\n\n"
+            "Sent to Queue",
+            f"Sent {len(new_items)} expression(s) to Queue.\n\n"
             f"Nothing has been added to Anki yet.\n"
             f"Final Anki deck later: {deck_name}\n"
             f"Card AI provider for generation: {provider_name}\n\n"
-            f"Review them in Batch, then generate/add from there.",
+            f"Review them in Queue, then generate/add from there.",
         )
 
     def _reset_conversation(self) -> None:
@@ -11900,7 +12694,7 @@ class ModernVocabularyGui:
         self._chat_text.configure(state="normal")
         self._chat_text.insert(
             "1.0",
-            "Choose a mode. Start with a topic or use flashcards from an Anki deck or Batch.\n",
+            "Choose a mode. Start with a topic or use flashcards from an Anki deck or Queue.\n",
         )
         self._chat_text.configure(state="disabled")
         self._flashcard_queue.clear()

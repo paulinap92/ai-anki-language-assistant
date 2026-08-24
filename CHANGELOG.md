@@ -1,3 +1,72 @@
+## v12.2.7 - Import size guardrails and scalable candidate review
+
+- Added source-size guardrails to Import Material without reintroducing a fixed candidate-count target. Small sources run normally; large sources are warned before AI analysis; very large/book-sized sources require a selected chapter/section instead of one full-source run.
+- Added `Find from selected text` so users can analyse one chapter/section directly from the Source text panel.
+- Material-size warnings appear immediately after TXT/HTML/PDF/OCR/paste text becomes available and show approximate words, characters and AI analysis parts.
+- Kept full-source chunking for normal/confirmed large sources; nothing is silently truncated and candidate count remains content-driven.
+- Reworked Candidate Review for large result sets with 25-item pagination, search, type filters and `Recommended / Useful / Optional` review priorities. Review priority organizes the list only and never deletes candidates.
+- Added `Select recommended`, `Select visible`, and clearer candidate/type counts so 100+ candidates no longer appear as one unmanageable wall.
+- Added shutdown diagnostics that log the exact Tk close source, Queue position and running background workflows before cleanup, plus unhandled Tk callback tracebacks. This should make the next unexpected app close diagnosable instead of leaving only `Runtime cleanup completed`.
+
+## v12.2.6 - Content-driven Import Material candidate counts
+
+- Removed the fixed Smart Vocabulary `~80` whole-document result target. Candidate count is now determined by the material itself.
+- Removed fixed candidate quotas from Smart Vocabulary, generic Import Material, Smart Grammar and direct multimodal candidate prompts.
+- A sparse source may return only a few useful candidates; a dense glossary or advanced lesson may legitimately return 100+ without being padded or cut to a target number.
+- Whole-source chunk results are merged and deduplicated without a final candidate-count truncation.
+- The Import Material size summary now explicitly says there is no fixed candidate count and that the result depends on the source.
+- Kept only a high per-request runtime runaway guard to protect the desktop UI from malformed/extreme provider responses; this guard is not an extraction target and is not shown to the model.
+
+## v12.2.5 - Whole-source Import Material and typed mixed Queue
+
+- Removed the silent 24,000-character Import Material cutoff. Long source text is now split into bounded AI parts with overlap, analysed completely, merged and deduplicated.
+- Added a visible material-size summary immediately after TXT/HTML/PDF/OCR/paste loading: character count, approximate word count and the number of AI analysis parts.
+- Restored selective Smart Vocabulary behavior across long documents by applying one whole-document result budget after chunk merge; explicit vocabulary/expression sections are preserved first and continuous-prose candidates are kept to the mature ~80-item target.
+- Fixed candidate-type normalization that could collapse Grammar / Provided Example rows when no explicit default mode was supplied.
+- Replaced per-candidate `As word / Use for Grammar / As sentence` actions with a visible `Type` selector so changing a candidate to Grammar is immediately obvious.
+- Import Material now sends Vocabulary, Grammar and Provided Example candidates to Queue with their own per-item type locked. The Queue-wide Input type selector no longer reclassifies imported mixed material.
+- Smart Vocabulary source examples stay Vocabulary items. A valid source usage can still be preserved during generation without changing the card type to Provided Example.
+- Glossary definitions that explain a target without using it (for example a definition of `cronyism`) are kept as source definition/context instead of being treated as Provided Sentences.
+- Queue now shows a mixed-type summary and explains that the Input type selector applies only to clean TXT/CSV loaded directly into Queue.
+
+## v12.2.4 - Restore original Import Material modes and Smart Vocabulary behavior
+
+- Restored the full mature Import Material mode set: `Provided examples`, `Vocabulary`, `Vocabulary + source examples`, `Smart vocabulary`, `Grammar`, `Smart grammar import`, and `Mixed`.
+- Restored the pre-v12.0.8 Smart Vocabulary extraction contract: explicit vocabulary/expression sections are complete, continuous prose mining is selective, and continuous-prose Smart Vocabulary is capped by prompt at 80 candidates rather than encouraged to scan the entire document.
+- Restored the original 24,000-character AI analysis window for Import Material instead of sending up to 60,000 characters in vocabulary modes.
+- Kept later UI, Conversation, audio, Queue and provider fixes from v12.2.3.
+
+# Changelog
+
+## v12.2.3 - Queue naming, conversation flow and readable progress
+
+- Reworked Conversation so the user chooses the practice mode first and only sees controls relevant to that mode.
+- Topic controls now disappear entirely in flashcard mode; flashcard source/deck/selection controls disappear in topic mode.
+- Replaced mode-specific start labels with one clear `Start conversation` action and moved model/coaching controls into a quieter Advanced row.
+- Simplified the public tab names to `Queue`, `Speech & Audio`, `Conversation`, and `Advanced`; removed remaining user-facing `Batch` / slash naming from the main UI.
+- Clarified Queue as the fast path for clean structured input and renamed `mode` wording to `input type`.
+- Replaced the developer-style Queue counter dump with `Prepared X of Y · N waiting`, a progress bar, and only non-zero result counters.
+- Clarified Import Material: TXT/HTML are read locally with no model/API; OCR/provider controls are hidden for plain-text sources, while AI is used only at the later candidate-search step.
+- Renamed text-loading actions from extraction language to `Read material locally`, `Source text`, and `Find candidates with AI`.
+- Preserved v12.2.2 Smart Vocabulary behavior and v12.2.1 conversation topic/voice isolation.
+
+## v12.2.2 - Restore Smart Vocabulary import behavior
+
+- Restored the original `Smart vocabulary` Import Material mode as the recommended/default vocabulary workflow.
+- Smart vocabulary again uses the mature smart contract: scan the whole lesson for lexical targets and preserve exact source examples only when they are genuinely useful.
+- Removed the narrow `Examples / sentences` option from the Import Material dropdown; `Provided examples` remains available for clean prepared input in the Batch/Queue workflow.
+- Kept a separate `Vocabulary` mode for strict lexical extraction, plus Smart Grammar routing and Auto/Mixed classification.
+- Kept the v12.2.1 Conversation topic-isolation and tutor-voice fixes unchanged.
+
+## v12.2.1 - Conversation mode isolation and tutor voice control
+
+- Fix flashcard Conversation Practice leaking a previously entered topic into the start prompt, feedback prompt, STT context and MODE summary.
+- Disable the topic field in flashcard mode and restore the previous draft when switching back to topic mode.
+- Add explicit Conversation Practice tutor audio provider, voice and model selectors.
+- Filter ElevenLabs presets by the selected conversation language so a generic/British voice cannot silently outrank Spanish voices.
+- Make Voice Lab sample text follow the selected audio language while preserving user-edited custom preview text.
+- Keep Conversation TTS playback inside the application.
+
 # v12.2.0 — Local / Hybrid / BYOK user setup
 
 - Added a first-run Setup tab with Fully local, Hybrid / BYOK and API / BYOK profiles.

@@ -1,6 +1,6 @@
 # Import Material workflow
 
-The Import Material tab is for raw or complex source material. It prepares reviewed candidates and sends them to **Batch**; it never writes directly to Anki.
+The Import Material tab is for raw or complex source material. It prepares reviewed candidates and sends them to **Queue**; it never writes directly to Anki.
 
 ## Main workflow
 
@@ -10,7 +10,7 @@ TXT / HTML / PDF / image / pasted material
 → choose what to find
 → AI extraction (recommended) or basic local fallback
 → review/edit/cherry-pick candidates
-→ Send selected to Batch
+→ Send selected to Queue
 → generate/review cards
 → add to Anki
 ```
@@ -52,11 +52,11 @@ This is only an input shortcut. It does not bypass review, candidate cherry-pick
 
 Each candidate card can be marked as:
 
-- `As word/phrase` → Batch mode: Vocabulary
-- `As grammar` → Batch mode: Grammar
-- `As sentence` → Batch mode: Provided examples
+- `As word/phrase` → Queue input type: Vocabulary
+- `As grammar` → Queue input type: Grammar
+- `As sentence` → Queue input type: Provided examples
 
-Then use `Add selected to Batch`.
+Then use `Send selected to Queue`.
 
 ## Manual missing candidates
 
@@ -83,7 +83,7 @@ Load PDF/image
 → Mistral extracts text
 → use free local Look for words/sentences buttons
 → cherry-pick
-→ Add selected to Batch
+→ Send selected to Queue
 ```
 
 Mistral OCR does not automatically generate candidates in the default workflow.
@@ -137,8 +137,8 @@ image/PDF/text
 → extract readable text
 → local search / manual / optional AI candidates
 → candidate preview/cherry-pick
-→ Send to Batch
-→ Batch review
+→ Send to Queue
+→ Queue review
 → Anki
 ```
 

@@ -19,3 +19,16 @@ def test_selected_spanish_elevenlabs_presets_are_available() -> None:
     for label, voice_id in expected.items():
         assert label in labels
         assert get_voice_by_label("ElevenLabs", label) == voice_id
+
+
+def test_spanish_voice_filter_does_not_put_generic_default_before_spanish_voices() -> None:
+    labels = get_voice_labels("ElevenLabs", "Spanish")
+    assert labels
+    assert "ElevenLabs default verified" not in labels
+    assert all(label.startswith(("Spanish", "Colombian", "Mexican", "Canarian", "Chilean")) for label in labels)
+
+
+def test_english_voice_filter_does_not_include_spanish_presets() -> None:
+    labels = get_voice_labels("ElevenLabs", "English")
+    assert labels
+    assert all("Spanish" not in label for label in labels)

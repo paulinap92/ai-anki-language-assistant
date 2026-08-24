@@ -27,24 +27,21 @@ def _prompt(mode: str = "Vocabulary") -> str:
     )
 
 
-def test_vocabulary_prompt_treats_explicit_lists_as_minimum_not_finish_line() -> None:
+def test_vocabulary_prompt_restores_controlled_recall() -> None:
     prompt = _prompt()
 
-    assert "guaranteed minimum, not the end of the task" in prompt
-    assert "scan the ENTIRE remaining document from beginning to end" in prompt
-    assert "discussion questions" in prompt
-    assert "advanced C1/C2 material" in prompt
-    assert "do not artificially shrink a rich lesson" in prompt
+    assert "controlled recall, not runaway word mining" in prompt
+    assert "keep reading-text mining minimal and selective" in prompt
+    assert "Extract useful reusable collocations and expressions" in prompt
+    assert "If the source is mostly continuous prose" in prompt
+    assert "prefer quality over quantity" in prompt
 
 
-def test_vocabulary_prompt_no_longer_requests_minimal_prose_mining() -> None:
+def test_vocabulary_prompt_does_not_request_exhaustive_prose_mining() -> None:
     prompt = _prompt()
 
-    assert "keep reading-text mining minimal" not in prompt
-    assert "Extract a small, selective set" not in prompt
-    assert "For continuous prose without explicit vocabulary lists" not in prompt
-    assert "entrenched beliefs" in prompt
-    assert "selection effect" in prompt
+    assert "scan the ENTIRE remaining document from beginning to end" not in prompt
+    assert "Continue through ALL other content-bearing sections" not in prompt
 
 
 def test_vocabulary_modes_keep_their_existing_type_contracts() -> None:

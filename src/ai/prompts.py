@@ -432,6 +432,8 @@ The card content is authoritative. Do not invent a conflicting meaning.
 Teaching rules:
 - Lead a natural conversation rather than asking for definitions or reading a list.
 - Ask questions that create a realistic opportunity to use 1-3 target items.
+- The FIRST question in a flashcard session must be clearly grounded in 1-2 exact targets from FLASHCARD MATERIAL. Never open with a generic question unrelated to the selected targets.
+- Every next question should normally create an opportunity to use at least one NOT USED YET target until the session has given unused targets a fair chance.
 - Prefer flashcards marked NOT USED YET before recycling cards marked ALREADY USED.
 - Do not base two consecutive questions on the same target unless the learner asks about it or clearly needs clarification.
 - Recycle already-used targets only after giving unused session targets a fair chance.
@@ -465,11 +467,9 @@ def build_conversation_start_prompt(
     """Build the first question for topic or flashcard-based conversation."""
     flashcard_rules = _conversation_flashcard_instructions(flashcard_context)
     if flashcard_context:
-        topic_instruction = (
-            f'Optional conversation focus: "{topic}".'
-            if topic.strip()
-            else "No additional topic focus was provided; infer natural situations from the flashcards."
-        )
+        # Flashcard mode is intentionally isolated from topic mode. A stale topic
+        # value must never steer the tutor away from the selected cards.
+        topic_instruction = "Use the flashcard material as the only conversation focus. Ignore any stale topic value."
     else:
         topic_instruction = f'Conversation topic: "{topic}".'
     return f"""
@@ -549,7 +549,7 @@ TOPIC-MODE VOCABULARY OUTPUT CONTRACT
 
     return f"""
 You are a warm, practical {target_language} conversation teacher.
-Conversation topic/focus: "{topic}"
+{("Conversation focus: flashcard targets only. Ignore any stale topic value." if flashcard_context else f'Conversation topic/focus: "{topic}"')}
 {flashcard_rules}
 {history_block}
 Current tutor question: "{question}"
@@ -703,7 +703,8 @@ TEXT>>>
 Your task:
 - Do NOT generate final Anki cards.
 - Return grammar candidate drafts only.
-- Keep at most {max_candidates} candidates.
+- Candidate count must be driven by the source content, not by a fixed quota. Return every genuinely useful grammar candidate and do not add weak items to reach a number.
+- A short source may yield only a few candidates; a dense grammar lesson may legitimately yield many.
 - Preserve useful source focus exactly: grammar pattern, connector, word form, transformation, or lesson structure.
 - Preserve slash alternatives such as "Actually / Incidentally" as one visible target unless the source clearly separates them.
 - Skip OCR garbage, page numbers, isolated headers, and duplicate items.
@@ -715,6 +716,7 @@ Core field contract:
 - reason = short reason why this candidate was extracted.
 - sentence must never be a grammar definition, textbook rule, exercise instruction, heading, or meta-sentence about the grammar item.
 - source_rule must never be used as the audio sentence.
+- Never put the rule itself in sentence; when a rule has no source example, generate a natural learner-visible example and keep the rule in source_rule.
 
 First classify each useful source fragment semantically.
 
@@ -934,26 +936,25 @@ ALLOWED OUTPUT TYPES
 
 {mode_contract}
 
-Your job is complete lesson-level vocabulary recall, not explicit-section-only extraction:
-- Extract every explicit vocabulary item from clearly marked lesson vocabulary lists when they are present.
-- Extract every explicit idiom/expression from clearly marked expression sections when they are present.
-- Treat those explicit sections as the guaranteed minimum, not the end of the task.
-- After the explicit sections are complete, scan the ENTIRE remaining document from beginning to end for additional useful vocabulary.
-- Mine content-bearing prose, examples, facts, warm-up prompts, discussion questions, explanations and homework text for reusable words, phrases, phrasal verbs, idioms, collocations and specialist terms.
-- Do not stop just because a document already contains a Vocabulary, Key Terms, Expressions, Idioms or Lexique section.
-- Do not extract every ordinary noun, verb or adjective. Skip basic/high-frequency words that are unlikely to be useful learning targets at the lesson level.
-- For advanced C1/C2 material, actively look for advanced reusable lexical chunks and academic/discussion language outside the explicit vocabulary sections.
-- Do not treat a discussion question as mere UI/task text when the sentence itself contains useful language-learning targets.
-- Hard output budgets remain safety limits, not desired result sizes: Vocabulary <= 300, Vocabulary + source examples <= 250, Smart vocabulary <= 180.
-- If the complete set exceeds the safety budget, keep all explicit lesson items first, then prioritize the strongest reusable items from the rest of the document.
+Your job is controlled recall, not runaway word mining:
+- Candidate count must be driven by the source content, never by a fixed quota or target number.
+- A short/simple source may contain only a few useful candidates; a dense glossary or advanced lesson may legitimately contain 100+ useful candidates.
+- Return every candidate that genuinely meets the quality criteria, and do not add weak items just to increase the count.
+- Do NOT choose only an arbitrary top-N subset from explicit lesson vocabulary lists.
+- Extract every explicit vocabulary item from clearly marked lesson vocabulary lists when it is a real learnable target.
+- Extract every explicit idiom/expression from clearly marked expression sections when it is a real learnable target.
+- Do NOT extract every possible word from continuous prose.
+- Do NOT create one candidate for every noun, verb, adjective, symptom, body part, or repeated word in ordinary paragraphs.
+- If the source contains explicit vocabulary/expression sections, process those sections first and keep reading-text mining minimal and selective.
+- If the source is mostly continuous prose, return only genuinely useful reusable items: idioms, collocations, specialist terms, and lesson-relevant phrases.
+- Never aim for 20, 60, 80, 100, or any other fixed number of candidates. Stop because the useful material is exhausted, not because a quota was reached.
 
-Coverage order:
-1. Extract every explicit bullet/list item under headings such as Vocabulario, Vocabulary, Léxico, Lexique, Wortschatz, Expresiones, Expresiones coloquiales, Idioms, Expressions, Key Terms and Common Expressions.
+Priority order:
+1. Extract every explicit bullet/list item under headings such as Vocabulario, Vocabulary, Léxico, Lexique, Wortschatz, Expresiones, Expresiones coloquiales, Idioms, Expressions when it is suitable for learning.
 2. Extract every numbered idiom/expression heading from expression sections.
-3. Continue through ALL other content-bearing sections and extract additional high-value words, phrases, phrasal verbs, idioms, collocations, specialist terms and reusable advanced expressions.
-4. Questions and exercises may contain valid vocabulary: mine their natural language, but do not return answer labels, numbering, blanks, multiple-choice options, transformation instructions or other exercise mechanics as targets.
-5. Skip only non-content noise such as page footers, websites, emails, image filenames, copyright text, tutor IDs, navigation labels and page numbers.
-6. Prefer useful reusable lexical units over isolated trivial words, but do not artificially shrink a rich lesson to only a handful of candidates.
+3. Extract useful reusable collocations and expressions from reading text after explicit lists and expression headings are complete.
+4. Skip exercises, questions, tasks, page footers, emails, websites, image filenames, copyright/footer text, tutor IDs, and page numbers unless they themselves contain a clearly reusable language target.
+5. When in doubt, prefer quality over quantity: omit weak one-off words, but never drop a strong candidate merely because many candidates were already found.
 
 Slash and parenthesis rules:
 - If a slash-separated item is a list of separate words, split it into separate vocabulary candidates.
@@ -1048,7 +1049,8 @@ Your task:
 - For table-like material, preserve row relationships such as Expression | Example | Use. Do not mix cells from different rows.
 - Skip OCR garbage, page numbers, exercise labels, random headers, and duplicate items.
 - Prefer useful words, phrases, collocations, grammar chunks, highlighted/bold items, and textbook example sentences.
-- Keep at most {max_candidates} candidates.
+- Candidate count must be driven by the source content, not by a fixed quota. Return every genuinely useful candidate and do not pad or truncate to a target number.
+- A short source may yield only a few candidates; a dense lesson may legitimately yield 100+ candidates.
 
 Candidate types:
 - vocabulary: a word/phrase only. Use when there is no useful source sentence.
@@ -1163,7 +1165,8 @@ Important:
 - Do NOT generate final Anki cards.
 - Do NOT translate unless translation is explicitly present in the source.
 - Return candidate drafts only. The app will review/edit/send them to Batch later.
-- Keep at most {max_candidates} candidates unless the source is a clearly marked vocabulary list; even then do not exceed the app safety budget.
+- Candidate count must be driven by what is actually present on the page, never by a fixed quota. Return every genuinely useful candidate and do not pad or truncate to a target number.
+- A sparse page may yield only a few candidates; a dense vocabulary/grammar page may legitimately yield many.
 - Do NOT extract every word from continuous prose. For ordinary paragraphs, return only high-value lesson vocabulary, idioms, collocations, and clearly marked/highlighted items.
 - If the page has explicit lists/tables, extract those first. If it is mostly prose, be selective.
 

@@ -21,6 +21,8 @@ def test_conversation_start_prompt_injects_flashcard_material():
     assert "FLASHCARD-BASED CONVERSATION MODE" in prompt
     assert context in prompt
     assert "realistic opportunity to use 1-3 target items" in prompt
+    assert "FIRST question in a flashcard session must be clearly grounded" in prompt
+    assert "Every next question should normally create an opportunity" in prompt
     assert "Prefer flashcards marked NOT USED YET" in prompt
     assert "Do not base two consecutive questions on the same target" in prompt
 
@@ -154,3 +156,29 @@ def test_feedback_prompt_separates_real_errors_improvements_and_stt_glitches():
     assert "Never count a \"possible_transcription\" item as a learner language mistake" in prompt
     assert '"feedback" must be ONE concise' in prompt
     assert '"mini_practice" may be empty' in prompt
+
+
+def test_flashcard_start_prompt_ignores_stale_topic():
+    context = "1. TARGET: sufrir una recaída | EXAMPLE: Sufrió una recaída después del tratamiento."
+
+    prompt = build_conversation_start_prompt("islas canarias", "Spanish", context)
+
+    assert "islas canarias" not in prompt.casefold()
+    assert "flashcard material as the only conversation focus" in prompt
+
+
+def test_flashcard_feedback_prompt_ignores_stale_topic():
+    context = "1. TARGET: sufrir una recaída | EXAMPLE: Sufrió una recaída después del tratamiento."
+
+    prompt = build_conversation_feedback_prompt(
+        topic="islas canarias",
+        question="¿Qué ocurrió después?",
+        answer="Sufrió una recaída.",
+        target_language="Spanish",
+        improvement_level="Strong B2/C1",
+        feedback_language="Polish",
+        flashcard_context=context,
+    )
+
+    assert "islas canarias" not in prompt.casefold()
+    assert "Conversation focus: flashcard targets only" in prompt

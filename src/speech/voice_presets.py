@@ -87,11 +87,16 @@ def get_voice_presets(provider: str, language: str | None = None) -> list[VoiceP
         return presets
 
     normalized_language = language.strip().lower()
-    return [
+    exact = [
         preset
         for preset in presets
-        if preset.language is None or preset.language.lower() == normalized_language
+        if preset.language is not None and preset.language.lower() == normalized_language
     ]
+    if exact:
+        return exact
+    # Generic voices are a fallback only. They must not silently outrank a
+    # language-specific ElevenLabs voice (for example English/British in Spanish).
+    return [preset for preset in presets if preset.language is None]
 
 
 def get_voice_labels(provider: str, language: str | None = None) -> list[str]:

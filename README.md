@@ -9,7 +9,7 @@ The app is built around a human-in-the-loop process: AI drafts the learning cont
 - Generates vocabulary and grammar cards with local Ollama or BYOK cloud providers such as Gemini, OpenAI or Claude.
 - Imports TXT/HTML locally and images/PDFs through explicit OCR/import workflows.
 - Extracts candidate vocabulary, grammar structures and example sentences from learning material; Vocabulary modes preserve explicit lists and continue mining useful vocabulary across the full lesson text.
-- Supports Batch review before adding cards to Anki.
+- Supports Queue review before adding cards to Anki.
 - Exports reviewed cards to Anki through AnkiConnect.
 - Supports example audio / TTS and existing-card audio backfill, including hidden Anki metadata for TTS provider/model/voice/source tracking.
 - Supports a small local Whisper STT trial for Conversation Practice.
@@ -23,7 +23,7 @@ Import / OCR / manual input
         ↓
 Candidate drafts / cherry-pick
         ↓
-Batch review
+Queue review
         ↓
 AI generation
         ↓
@@ -62,18 +62,18 @@ Starts the command-line interface.
 |---|---|
 | Setup | Choose Fully local, Hybrid / BYOK or API / BYOK, import/create `.env`, reload providers and check local Ollama. |
 | Create Card | Generate and review one Vocabulary or Grammar card in one workspace. |
-| Batch | Fast path for clean structured TXT/CSV/pasted rows. Choose Vocabulary, Grammar, Mixed or Provided examples before loading. |
+| Queue | Fast path for clean structured TXT/CSV/pasted rows. Choose Vocabulary, Grammar, Mixed or Provided examples before loading. |
 | Import Material | Advanced/raw-source path for lessons, TXT/HTML, PDFs, screenshots, scans and mixed material. TXT/HTML are read locally; OCR/vision is only for sources that need it. |
 | Speech / Audio | Test voices in the in-app Voice Lab, generate/repair example audio and backfill existing Anki cards without opening an external player. |
 | Fix Cards | Find and repair existing Anki cards. |
-| Conversation Practice | Practise by free topic, a selected Anki deck, or current Batch. Flashcard mode adds persistent deck rotation, due/random/repeat selection, session coverage, speaking cues, genuinely new card candidates, TXT/Markdown export, and in-app tutor/question TTS. |
+| Conversation Practice | Practise by free topic, a selected Anki deck, or current Queue. Flashcard mode adds persistent deck rotation, due/random/repeat selection, session coverage, speaking cues, genuinely new card candidates, TXT/Markdown export, and in-app tutor/question TTS. |
 | Practice & Print | Practise selected cards and create printable tests. |
 | Advanced / LLMOps | Optional tracing, model/cost diagnostics and local quality-event log. |
 
 
-### Batch vs Import Material
+### Queue vs Import Material
 
-Use **Batch** when the input is already clean and structured, for example one vocabulary target per line or `target | sentence` rows. Choose the Batch mode before loading so CSV/TXT parsing is deterministic.
+Use **Queue** when the input is already clean and structured, for example one vocabulary target per line or `target | sentence` rows. Choose the input type before loading so CSV/TXT parsing is deterministic.
 
 Use **Import Material** when the source still needs interpretation or extraction: lessons, HTML pages, PDFs, screenshots, textbook images, scans or mixed material. TXT/HTML are converted to plain text locally and do not need OCR; candidate extraction is a separate explicit step.
 
