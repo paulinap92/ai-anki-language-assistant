@@ -122,3 +122,6 @@ audio_progress/
 conversation_rotation_state.json
 
 conversation_exports/
+
+# User-installed TTS voice libraries
+voices/

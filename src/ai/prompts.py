@@ -796,6 +796,15 @@ Routing contract:
    - example_origin="preserved_from_source"
    - needs_review=true
 
+
+Review metadata (for UI ranking only; NEVER use it to invent or drop candidates):
+- advancedness = advanced | normal | basic. Judge lexical/grammar sophistication, not mere rarity.
+- topic_relevance = high | medium | low. High means the item expresses a central concept/theme of this lesson/source, not merely that it appears once.
+- reusability = high | medium | low. High means the learner can naturally reuse it in many real situations.
+- learning_value = high | medium | low. High means it is especially worth active learning.
+- document_specificity = high | medium | low. High means a proper name, organisation, regulation/title, one-off label, or source-specific wording.
+- Do not force a distribution. A source may have many or few items in any tier.
+
 Final self-check before returning JSON:
 - If source_role="grammar_rule", sentence MUST be newly generated, not copied from source_rule.
 - If source_type="rule" and strategy="generated_example_from_rule", sentence MUST NOT equal source_rule.
@@ -819,7 +828,12 @@ Return this exact structure:
       "reason": "short reason",
       "source_type": "structure_sentence | rule | transformation | exercise | sentence_only",
       "strategy": "preserve_source_sentence | generated_example_from_rule | word_form_example | exercise_draft_review_answer | infer_later",
-      "confidence": "high | medium | low"
+      "confidence": "high | medium | low",
+      "advancedness": "advanced | normal | basic",
+      "topic_relevance": "high | medium | low",
+      "reusability": "high | medium | low",
+      "learning_value": "high | medium | low",
+      "document_specificity": "high | medium | low"
     }}
   ]
 }}
@@ -854,20 +868,23 @@ SMART VOCABULARY CONTRACT
 This mode may mix vocabulary candidates and provided_example candidates.
 
 Use type="vocabulary" for:
-- words, terms, phrases, idioms, collocations, specialist vocabulary, expression headings, and explicit vocabulary-list items.
-- vocabulary items that optionally have a useful source sentence/context.
+- words, terms, phrases, idioms, collocations, specialist vocabulary, expression headings, and explicit vocabulary-list items when there is NO good exact source usage sentence to preserve.
+- glossary/definition/context items where nearby text explains the target but does not actually use the target in a complete learner example.
 
-Use type="provided_example" only when:
+Use type="provided_example" automatically when:
 - the source contains a complete useful sentence that is worth preserving as the learning context,
-- the sentence clearly contains the selected target phrase/idiom/collocation,
-- the sentence is better learned as target + exact source sentence than as a word-only item.
+- the sentence clearly contains the selected target phrase/idiom/collocation (or a normal inflected form),
+- the sentence is a real usage example rather than a definition of the target.
+
+Do not return a vocabulary candidate with a real source usage sentence merely because the target itself is vocabulary. In Smart vocabulary, a strong exact source usage example should be routed as provided_example so Queue preserves that sentence automatically.
 
 Never return type="grammar" in Smart vocabulary mode.
 Do not turn exercises/questions/tasks into provided examples.
 """
         source_example_rule = """
 Source example rules:
-- For vocabulary candidates, put a clear source context sentence in source_sentence when useful.
+- For Smart vocabulary, if a complete source sentence actually USES the target and is suitable as the learner example, return type="provided_example" and put that exact sentence in sentence.
+- Keep type="vocabulary" when there is no good usage example. A definition/context fragment that explains the target without using it may stay in source_sentence as source context; it is NOT a provided example.
 - For provided_example candidates, put the exact source sentence in sentence and the target phrase in target.
 - If a useful context sentence contains blanks/underscores and the missing answer is obvious, return the completed clean sentence, set strategy="completed_gap_source_sentence", needs_review=true, and mention the filled gap in reason.
 - If the gap is not obvious, do not use the incomplete sentence as sentence/source_sentence.
@@ -975,6 +992,14 @@ Candidate metadata:
 - reason = short reason or source heading
 - needs_review = true only for uncertain, OCR-damaged, or expanded variants
 
+Review metadata (for UI ranking only; NEVER use it to invent or drop candidates):
+- advancedness = advanced | normal | basic. Judge lexical/grammar sophistication, not mere rarity.
+- topic_relevance = high | medium | low. High means the item expresses a central concept/theme of this lesson/source, not merely that it appears once.
+- reusability = high | medium | low. High means the learner can naturally reuse it in many real situations.
+- learning_value = high | medium | low. High means it is especially worth active learning.
+- document_specificity = high | medium | low. High means a proper name, organisation, regulation/title, one-off label, or source-specific wording.
+- Do not force a distribution. A source may have many or few items in any tier.
+
 Return ONLY valid JSON, no markdown, no comments.
 
 Return this exact structure:
@@ -990,7 +1015,12 @@ Return this exact structure:
       "source_type": "vocabulary_list | colloquial_expression | reading_text_collocation | dialogue_example | highlighted_item | table_row | expanded_variant | provided_example",
       "strategy": "vocabulary_candidate | vocabulary_with_source_sentence | expanded_vocabulary_variant | preserve_source_sentence",
       "needs_review": false,
-      "confidence": "high | medium | low"
+      "confidence": "high | medium | low",
+      "advancedness": "advanced | normal | basic",
+      "topic_relevance": "high | medium | low",
+      "reusability": "high | medium | low",
+      "learning_value": "high | medium | low",
+      "document_specificity": "high | medium | low"
     }}
   ]
 }}
@@ -1089,6 +1119,14 @@ For grammar candidates:
 - If only a useful sentence is found and no grammar target is clear, return type="grammar", target="", sentence="...".
 - Add source_type and strategy for grammar candidates whenever possible so the UI can show why the card was created.
 
+Review metadata (for UI ranking only; NEVER use it to invent or drop candidates):
+- advancedness = advanced | normal | basic. Judge lexical/grammar sophistication, not mere rarity.
+- topic_relevance = high | medium | low. High means the item expresses a central concept/theme of this lesson/source, not merely that it appears once.
+- reusability = high | medium | low. High means the learner can naturally reuse it in many real situations.
+- learning_value = high | medium | low. High means it is especially worth active learning.
+- document_specificity = high | medium | low. High means a proper name, organisation, regulation/title, one-off label, or source-specific wording.
+- Do not force a distribution. A source may have many or few items in any tier.
+
 Return ONLY valid JSON, no markdown, no comments. Never output schema fragments as standalone candidate text.
 
 Return this exact structure:
@@ -1101,7 +1139,12 @@ Return this exact structure:
       "reason": "short reason",
       "source_type": "vocabulary | provided_example | structure_sentence | rule | transformation | exercise | sentence_only",
       "strategy": "preserve_source_sentence | generated_example_from_rule | word_form_example | exercise_draft_review_answer | infer_later | vocabulary_candidate",
-      "source_rule": "short original rule/exercise text when relevant"
+      "source_rule": "short original rule/exercise text when relevant",
+      "advancedness": "advanced | normal | basic",
+      "topic_relevance": "high | medium | low",
+      "reusability": "high | medium | low",
+      "learning_value": "high | medium | low",
+      "document_specificity": "high | medium | low"
     }}
   ]
 }}
@@ -1220,6 +1263,14 @@ Smart grammar image contract:
 - If the page has a table row with a real Example cell, sentence = Example cell and source_rule = Use/Note cell.
 - Never put a visible grammar definition or use note into sentence/audio.
 
+Review metadata (for UI ranking only; NEVER use it to invent or drop candidates):
+- advancedness = advanced | normal | basic. Judge lexical/grammar sophistication, not mere rarity.
+- topic_relevance = high | medium | low. High means the item expresses a central concept/theme of this lesson/source, not merely that it appears once.
+- reusability = high | medium | low. High means the learner can naturally reuse it in many real situations.
+- learning_value = high | medium | low. High means it is especially worth active learning.
+- document_specificity = high | medium | low. High means a proper name, organisation, regulation/title, one-off label, or source-specific wording.
+- Do not force a distribution. A source may have many or few items in any tier.
+
 Return ONLY valid JSON, no markdown and no comments. Never output schema fragments as candidate text.
 
 Return this exact structure:
@@ -1236,7 +1287,12 @@ Return this exact structure:
       "reason": "short reason or source/use note",
       "source_type": "vocabulary | provided_example | structure_sentence | rule | transformation | exercise | sentence_only | table_row | highlighted_item",
       "strategy": "preserve_source_sentence | generated_example_from_rule | word_form_example | exercise_draft_review_answer | infer_later | vocabulary_candidate | preserve_table_row | highlighted_source_sentence",
-      "confidence": "high | medium | low"
+      "confidence": "high | medium | low",
+      "advancedness": "advanced | normal | basic",
+      "topic_relevance": "high | medium | low",
+      "reusability": "high | medium | low",
+      "learning_value": "high | medium | low",
+      "document_specificity": "high | medium | low"
     }}
   ]
 }}

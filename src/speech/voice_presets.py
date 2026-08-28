@@ -65,21 +65,63 @@ ELEVENLABS_VOICE_PRESETS: list[VoicePreset] = [
 
 
 OPENAI_VOICE_PRESETS: list[VoicePreset] = [
-    VoicePreset("OpenAI Coral", "OpenAI", "coral"),
-    VoicePreset("OpenAI Nova", "OpenAI", "nova"),
-    VoicePreset("OpenAI Shimmer", "OpenAI", "shimmer"),
-    VoicePreset("OpenAI Sage", "OpenAI", "sage"),
-    VoicePreset("OpenAI Alloy", "OpenAI", "alloy"),
+    VoicePreset("OpenAI · Alloy", "OpenAI TTS", "alloy", notes="Built-in OpenAI TTS voice."),
+    VoicePreset("OpenAI · Ash", "OpenAI TTS", "ash", notes="Built-in OpenAI TTS voice."),
+    VoicePreset("OpenAI · Ballad", "OpenAI TTS", "ballad", notes="Built-in OpenAI TTS voice."),
+    VoicePreset("OpenAI · Coral", "OpenAI TTS", "coral", notes="Built-in OpenAI TTS voice."),
+    VoicePreset("OpenAI · Echo", "OpenAI TTS", "echo", notes="Built-in OpenAI TTS voice."),
+    VoicePreset("OpenAI · Fable", "OpenAI TTS", "fable", notes="Built-in OpenAI TTS voice."),
+    VoicePreset("OpenAI · Nova", "OpenAI TTS", "nova", notes="Built-in OpenAI TTS voice."),
+    VoicePreset("OpenAI · Onyx", "OpenAI TTS", "onyx", notes="Built-in OpenAI TTS voice."),
+    VoicePreset("OpenAI · Sage", "OpenAI TTS", "sage", notes="Built-in OpenAI TTS voice."),
+    VoicePreset("OpenAI · Shimmer", "OpenAI TTS", "shimmer", notes="Built-in OpenAI TTS voice."),
+    VoicePreset("OpenAI · Verse", "OpenAI TTS", "verse", notes="Built-in OpenAI TTS voice."),
+    VoicePreset("OpenAI · Marin", "OpenAI TTS", "marin", notes="Built-in OpenAI TTS voice; recommended by OpenAI for quality."),
+    VoicePreset("OpenAI · Cedar", "OpenAI TTS", "cedar", notes="Built-in OpenAI TTS voice; recommended by OpenAI for quality."),
 ]
 
+GEMINI_VOICE_PRESETS: list[VoicePreset] = [
+    VoicePreset("Gemini · Zephyr — Bright", "Gemini TTS", "Zephyr"),
+    VoicePreset("Gemini · Puck — Upbeat", "Gemini TTS", "Puck"),
+    VoicePreset("Gemini · Charon — Informative", "Gemini TTS", "Charon"),
+    VoicePreset("Gemini · Kore — Firm", "Gemini TTS", "Kore"),
+    VoicePreset("Gemini · Fenrir — Excitable", "Gemini TTS", "Fenrir"),
+    VoicePreset("Gemini · Leda — Youthful", "Gemini TTS", "Leda"),
+    VoicePreset("Gemini · Orus — Firm", "Gemini TTS", "Orus"),
+    VoicePreset("Gemini · Aoede — Breezy", "Gemini TTS", "Aoede"),
+    VoicePreset("Gemini · Callirrhoe — Easy-going", "Gemini TTS", "Callirrhoe"),
+    VoicePreset("Gemini · Autonoe — Bright", "Gemini TTS", "Autonoe"),
+    VoicePreset("Gemini · Enceladus — Breathy", "Gemini TTS", "Enceladus"),
+    VoicePreset("Gemini · Iapetus — Clear", "Gemini TTS", "Iapetus"),
+    VoicePreset("Gemini · Umbriel — Easy-going", "Gemini TTS", "Umbriel"),
+    VoicePreset("Gemini · Algieba — Smooth", "Gemini TTS", "Algieba"),
+    VoicePreset("Gemini · Despina — Smooth", "Gemini TTS", "Despina"),
+    VoicePreset("Gemini · Erinome — Clear", "Gemini TTS", "Erinome"),
+    VoicePreset("Gemini · Algenib — Gravelly", "Gemini TTS", "Algenib"),
+    VoicePreset("Gemini · Rasalgethi — Informative", "Gemini TTS", "Rasalgethi"),
+    VoicePreset("Gemini · Laomedeia — Upbeat", "Gemini TTS", "Laomedeia"),
+    VoicePreset("Gemini · Achernar — Soft", "Gemini TTS", "Achernar"),
+    VoicePreset("Gemini · Alnilam — Firm", "Gemini TTS", "Alnilam"),
+    VoicePreset("Gemini · Schedar — Even", "Gemini TTS", "Schedar"),
+    VoicePreset("Gemini · Gacrux — Mature", "Gemini TTS", "Gacrux"),
+    VoicePreset("Gemini · Pulcherrima — Forward", "Gemini TTS", "Pulcherrima"),
+    VoicePreset("Gemini · Achird — Friendly", "Gemini TTS", "Achird"),
+    VoicePreset("Gemini · Zubenelgenubi — Casual", "Gemini TTS", "Zubenelgenubi"),
+    VoicePreset("Gemini · Vindemiatrix — Gentle", "Gemini TTS", "Vindemiatrix"),
+    VoicePreset("Gemini · Sadachbia — Lively", "Gemini TTS", "Sadachbia"),
+    VoicePreset("Gemini · Sadaltager — Knowledgeable", "Gemini TTS", "Sadaltager"),
+    VoicePreset("Gemini · Sulafat — Warm", "Gemini TTS", "Sulafat"),
+]
 
 def get_voice_presets(provider: str, language: str | None = None) -> list[VoicePreset]:
     """Return voice presets for a provider."""
     normalized_provider = provider.strip().lower()
     if normalized_provider == "elevenlabs":
         presets = ELEVENLABS_VOICE_PRESETS
-    elif normalized_provider == "openai":
+    elif normalized_provider in {"openai", "openai tts"}:
         presets = OPENAI_VOICE_PRESETS
+    elif normalized_provider in {"gemini", "gemini tts"}:
+        presets = GEMINI_VOICE_PRESETS
     else:
         presets = []
 

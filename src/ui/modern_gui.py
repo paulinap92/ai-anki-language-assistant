@@ -71,6 +71,24 @@ from src.speech import LocalWhisperSttService, SpeechService
 from src.speech.playback import InternalAudioPlayer
 from src.speech.models import TtsResult
 from src.speech.voice_presets import get_voice_by_label, get_voice_labels
+from src.speech.voice_library import (
+    VoiceLibraryItem,
+    add_elevenlabs_shared_voice,
+    download_piper_voice,
+    download_preview_audio,
+    fetch_elevenlabs_my_voices,
+    fetch_elevenlabs_shared_voices,
+    fetch_elevenlabs_voice_preview,
+    fetch_piper_catalog,
+    gemini_builtin_voice_items,
+    openai_builtin_voice_items,
+    import_piper_voice,
+    installed_piper_models,
+    load_elevenlabs_registry,
+    piper_voice_directory,
+    piper_voice_metadata,
+    save_elevenlabs_registry_voice,
+)
 from src.observability import get_llmops_tracer
 
 
@@ -150,7 +168,7 @@ OCR_AI_CANDIDATE_HARD_LIMITS = {
     "smart grammar import": 600,
     "mixed": 600,
 }
-OCR_CANDIDATE_AUTOSELECT_LIMIT = 120
+OCR_CANDIDATE_AUTOSELECT_ALL_LIMIT = 25
 
 # Source-size guardrails protect users from accidentally sending an entire book
 # through many AI calls. These limits apply to source size, never to the number
@@ -160,6 +178,8 @@ IMPORT_SOURCE_SOFT_CHAR_LIMIT = 60000
 IMPORT_SOURCE_SOFT_WORD_LIMIT = 10000
 IMPORT_SOURCE_HARD_CHAR_LIMIT = 180000
 IMPORT_SOURCE_HARD_WORD_LIMIT = 30000
+IMPORT_SOURCE_SOFT_PART_LIMIT = 4
+IMPORT_SOURCE_HARD_PART_LIMIT = 8
 IMPORT_REVIEW_PAGE_SIZE = 25
 
 # Import Material never silently truncates a source. Long source text is split
@@ -257,6 +277,19 @@ class ModernVocabularyGui:
         initial_preview_text = TTS_SAMPLE_TEXTS.get(default_target_language, TTS_SAMPLE_TEXTS["English"])
         self._speech_preview_text_var = ctk.StringVar(value=initial_preview_text)
         self._speech_preview_last_auto_text = initial_preview_text
+        self._runtime_voice_values: dict[str, dict[str, str]] = {}
+        self._runtime_voice_languages: dict[str, dict[str, str]] = {}
+        for saved_voice in load_elevenlabs_registry():
+            self._runtime_voice_values.setdefault("ElevenLabs", {})[saved_voice["label"]] = saved_voice["voice_id"]
+            self._runtime_voice_languages.setdefault("ElevenLabs", {})[saved_voice["label"]] = saved_voice.get("language", "")
+        self._voice_library_results: list[VoiceLibraryItem] = []
+        self._voice_library_result_by_iid: dict[str, VoiceLibraryItem] = {}
+        self._voice_library_window: ctk.CTkToplevel | None = None
+        self._voice_library_tree: ttk.Treeview | None = None
+        self._voice_library_source_var = ctk.StringVar(value="Piper online catalog")
+        self._voice_library_search_var = ctk.StringVar(value="")
+        self._voice_library_language_var = ctk.StringVar(value=default_target_language)
+        self._voice_library_status_var = ctk.StringVar(value="Open a catalog and search for voices.")
         self._speech_audio_status_by_note_id: dict[int, str] = {}
         self._speech_audio_error_by_note_id: dict[int, str] = {}
         self._speech_audio_path_by_note_id: dict[int, str] = {}
@@ -1766,7 +1799,7 @@ class ModernVocabularyGui:
         ).grid(row=0, column=3, sticky="e")
         ctk.CTkLabel(
             review_filters,
-            text="Review priority only organizes the list — it never deletes candidates.",
+            text="Recommended = advanced + central to the topic · Useful = good general language · Optional = niche/odd/document-specific. Nothing is deleted.",
             font=ctk.CTkFont(size=10),
             text_color=("gray40", "gray65"),
         ).grid(row=1, column=0, columnspan=4, sticky="w", pady=(4, 0))
@@ -1791,56 +1824,65 @@ class ModernVocabularyGui:
         candidate_actions.grid_columnconfigure((0, 1, 2, 3), weight=1)
         ctk.CTkButton(
             candidate_actions,
-            text="Select recommended",
-            command=self._select_recommended_ocr_candidates,
+            text="Select all",
+            command=self._select_all_ocr_candidates,
         ).grid(row=0, column=0, sticky="ew", padx=(0, 5), pady=(0, 6))
         ctk.CTkButton(
             candidate_actions,
-            text="Select visible",
-            command=self._select_visible_ocr_candidates,
+            text="Select recommended",
+            command=self._select_recommended_ocr_candidates,
         ).grid(row=0, column=1, sticky="ew", padx=5, pady=(0, 6))
+        ctk.CTkButton(
+            candidate_actions,
+            text="Recommended + useful",
+            command=self._select_recommended_and_useful_ocr_candidates,
+        ).grid(row=0, column=2, sticky="ew", padx=5, pady=(0, 6))
         ctk.CTkButton(
             candidate_actions,
             text="Deselect all",
             command=self._deselect_all_ocr_candidates,
-        ).grid(row=0, column=2, sticky="ew", padx=5, pady=(0, 6))
-        ctk.CTkButton(
-            candidate_actions,
-            text="Remove selected",
-            command=self._remove_selected_ocr_candidates,
         ).grid(row=0, column=3, sticky="ew", padx=(5, 0), pady=(0, 6))
         ctk.CTkButton(
             candidate_actions,
-            text="Selected → word/phrase",
-            command=lambda: self._mark_selected_ocr_candidates_as("vocabulary"),
+            text="Select visible",
+            command=self._select_visible_ocr_candidates,
         ).grid(row=1, column=0, sticky="ew", padx=(0, 5), pady=(0, 6))
+        ctk.CTkButton(
+            candidate_actions,
+            text="Selected → Vocabulary",
+            command=lambda: self._mark_selected_ocr_candidates_as("vocabulary"),
+        ).grid(row=1, column=1, sticky="ew", padx=5, pady=(0, 6))
         ctk.CTkButton(
             candidate_actions,
             text="Selected → Grammar",
             command=lambda: self._mark_selected_ocr_candidates_as("grammar"),
-        ).grid(row=1, column=1, sticky="ew", padx=5, pady=(0, 6))
+        ).grid(row=1, column=2, sticky="ew", padx=5, pady=(0, 6))
         ctk.CTkButton(
             candidate_actions,
-            text="Selected → sentence",
+            text="Selected → Example",
             command=lambda: self._mark_selected_ocr_candidates_as("provided_example"),
-        ).grid(row=1, column=2, sticky="ew", padx=5, pady=(0, 6))
+        ).grid(row=1, column=3, sticky="ew", padx=(5, 0), pady=(0, 6))
+        ctk.CTkButton(
+            candidate_actions,
+            text="Remove selected",
+            command=self._remove_selected_ocr_candidates,
+        ).grid(row=2, column=0, sticky="ew", padx=(0, 5), pady=(0, 6))
         ctk.CTkButton(
             candidate_actions,
             text="Clear all",
             command=self._clear_ocr_candidates,
-        ).grid(row=1, column=3, sticky="ew", padx=(5, 0), pady=(0, 6))
+        ).grid(row=2, column=1, sticky="ew", padx=5, pady=(0, 6))
+        ctk.CTkButton(
+            candidate_actions,
+            text="+ Add missing candidate",
+            command=self._open_missing_ocr_candidate_dialog,
+        ).grid(row=2, column=2, columnspan=2, sticky="ew", padx=(5, 0), pady=(0, 6))
         ctk.CTkButton(
             candidate_actions,
             text="Send selected to Queue",
             height=40,
             command=self._send_ocr_candidates_to_batch,
-        ).grid(row=2, column=0, columnspan=3, sticky="ew", padx=(0, 5))
-        ctk.CTkButton(
-            candidate_actions,
-            text="+ Add missing candidate",
-            height=40,
-            command=self._open_missing_ocr_candidate_dialog,
-        ).grid(row=2, column=3, sticky="ew", padx=(5, 0))
+        ).grid(row=3, column=0, columnspan=4, sticky="ew")
 
         ctk.CTkLabel(
             candidates_panel,
@@ -2641,6 +2683,26 @@ class ModernVocabularyGui:
                 result.append(first)
         return result
 
+    @staticmethod
+    def _queue_mode_from_imported_item_types(items: list[dict[str, object]]) -> str | None:
+        """Return the Queue-wide display mode implied by typed Import Material rows.
+
+        Import Material owns the type of each imported row.  The Queue-wide selector
+        is only a display/default for that structured import and must never collapse a
+        heterogeneous import to the type of whichever item happens to be selected.
+        """
+        modes = {
+            str(item.get("batch_mode") or "").strip()
+            for item in items
+            if bool(item.get("mode_locked"))
+            and str(item.get("batch_mode") or "").strip() in BATCH_MODES
+        }
+        if not modes:
+            return None
+        if len(modes) == 1:
+            return next(iter(modes))
+        return "Mixed"
+
     def _on_batch_mode_changed(self, selected: str | None = None) -> None:
         """Apply a user-selected Queue mode to not-yet-generated items.
 
@@ -3151,14 +3213,23 @@ class ModernVocabularyGui:
             start = next_start
         return chunks
 
-    @staticmethod
-    def _import_source_size_level(text: str) -> str:
+    @classmethod
+    def _import_source_size_level(cls, text: str) -> str:
         value = (text or "").strip()
         chars = len(value)
         words = len(value.split())
-        if chars > IMPORT_SOURCE_HARD_CHAR_LIMIT or words > IMPORT_SOURCE_HARD_WORD_LIMIT:
+        parts = len(cls._split_import_text_for_ai(value)) if value else 0
+        if (
+            chars > IMPORT_SOURCE_HARD_CHAR_LIMIT
+            or words > IMPORT_SOURCE_HARD_WORD_LIMIT
+            or parts > IMPORT_SOURCE_HARD_PART_LIMIT
+        ):
             return "hard"
-        if chars > IMPORT_SOURCE_SOFT_CHAR_LIMIT or words > IMPORT_SOURCE_SOFT_WORD_LIMIT:
+        if (
+            chars > IMPORT_SOURCE_SOFT_CHAR_LIMIT
+            or words > IMPORT_SOURCE_SOFT_WORD_LIMIT
+            or parts > IMPORT_SOURCE_SOFT_PART_LIMIT
+        ):
             return "soft"
         return "normal"
 
@@ -3186,9 +3257,10 @@ class ModernVocabularyGui:
             parts = "AI candidate search will analyse the entire source in 1 part."
         else:
             parts = f"AI candidate search will analyse the entire source in {len(chunks)} parts. Nothing will be silently cut off."
+        safety = f"Full-source safety limit: {IMPORT_SOURCE_HARD_PART_LIMIT} AI analysis parts."
         return (
             f"Material: {chars:,} characters · ~{words:,} words · {parts} "
-            f"{guard} No fixed candidate count: the result depends on the material."
+            f"{guard} {safety} No fixed candidate count: the result depends on the material."
         )
 
     def _notify_large_import_source(self, text: str) -> None:
@@ -3208,7 +3280,7 @@ class ModernVocabularyGui:
             title = "Very large source loaded"
             message = (
                 f"This material contains about {words:,} words ({chars:,} characters).\n\n"
-                "Full-source AI candidate search is blocked so an entire book cannot accidentally create dozens of API calls and an unmanageable review list.\n\n"
+                "Full-source AI candidate search is blocked so an entire book cannot accidentally create many AI calls and an unmanageable review list.\n\n"
                 "Highlight one chapter/section in Source text and click 'Find from selected text'."
             )
         else:
@@ -3272,40 +3344,69 @@ class ModernVocabularyGui:
 
     @staticmethod
     def _candidate_review_priority(item: dict[str, str]) -> str:
-        """Return a lightweight review tier without changing extraction semantics.
+        """Return an educational review tier, not a source-location tier.
 
-        This is intentionally a UI organization heuristic, not an AI quality
-        verdict and not a candidate-count limit. It uses metadata already
-        returned by the import pipeline plus a few obvious review-risk signals.
+        Recommended means the item is both relatively advanced and central to
+        the lesson/topic. Useful is normal reusable language worth keeping.
+        Optional is intentionally the bucket for odd, document-specific, weak,
+        overly long, or low-reusability material. No quota is used.
         """
-        needs_review = str(item.get("needs_review") or "").strip().casefold() in {"true", "yes", "1"}
-        confidence = str(item.get("confidence") or "").strip().casefold()
+        def norm(key: str) -> str:
+            return str(item.get(key) or "").strip().casefold().replace("-", "_").replace(" ", "_")
+
+        needs_review = norm("needs_review") in {"true", "yes", "1"}
+        confidence = norm("confidence")
         target = " ".join(str(item.get("target") or "").split())
-        sentence = " ".join(str(item.get("sentence") or "").split())
-        source_section = str(item.get("source_section") or "").strip().casefold().replace(" ", "_")
-        candidate_kind = str(item.get("candidate_kind") or "").strip().casefold().replace(" ", "_")
-        candidate_type = ModernVocabularyGui._normalize_ocr_candidate_type(item.get("type", "vocabulary"))
+        source_section = norm("source_section")
+        source_type = norm("source_type")
+        advancedness = norm("advancedness")
+        topic_relevance = norm("topic_relevance")
+        reusability = norm("reusability")
+        document_specificity = norm("document_specificity")
+        learning_value = norm("learning_value")
 
         if needs_review or confidence in {"low", "0", "0.0"}:
             return "Optional"
-        word_count = len(target.split())
-        if word_count >= 8:
+
+        words = target.split()
+        word_count = len(words)
+        if word_count >= 9:
             return "Optional"
-        # Obvious named entities / document-specific labels are worth keeping
-        # available, but should not dominate the first review screen.
-        if target.startswith("The ") and word_count >= 2 and sum(1 for w in target.split() if w[:1].isupper()) >= 2:
+        if document_specificity in {"high", "very_high"} or reusability == "low":
             return "Optional"
 
-        if source_section in {"vocabulary_list", "colloquial_expressions", "highlighted_item", "key_terms", "expressions"}:
-            return "Recommended"
-        if candidate_kind in {"idiom", "collocation", "expression", "phrasal_verb", "phrase", "fixed_expression", "multiword_expression"}:
-            return "Recommended"
-        if candidate_type == "grammar" and (target or sentence):
-            return "Recommended"
-        if candidate_type == "provided_example" and target and sentence:
-            return "Recommended"
-        if target and sentence and ModernVocabularyGui._import_source_sentence_uses_target(target, sentence):
-            return "Recommended"
+        # Proper names, regulation titles, organisations, etc. are normally
+        # reference material rather than vocabulary to actively learn.
+        capitalized = sum(1 for word in words if word[:1].isupper())
+        explicit_language_section = source_section in {
+            "vocabulary_list", "colloquial_expressions", "highlighted_item",
+            "key_terms", "expressions",
+        } or source_type in {"vocabulary_list", "colloquial_expression", "highlighted_item"}
+        if word_count >= 2 and capitalized >= 2 and not explicit_language_section:
+            return "Optional"
+
+        advanced = advancedness in {"advanced", "high", "c1", "c2"}
+        topic_high = topic_relevance in {"high", "central", "core", "strong"}
+        topic_medium = topic_relevance in {"medium", "moderate"}
+        reusable = reusability not in {"low", "one_off", "document_only"}
+        learning_high = learning_value in {"high", "very_high", "strong"}
+        learning_ok = learning_value not in {"low", "weak"}
+        kind = norm("candidate_kind")
+
+        # Educational meaning of Recommended:
+        # - clearly advanced language that is at least relevant to the lesson, OR
+        # - a strongly topic-defining item with high learning value, OR
+        # - a strong advanced idiom/collocation/expression worth active recall.
+        # This intentionally avoids quotas while also avoiding the old overly
+        # strict advanced+topic-high conjunction that often produced 1/50.
+        if reusable and learning_ok:
+            if advanced and (topic_high or topic_medium):
+                return "Recommended"
+            if topic_high and learning_high and advancedness not in {"basic", "a1", "a2"}:
+                return "Recommended"
+
+        # Older providers may omit the new metadata. In that case we prefer the
+        # safe middle bucket instead of pretending the item is Recommended.
         return "Useful"
 
     @staticmethod
@@ -3373,16 +3474,24 @@ class ModernVocabularyGui:
         for item in items:
             item["review_priority"] = self._candidate_review_priority(item)
         self._ocr_candidate_items = items
-        auto_select = len(items) <= OCR_CANDIDATE_AUTOSELECT_LIMIT
-        self._ocr_candidate_vars = [ctk.BooleanVar(value=auto_select) for _ in items]
+        # Small reviews stay convenient: select Recommended + Useful, but never
+        # auto-select Optional. Larger reviews start with Recommended only so a
+        # 100+ candidate import does not immediately flood the Queue.
+        small_review = len(items) <= OCR_CANDIDATE_AUTOSELECT_ALL_LIMIT
+        selected_flags: list[bool] = []
+        for item in items:
+            priority = self._candidate_review_priority(item)
+            selected_flags.append(priority in ({"Recommended", "Useful"} if small_review else {"Recommended"}))
+        self._ocr_candidate_vars = [ctk.BooleanVar(value=value) for value in selected_flags]
         self._ocr_review_page = 0
         self._render_ocr_candidate_cards()
         self._scroll_import_candidates_to_top()
         self._update_ocr_candidate_status()
-        if items and not auto_select:
+        if items and not small_review:
+            selected = sum(1 for value in selected_flags if value)
             self._ocr_candidate_status_var.set(
-                f"Found {len(items)} candidates. Large review: nothing selected by default. "
-                "Start with Recommended, then inspect Useful/Optional if you want more."
+                f"Found {len(items)} candidates. Large review: {selected} Recommended selected by default. "
+                "Useful items remain available; Optional is for niche/odd/document-specific material."
             )
 
     def _make_ocr_candidate_item(
@@ -3748,6 +3857,24 @@ class ModernVocabularyGui:
                 meta_bits.append(f"Kind: {vocab_kind.replace('_', ' ')}")
             if source_section:
                 meta_bits.append(f"Section: {source_section.replace('_', ' ')}")
+            advancedness = str(item.get("advancedness") or "").strip()
+            topic_relevance = str(item.get("topic_relevance") or "").strip()
+            reusability = str(item.get("reusability") or "").strip()
+            learning_value = str(item.get("learning_value") or "").strip()
+            document_specificity = str(item.get("document_specificity") or "").strip()
+            learning_bits = []
+            if advancedness:
+                learning_bits.append(f"level: {advancedness}")
+            if topic_relevance:
+                learning_bits.append(f"topic: {topic_relevance}")
+            if reusability:
+                learning_bits.append(f"reusable: {reusability}")
+            if learning_value:
+                learning_bits.append(f"learning value: {learning_value}")
+            if document_specificity:
+                learning_bits.append(f"document-specific: {document_specificity}")
+            if learning_bits:
+                meta_bits.append("Review signals: " + " · ".join(learning_bits))
             example_origin = str(item.get("example_origin") or "").strip()
             needs_review = str(item.get("needs_review") or "").strip()
             if example_origin:
@@ -3989,6 +4116,14 @@ class ModernVocabularyGui:
         for index, item in enumerate(self._ocr_candidate_items):
             if self._candidate_review_priority(item) == "Recommended" and index < len(self._ocr_candidate_vars):
                 self._ocr_candidate_vars[index].set(True)
+        self._update_ocr_candidate_status()
+
+    def _select_recommended_and_useful_ocr_candidates(self) -> None:
+        for index, item in enumerate(self._ocr_candidate_items):
+            if index < len(self._ocr_candidate_vars):
+                self._ocr_candidate_vars[index].set(
+                    self._candidate_review_priority(item) in {"Recommended", "Useful"}
+                )
         self._update_ocr_candidate_status()
 
     def _select_visible_ocr_candidates(self) -> None:
@@ -4894,9 +5029,10 @@ class ModernVocabularyGui:
         self._ocr_status_var.set(f"{provider} direct image extraction found {total} candidate(s).")
         self._set_ocr_text(self._ocr_review_text_from_candidate_items(items, provider=provider))
         self._set_ocr_candidate_items(items)
-        selected_note = "selected by default" if total <= OCR_CANDIDATE_AUTOSELECT_LIMIT else "not selected by default"
+        selected = sum(1 for var in self._ocr_candidate_vars if var.get())
         self._ocr_candidate_status_var.set(
-            f"{provider} direct image extraction found {total} candidate(s); all visible, {selected_note}. Review/cherry-pick before Queue."
+            f"{provider} direct image extraction found {total} candidate(s); {selected} selected by default based on review priority. "
+            "Review before Queue."
         )
         self._record_activity(f"{provider} direct image candidates: {len(items)}")
 
@@ -5150,10 +5286,11 @@ class ModernVocabularyGui:
             return
         total = len(items)
         self._set_ocr_candidate_items(items)
-        selected_note = "selected by default" if total <= OCR_CANDIDATE_AUTOSELECT_LIMIT else "not selected by default"
+        selected = sum(1 for var in self._ocr_candidate_vars if var.get())
         suffix = f" {limit_note}" if limit_note else ""
         self._ocr_candidate_status_var.set(
-            f"AI analysed all {len(chunks)} part(s) and found {total} reviewed candidate(s); {selected_note}.{suffix}"
+            f"AI analysed all {len(chunks)} part(s) and found {total} reviewed candidate(s); "
+            f"{selected} selected by default based on review priority.{suffix}"
         )
         self._record_activity(f"Import candidates: {len(items)} from {len(chunks)} part(s)")
 
@@ -5316,6 +5453,11 @@ class ModernVocabularyGui:
                     needs_review = str(needs_review_value).strip().casefold()
                 candidate_kind_meta = str(candidate.get("candidate_kind") or candidate.get("kind") or "").strip()
                 source_section_meta = str(candidate.get("source_section") or candidate.get("section") or "").strip()
+                advancedness_meta = str(candidate.get("advancedness") or "").strip()
+                topic_relevance_meta = str(candidate.get("topic_relevance") or "").strip()
+                reusability_meta = str(candidate.get("reusability") or "").strip()
+                learning_value_meta = str(candidate.get("learning_value") or "").strip()
+                document_specificity_meta = str(candidate.get("document_specificity") or "").strip()
 
                 if self._looks_like_json_fragment(target):
                     target = ""
@@ -5333,6 +5475,35 @@ class ModernVocabularyGui:
                     source_section_meta = ""
                 if not target and not sentence and not source_rule:
                     continue
+
+                # Smart Vocabulary is a mixed intent: a target with a real exact
+                # source usage sentence should arrive in Queue as Provided example
+                # automatically. Do not make the user reclassify dozens of rows by
+                # hand. Definitions/context remain Vocabulary and are handled later
+                # as source_definition rather than learner examples.
+                smart_vocab_source_example = False
+                if (
+                    default_mode_key == "smart vocabulary"
+                    and candidate_type == "vocabulary"
+                    and target
+                    and sentence
+                    and self._looks_like_complete_sentence(sentence)
+                    and self._import_source_sentence_uses_target(target, sentence)
+                ):
+                    target_cf = clean_ocr_text(target).strip().casefold()
+                    sentence_cf = clean_ocr_text(sentence).strip().casefold()
+                    definition_starts = (
+                        f"{target_cf} is ",
+                        f"{target_cf} are ",
+                        f"{target_cf} means ",
+                        f"{target_cf} refers to ",
+                        f"{target_cf} refers to a ",
+                        f"{target_cf} refers to an ",
+                    )
+                    definition_like = any(sentence_cf.startswith(prefix) for prefix in definition_starts)
+                    if not definition_like:
+                        candidate_type = "provided_example"
+                        smart_vocab_source_example = True
 
                 normalized_role = self._normalize_smart_grammar_source_type(source_role)
                 if candidate_type == "grammar" and normalized_role:
@@ -5365,6 +5536,9 @@ class ModernVocabularyGui:
                 if not source_type:
                     source_type = self._infer_smart_grammar_source_type(candidate_type, target, sentence, source_rule)
                 strategy = str(candidate.get("strategy") or "").strip() or self._smart_grammar_strategy_for_source_type(source_type)
+                if smart_vocab_source_example:
+                    source_type = "provided_example"
+                    strategy = "preserve_source_sentence"
                 if candidate_type == "grammar" and source_type == "rule" and strategy == "preserve_source_sentence":
                     strategy = "generated_example_from_rule"
                 if (
@@ -5399,6 +5573,15 @@ class ModernVocabularyGui:
                     item["candidate_kind"] = clean_ocr_text(candidate_kind_meta).replace("\n", " ").strip()
                 if source_section_meta:
                     item["source_section"] = clean_ocr_text(source_section_meta).replace("\n", " ").strip()
+                for meta_key, meta_value in (
+                    ("advancedness", advancedness_meta),
+                    ("topic_relevance", topic_relevance_meta),
+                    ("reusability", reusability_meta),
+                    ("learning_value", learning_value_meta),
+                    ("document_specificity", document_specificity_meta),
+                ):
+                    if meta_value and not self._looks_like_json_fragment(meta_value):
+                        item[meta_key] = clean_ocr_text(meta_value).replace("\n", " ").strip()
                 if confidence:
                     item["confidence"] = confidence
                 if answer:
@@ -5749,11 +5932,11 @@ class ModernVocabularyGui:
         self._batch_generated_card = None
         self._batch_generated_provider_name = None
         self._batch_generated_grammar = None
-        first_mode = str(clean_items[0].get("batch_mode") or "Vocabulary")
-        if first_mode in BATCH_MODES:
-            self._batch_mode_var.set(first_mode)
-        self._show_current_batch_item(generate=False)
         modes = sorted({str(item.get("batch_mode") or "Vocabulary") for item in clean_items})
+        imported_queue_mode = self._queue_mode_from_imported_item_types(clean_items)
+        if imported_queue_mode in BATCH_MODES:
+            self._batch_mode_var.set(imported_queue_mode)
+        self._show_current_batch_item(generate=False)
         mode_counts = {mode: sum(1 for item in clean_items if str(item.get("batch_mode") or "Vocabulary") == mode) for mode in modes}
         mode_summary = " · ".join(f"{mode_counts[mode]} {mode}" for mode in modes)
         mixed_note = " Each imported item keeps its own type." if len(modes) > 1 else " Imported item type is preserved."
@@ -5811,9 +5994,15 @@ class ModernVocabularyGui:
         explicit_import_mode = str(item.get("source") or "").startswith("ocr_import/") or bool(
             item.get("source_type") or item.get("provided_target") or item.get("grammar_target")
         )
-        if item_mode in BATCH_MODES and (item_has_generated_payload or item_status != "pending" or explicit_import_mode):
+        if bool(item.get("mode_locked")):
+            # Structured Import Material rows keep their own per-item type.  Do not
+            # mirror the currently selected row back into the Queue-wide selector:
+            # a mixed import must continue to show Mixed while the user browses
+            # Vocabulary / Grammar / Provided Example rows.
+            pass
+        elif item_mode in BATCH_MODES and (item_has_generated_payload or item_status != "pending" or explicit_import_mode):
             self._batch_mode_var.set(item_mode)
-        elif item_status == "pending" and not bool(item.get("mode_locked")):
+        elif item_status == "pending":
             # Only manually loaded clean rows follow the Queue-wide input type.
             # Import Material rows already carry a per-item type.
             item["batch_mode"] = self._batch_mode_var.get().strip() or "Vocabulary"
@@ -8707,6 +8896,9 @@ class ModernVocabularyGui:
                 self._feedback_language_var.set(data.get("feedback_language", self._feedback_language_var.get()))
             self._batch_topic_var.set(data.get("batch_topic", self._batch_topic_var.get()))
             self._batch_mode_var.set(data.get("batch_mode", self._batch_mode_var.get()))
+            restored_import_mode = self._queue_mode_from_imported_item_types(self._batch_items)
+            if restored_import_mode in BATCH_MODES:
+                self._batch_mode_var.set(restored_import_mode)
             self._deck_var.set(data.get("deck", self._deck_var.get()))
         except Exception as exc:
             messagebox.showerror("Resume error", str(exc))
@@ -9745,7 +9937,10 @@ class ModernVocabularyGui:
             row=1, column=3, padx=(0, 8), pady=(4, 12)
         )
         ctk.CTkButton(voice_lab, text="Test provider", width=110, command=self._test_tts_provider).grid(
-            row=1, column=4, padx=(0, 16), pady=(4, 12)
+            row=1, column=4, padx=(0, 8), pady=(4, 12)
+        )
+        ctk.CTkButton(voice_lab, text="Voice Library", width=120, command=self._open_voice_library).grid(
+            row=1, column=5, padx=(0, 16), pady=(4, 12)
         )
 
         search = ctk.CTkFrame(frame, corner_radius=18)
@@ -10252,6 +10447,455 @@ class ModernVocabularyGui:
             self._speech_preview_text_var.set(new_sample)
             self._speech_preview_last_auto_text = new_sample
 
+    def _register_runtime_voice(self, provider_name: str, label: str, value: str, language: str = "") -> None:
+        """Register a user-discovered voice without hard-coding it into presets."""
+        if not provider_name or not label or not value:
+            return
+        self._runtime_voice_values.setdefault(provider_name, {})[label] = value
+        self._runtime_voice_languages.setdefault(provider_name, {})[label] = language or ""
+
+    @staticmethod
+    def _voice_language_matches(candidate: str, requested: str) -> bool:
+        if not requested or not candidate:
+            return True
+        c = candidate.strip().casefold().replace("_", "-")
+        r = requested.strip().casefold().replace("_", "-")
+        aliases = {
+            "english": "en",
+            "spanish": "es",
+            "polish": "pl",
+            "german": "de",
+            "french": "fr",
+            "italian": "it",
+            "portuguese": "pt",
+        }
+        r_short = aliases.get(r, r[:2])
+        c_short = aliases.get(c, c[:2])
+        return c == r or c_short == r_short
+
+    def _voice_options_for_provider(self, provider_name: str, language: str) -> list[str]:
+        """Return readable voice labels, including downloaded/runtime voices."""
+        if not self._speech_service or provider_name not in self._speech_service.providers:
+            return []
+        provider = self._speech_service.providers[provider_name]
+        labels: list[str] = []
+
+        # Piper voice paths are converted into readable labels from their JSON metadata.
+        if provider_name.casefold().startswith("piper"):
+            for raw_path in provider.voices:
+                meta = piper_voice_metadata(raw_path)
+                if language and meta.get("language") and not self._voice_language_matches(meta["language"], language):
+                    continue
+                label = meta.get("label") or Path(raw_path).stem
+                self._register_runtime_voice(provider_name, label, str(raw_path), meta.get("language") or meta.get("locale") or "")
+                if label not in labels:
+                    labels.append(label)
+
+        # Built-in cloud presets remain useful fallbacks.
+        for label in get_voice_labels(provider_name, language):
+            if label not in labels:
+                labels.append(label)
+        if not labels:
+            for label in get_voice_labels(provider_name):
+                if label not in labels:
+                    labels.append(label)
+
+        # Voices discovered from ElevenLabs My Voices / Voice Library are kept in memory.
+        runtime = self._runtime_voice_values.get(provider_name, {})
+        languages = self._runtime_voice_languages.get(provider_name, {})
+        for label in runtime:
+            candidate_language = languages.get(label, "")
+            if candidate_language and language and not self._voice_language_matches(candidate_language, language):
+                continue
+            if label not in labels:
+                labels.append(label)
+
+        if not labels:
+            labels = list(provider.voices)
+        return labels
+
+    def _resolve_runtime_voice(self, provider_name: str, label: str) -> str | None:
+        return self._runtime_voice_values.get(provider_name, {}).get(label)
+
+    def _open_voice_library(self) -> None:
+        """Open one in-app browser for Piper, OpenAI, Gemini and ElevenLabs voices."""
+        if self._voice_library_window is not None and self._voice_library_window.winfo_exists():
+            self._voice_library_window.focus()
+            return
+
+        window = ctk.CTkToplevel(self._root)
+        self._voice_library_window = window
+        window.title("Voice Library")
+        window.geometry("1040x650")
+        window.minsize(900, 560)
+        window.grid_columnconfigure(0, weight=1)
+        window.grid_rowconfigure(2, weight=1)
+
+        header = ctk.CTkFrame(window, corner_radius=18)
+        header.grid(row=0, column=0, sticky="ew", padx=14, pady=(14, 8))
+        header.grid_columnconfigure(1, weight=1)
+        ctk.CTkLabel(header, text="Voice Library", font=ctk.CTkFont(size=22, weight="bold")).grid(
+            row=0, column=0, sticky="w", padx=(16, 10), pady=(14, 4)
+        )
+        ctk.CTkLabel(
+            header,
+            text="Browse and preview Piper, OpenAI, Gemini and ElevenLabs voices in one place.",
+            text_color=("gray35", "gray75"),
+        ).grid(row=0, column=1, columnspan=5, sticky="w", padx=(0, 16), pady=(14, 4))
+
+        sources = ["Piper online catalog", "OpenAI built-in voices", "Gemini built-in voices"]
+        settings = get_settings()
+        if settings.elevenlabs_api_key:
+            sources.extend(["ElevenLabs Voice Library", "ElevenLabs My Voices"])
+        source_box = ctk.CTkComboBox(
+            header,
+            variable=self._voice_library_source_var,
+            values=sources,
+            state="readonly",
+            width=220,
+        )
+        source_box.grid(row=1, column=0, padx=(16, 8), pady=(6, 14), sticky="w")
+        language_values = ["All", *list(TTS_SAMPLE_TEXTS.keys())]
+        current_language = self._current_tts_default_language()
+        self._voice_library_language_var.set(current_language if current_language in language_values else "All")
+        ctk.CTkComboBox(
+            header,
+            variable=self._voice_library_language_var,
+            values=language_values,
+            state="readonly",
+            width=150,
+        ).grid(row=1, column=1, padx=(0, 8), pady=(6, 14), sticky="w")
+        ctk.CTkEntry(
+            header,
+            textvariable=self._voice_library_search_var,
+            placeholder_text="Search name, accent, locale...",
+        ).grid(row=1, column=2, sticky="ew", padx=(0, 8), pady=(6, 14))
+        ctk.CTkButton(header, text="Search", width=90, command=self._search_voice_library).grid(
+            row=1, column=3, padx=(0, 8), pady=(6, 14)
+        )
+        ctk.CTkButton(header, text="Add local Piper .onnx", width=150, command=self._add_local_piper_voice).grid(
+            row=1, column=4, padx=(0, 8), pady=(6, 14)
+        )
+        ctk.CTkButton(header, text="Open Piper folder", width=130, command=self._open_piper_voice_folder).grid(
+            row=1, column=5, padx=(0, 16), pady=(6, 14)
+        )
+
+        info = ctk.CTkLabel(
+            window,
+            text=(
+                "Piper uses public provider samples. OpenAI and Gemini previews are generated with your own API key and may incur API usage. "
+                "ElevenLabs browsing uses your own API key and its shared Voice Library may require an eligible paid tier."
+            ),
+            text_color=("gray35", "gray75"),
+            anchor="w",
+        )
+        info.grid(row=1, column=0, sticky="ew", padx=20, pady=(0, 8))
+
+        tree_frame = ctk.CTkFrame(window, corner_radius=18)
+        tree_frame.grid(row=2, column=0, sticky="nsew", padx=14, pady=(0, 8))
+        tree_frame.grid_columnconfigure(0, weight=1)
+        tree_frame.grid_rowconfigure(0, weight=1)
+        columns = ("name", "language", "accent", "quality", "status")
+        tree = ttk.Treeview(tree_frame, columns=columns, show="headings", selectmode="browse")
+        self._voice_library_tree = tree
+        for col, title, width in (
+            ("name", "Voice", 310),
+            ("language", "Language / locale", 190),
+            ("accent", "Accent / gender", 170),
+            ("quality", "Quality", 120),
+            ("status", "Status", 110),
+        ):
+            tree.heading(col, text=title)
+            tree.column(col, width=width, minwidth=80, stretch=True)
+        scrollbar = ttk.Scrollbar(tree_frame, orient="vertical", command=tree.yview)
+        tree.configure(yscrollcommand=scrollbar.set)
+        tree.grid(row=0, column=0, sticky="nsew", padx=(12, 0), pady=12)
+        scrollbar.grid(row=0, column=1, sticky="ns", padx=(0, 12), pady=12)
+        tree.bind("<Double-1>", lambda _event: self._preview_selected_library_voice())
+
+        footer = ctk.CTkFrame(window, corner_radius=18)
+        footer.grid(row=3, column=0, sticky="ew", padx=14, pady=(0, 14))
+        footer.grid_columnconfigure(0, weight=1)
+        ctk.CTkLabel(footer, textvariable=self._voice_library_status_var, anchor="w").grid(
+            row=0, column=0, sticky="ew", padx=16, pady=(12, 4)
+        )
+        buttons = ctk.CTkFrame(footer, fg_color="transparent")
+        buttons.grid(row=1, column=0, sticky="w", padx=16, pady=(4, 12))
+        ctk.CTkButton(buttons, text="Preview", command=self._preview_selected_library_voice).pack(side="left", padx=(0, 8))
+        ctk.CTkButton(buttons, text="Add / download", command=self._add_selected_library_voice).pack(side="left", padx=(0, 8))
+        ctk.CTkButton(buttons, text="Use selected", command=self._use_selected_library_voice).pack(side="left", padx=(0, 8))
+        ctk.CTkButton(buttons, text="Stop preview", command=self._stop_speech_preview).pack(side="left")
+
+        self._voice_library_status_var.set("Choose a source and press Search. Double-click a voice to preview it.")
+        self._search_voice_library()
+
+    def _voice_library_selected_item(self) -> VoiceLibraryItem | None:
+        tree = self._voice_library_tree
+        if tree is None:
+            return None
+        selected = tree.selection()
+        if not selected:
+            return None
+        return self._voice_library_result_by_iid.get(selected[0])
+
+    def _voice_library_run_async(self, working_text: str, worker, on_success) -> None:
+        self._voice_library_status_var.set(working_text)
+
+        def run() -> None:
+            try:
+                result = worker()
+            except Exception as exc:
+                LOGGER.exception("Voice Library operation failed")
+                detail = str(exc)
+                if "403" in detail and "ElevenLabs" in self._voice_library_source_var.get():
+                    detail = "ElevenLabs denied Voice Library access (HTTP 403). The Voice Library API may require an eligible paid tier."
+                self._root.after(0, lambda detail=detail: self._voice_library_status_var.set(f"Voice Library error: {detail}"))
+                return
+            self._root.after(0, lambda: on_success(result))
+
+        threading.Thread(target=run, daemon=True).start()
+
+    def _search_voice_library(self) -> None:
+        source = self._voice_library_source_var.get().strip()
+        query = self._voice_library_search_var.get().strip()
+        language = self._voice_library_language_var.get().strip()
+        language_name = None if language == "All" else language
+        settings = get_settings()
+
+        if source == "Piper online catalog":
+            worker = lambda: fetch_piper_catalog(language_name=language_name, query=query)
+        elif source == "OpenAI built-in voices":
+            worker = lambda: openai_builtin_voice_items(query=query)
+        elif source == "Gemini built-in voices":
+            worker = lambda: gemini_builtin_voice_items(query=query)
+        elif source == "ElevenLabs Voice Library":
+            if not settings.elevenlabs_api_key:
+                self._voice_library_status_var.set("Add ELEVENLABS_API_KEY in Setup first.")
+                return
+            worker = lambda: fetch_elevenlabs_shared_voices(
+                settings.elevenlabs_api_key or "", language_name=language_name, query=query
+            )
+        else:
+            if not settings.elevenlabs_api_key:
+                self._voice_library_status_var.set("Add ELEVENLABS_API_KEY in Setup first.")
+                return
+            worker = lambda: fetch_elevenlabs_my_voices(settings.elevenlabs_api_key or "", query=query)
+
+        self._voice_library_run_async("Loading voices...", worker, self._populate_voice_library_results)
+
+    def _populate_voice_library_results(self, items: list[VoiceLibraryItem]) -> None:
+        tree = self._voice_library_tree
+        if tree is None or not tree.winfo_exists():
+            return
+        for iid in tree.get_children():
+            tree.delete(iid)
+        self._voice_library_results = list(items)
+        self._voice_library_result_by_iid.clear()
+        installed_keys = {path.parent.name for path in installed_piper_models()}
+        for index, item in enumerate(items):
+            status = "available"
+            if item.provider == "Piper" and item.key in installed_keys:
+                status = "installed"
+            elif item.provider == "ElevenLabs mine":
+                status = "in account"
+            elif item.provider in {"OpenAI TTS", "Gemini TTS"}:
+                status = "built-in"
+            accent_gender = " · ".join(bit for bit in (item.accent, item.gender) if bit)
+            iid = f"voice_{index}"
+            tree.insert(
+                "",
+                "end",
+                iid=iid,
+                values=(item.name, " · ".join(bit for bit in (item.language, item.locale) if bit), accent_gender, item.quality, status),
+            )
+            self._voice_library_result_by_iid[iid] = item
+        self._voice_library_status_var.set(f"Found {len(items)} voice(s). Select one to preview, add or use.")
+
+    def _preview_selected_library_voice(self) -> None:
+        item = self._voice_library_selected_item()
+        if item is None:
+            self._voice_library_status_var.set("Select a voice first.")
+            return
+        settings = get_settings()
+
+        preview_text = self._speech_preview_text_var.get().strip() or TTS_SAMPLE_TEXTS.get(
+            self._current_tts_default_language(), TTS_SAMPLE_TEXTS["English"]
+        )
+        preview_language = self._current_tts_default_language()
+
+        def worker() -> Path:
+            if item.provider in {"OpenAI TTS", "Gemini TTS"}:
+                if not self._speech_service or item.provider not in self._speech_service.providers:
+                    key_name = "OPENAI_API_KEY" if item.provider == "OpenAI TTS" else "GEMINI_API_KEY"
+                    raise ValueError(f"Add {key_name} in Setup and reload providers to preview this voice.")
+                provider = self._speech_service.providers[item.provider]
+                result = self._speech_service.generate(
+                    item.provider,
+                    preview_text,
+                    preview_language,
+                    provider.default_model,
+                    item.voice_id or item.key,
+                )
+                return result.path
+
+            preview_url = item.preview_url
+            if not preview_url and item.voice_id and settings.elevenlabs_api_key:
+                preview_url = fetch_elevenlabs_voice_preview(settings.elevenlabs_api_key, item.voice_id)
+            suffix = ".mp3"
+            preview_dir = Path(settings.audio_cache_dir) / "voice_previews"
+            safe_key = re.sub(r"[^A-Za-z0-9_.-]+", "_", item.key or item.name)
+            destination = preview_dir / f"{safe_key}{suffix}"
+            if not destination.exists() or destination.stat().st_size == 0:
+                download_preview_audio(preview_url, destination)
+            return destination
+
+        def success(path: Path) -> None:
+            self._voice_library_status_var.set(f"Previewing {item.name} inside the app.")
+            self._play_audio_in_app(path, context=f"Voice Library · {item.name}")
+
+        self._voice_library_run_async(f"Loading preview for {item.name}...", worker, success)
+
+    def _add_selected_library_voice(self) -> None:
+        item = self._voice_library_selected_item()
+        if item is None:
+            self._voice_library_status_var.set("Select a voice first.")
+            return
+        settings = get_settings()
+
+        if item.provider == "Piper":
+            def worker() -> Path:
+                return download_piper_voice(item)
+
+            def success(path: Path) -> None:
+                self._voice_library_status_var.set(f"Installed Piper voice: {item.name}. Reloading audio providers...")
+                self._reload_provider_configuration()
+                self._select_piper_voice_path(path)
+                self._search_voice_library()
+
+            self._voice_library_run_async(f"Downloading {item.name}...", worker, success)
+            return
+
+        if item.provider in {"OpenAI TTS", "Gemini TTS"}:
+            self._voice_library_status_var.set(f"{item.name} is a built-in cloud voice; nothing needs to be downloaded.")
+            self._use_selected_library_voice()
+            return
+
+        if item.provider == "ElevenLabs mine":
+            self._register_elevenlabs_runtime_voice(item, item.voice_id)
+            self._voice_library_status_var.set(f"{item.name} is already in your ElevenLabs account.")
+            self._use_selected_library_voice()
+            return
+
+        if not settings.elevenlabs_api_key:
+            self._voice_library_status_var.set("Add ELEVENLABS_API_KEY in Setup first.")
+            return
+
+        def worker() -> str:
+            return add_elevenlabs_shared_voice(settings.elevenlabs_api_key or "", item)
+
+        def success(voice_id: str) -> None:
+            self._register_elevenlabs_runtime_voice(item, voice_id)
+            self._voice_library_status_var.set(f"Added {item.name} to ElevenLabs My Voices and selected it.")
+            self._set_elevenlabs_voice_selected(item.name, voice_id, item.language or item.locale)
+
+        self._voice_library_run_async(f"Adding {item.name} to ElevenLabs...", worker, success)
+
+    def _register_elevenlabs_runtime_voice(self, item: VoiceLibraryItem, voice_id: str) -> None:
+        label = f"ElevenLabs · {item.name}"
+        self._register_runtime_voice("ElevenLabs", label, voice_id, item.language or item.locale)
+
+    def _set_elevenlabs_voice_selected(self, name: str, voice_id: str, language: str = "") -> None:
+        label = f"ElevenLabs · {name}"
+        self._register_runtime_voice("ElevenLabs", label, voice_id, language)
+        save_elevenlabs_registry_voice(label, voice_id, language)
+        if self._speech_service and "ElevenLabs" in self._speech_service.providers:
+            self._tts_provider_var.set("ElevenLabs")
+            self._sync_tts_defaults()
+            self._tts_voice_var.set(label)
+            self._conversation_tts_provider_var.set("ElevenLabs")
+            self._sync_conversation_tts_defaults(preserve_voice=False)
+            self._conversation_tts_voice_var.set(label)
+
+    def _use_selected_library_voice(self) -> None:
+        item = self._voice_library_selected_item()
+        if item is None:
+            self._voice_library_status_var.set("Select a voice first.")
+            return
+        if item.provider == "Piper":
+            candidates = [path for path in installed_piper_models() if path.parent.name == item.key or path.stem == Path(item.model_filename).stem]
+            if not candidates:
+                self._voice_library_status_var.set("Download this Piper voice first, then choose Use selected.")
+                return
+            self._select_piper_voice_path(candidates[0])
+            self._voice_library_status_var.set(f"Selected Piper voice: {item.name}.")
+            return
+        if item.provider in {"OpenAI TTS", "Gemini TTS"}:
+            if not self._speech_service or item.provider not in self._speech_service.providers:
+                key_name = "OPENAI_API_KEY" if item.provider == "OpenAI TTS" else "GEMINI_API_KEY"
+                self._voice_library_status_var.set(f"Add {key_name} in Setup and reload providers before using this voice.")
+                return
+            self._register_runtime_voice(item.provider, item.name, item.voice_id or item.key, "Multilingual")
+            self._tts_provider_var.set(item.provider)
+            self._sync_tts_defaults()
+            self._tts_voice_var.set(item.name)
+            self._conversation_tts_provider_var.set(item.provider)
+            self._sync_conversation_tts_defaults(preserve_voice=False)
+            self._conversation_tts_voice_var.set(item.name)
+            self._voice_library_status_var.set(f"Selected {item.name} for Voice Lab and Conversation.")
+            return
+
+        self._register_elevenlabs_runtime_voice(item, item.voice_id)
+        self._set_elevenlabs_voice_selected(item.name, item.voice_id, item.language or item.locale)
+        self._voice_library_status_var.set(f"Selected ElevenLabs voice: {item.name}.")
+
+    def _select_piper_voice_path(self, path: Path) -> None:
+        if not self._speech_service:
+            return
+        provider_name = next((name for name in self._speech_service.providers if name.casefold().startswith("piper")), "")
+        if not provider_name:
+            return
+        meta = piper_voice_metadata(path)
+        label = meta.get("label") or path.stem
+        self._register_runtime_voice(provider_name, label, str(path), meta.get("language") or meta.get("locale") or "")
+        self._tts_provider_var.set(provider_name)
+        self._sync_tts_defaults()
+        self._tts_voice_var.set(label)
+        self._tts_model_var.set(str(path))
+        self._conversation_tts_provider_var.set(provider_name)
+        self._sync_conversation_tts_defaults(preserve_voice=False)
+        self._conversation_tts_voice_var.set(label)
+
+    def _add_local_piper_voice(self) -> None:
+        selected = filedialog.askopenfilename(
+            parent=self._voice_library_window or self._root,
+            title="Choose Piper .onnx voice",
+            filetypes=[("Piper voice model", "*.onnx"), ("All files", "*.*")],
+        )
+        if not selected:
+            return
+        try:
+            path = import_piper_voice(Path(selected))
+        except Exception as exc:
+            messagebox.showerror("Add Piper voice", str(exc), parent=self._voice_library_window or self._root)
+            return
+        self._voice_library_status_var.set(f"Imported {path.name}. Reloading audio providers...")
+        self._reload_provider_configuration()
+        self._select_piper_voice_path(path)
+        self._search_voice_library()
+
+    def _open_piper_voice_folder(self) -> None:
+        folder = piper_voice_directory()
+        folder.mkdir(parents=True, exist_ok=True)
+        try:
+            if sys.platform.startswith("win"):
+                os.startfile(str(folder.resolve()))  # type: ignore[attr-defined]
+            elif sys.platform == "darwin":
+                subprocess.Popen(["open", str(folder.resolve())])
+            else:
+                subprocess.Popen(["xdg-open", str(folder.resolve())])
+        except Exception as exc:
+            messagebox.showerror("Open Piper folder", str(exc), parent=self._voice_library_window or self._root)
+
     def _sync_tts_defaults(self) -> None:
         self._sync_speech_preview_text()
         if not self._speech_service or not self._tts_provider_var.get():
@@ -10263,16 +10907,15 @@ class ModernVocabularyGui:
         provider = self._speech_service.providers[provider_name]
         self._tts_model_box.configure(values=provider.models) if hasattr(self, "_tts_model_box") else None
 
-        voice_labels = get_voice_labels(provider_name, self._current_tts_default_language())
-        if not voice_labels:
-            voice_labels = get_voice_labels(provider_name)
-        if not voice_labels:
-            voice_labels = list(provider.voices)
+        voice_labels = self._voice_options_for_provider(provider_name, self._current_tts_default_language())
 
         self._tts_voice_box.configure(values=voice_labels) if hasattr(self, "_tts_voice_box") else None
         self._tts_model_var.set(provider.default_model)
 
-        if voice_labels:
+        current_voice = self._tts_voice_var.get().strip()
+        if current_voice in voice_labels:
+            self._tts_voice_var.set(current_voice)
+        elif voice_labels:
             self._tts_voice_var.set(voice_labels[0])
         else:
             self._tts_voice_var.set(provider.default_voice)
@@ -10285,6 +10928,12 @@ class ModernVocabularyGui:
         """Return the provider-specific voice ID/name selected in the GUI."""
         provider_name = self._tts_provider_var.get()
         selected = self._tts_voice_var.get()
+        runtime = self._resolve_runtime_voice(provider_name, selected)
+        if runtime:
+            return runtime
+        runtime = self._resolve_runtime_voice(provider_name, selected)
+        if runtime:
+            return runtime
         try:
             return get_voice_by_label(provider_name, selected)
         except ValueError:
@@ -11398,11 +12047,7 @@ class ModernVocabularyGui:
             self._conversation_tts_model_var.set(provider.default_model)
 
         language = self._conversation_language_var.get().strip()
-        voice_labels = get_voice_labels(provider_name, language)
-        if not voice_labels:
-            voice_labels = get_voice_labels(provider_name)
-        if not voice_labels:
-            voice_labels = list(provider.voices)
+        voice_labels = self._voice_options_for_provider(provider_name, language)
         if hasattr(self, "_conversation_tts_voice_box"):
             self._conversation_tts_voice_box.configure(
                 values=voice_labels,
@@ -11417,6 +12062,9 @@ class ModernVocabularyGui:
     def _selected_conversation_tts_voice(self) -> str:
         provider_name = self._conversation_tts_provider_var.get().strip()
         selected = self._conversation_tts_voice_var.get().strip()
+        runtime = self._resolve_runtime_voice(provider_name, selected)
+        if runtime:
+            return runtime
         try:
             return get_voice_by_label(provider_name, selected)
         except ValueError:

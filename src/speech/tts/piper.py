@@ -13,8 +13,13 @@ from src.speech.tts.base import TextToSpeechProvider
 class PiperTtsProvider(TextToSpeechProvider):
     """Generate WAV speech with the optional Python piper-tts package."""
 
-    def __init__(self, model_path: Path) -> None:
-        self._model_path = model_path
+    def __init__(self, model_paths: Path | list[Path]) -> None:
+        if isinstance(model_paths, Path):
+            model_paths = [model_paths]
+        self._model_paths = [Path(path) for path in model_paths]
+        if not self._model_paths:
+            raise ValueError("Configure at least one Piper voice model path.")
+        self._model_path = self._model_paths[0]
         self._voice = None
 
     @property
@@ -27,15 +32,15 @@ class PiperTtsProvider(TextToSpeechProvider):
 
     @property
     def default_voice(self) -> str:
-        return self._model_path.stem
+        return str(self._model_path)
 
     @property
     def models(self) -> list[str]:
-        return [str(self._model_path)]
+        return [str(path) for path in self._model_paths]
 
     @property
     def voices(self) -> list[str]:
-        return [self._model_path.stem]
+        return [str(path) for path in self._model_paths]
 
     @property
     def output_extension(self) -> str:
@@ -49,7 +54,9 @@ class PiperTtsProvider(TextToSpeechProvider):
                 "Piper Python package is not installed. Either install piper-tts "
                 "or configure PIPER_EXE_PATH for the standalone piper.exe."
             ) from exc
-        model_path = Path(request.model)
+        model_path = Path(request.voice or request.model)
+        if not model_path.exists() and request.model:
+            model_path = Path(request.model)
         if not model_path.exists():
             raise FileNotFoundError(f"Piper model not found: {model_path}")
         if self._voice is None or model_path != self._model_path:
@@ -114,6 +121,8 @@ class PiperExecutableTtsProvider(TextToSpeechProvider):
             command,
             input=request.text,
             text=True,
+            encoding="utf-8",
+            errors="strict",
             capture_output=True,
             timeout=120,
         )

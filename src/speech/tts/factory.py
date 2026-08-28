@@ -6,6 +6,7 @@ from pathlib import Path
 
 from src.core.config import Settings
 from src.speech.tts.base import TextToSpeechProvider
+from src.speech.voice_library import installed_piper_models
 
 
 def build_tts_providers(settings: Settings) -> dict[str, TextToSpeechProvider]:
@@ -47,19 +48,24 @@ def build_tts_providers(settings: Settings) -> dict[str, TextToSpeechProvider]:
             settings.piper_voice_pl,
             settings.piper_model_path,
         ]
-        piper_voice_paths: list[str] = []
+        piper_voice_paths: list[Path] = []
         for candidate in piper_voice_candidates:
-            if candidate and candidate not in piper_voice_paths:
-                piper_voice_paths.append(candidate)
+            if candidate:
+                path = Path(candidate)
+                if path not in piper_voice_paths:
+                    piper_voice_paths.append(path)
+        for path in installed_piper_models():
+            if path not in piper_voice_paths:
+                piper_voice_paths.append(path)
 
         if settings.piper_exe_path and piper_voice_paths:
             provider = PiperExecutableTtsProvider(
                 Path(settings.piper_exe_path),
-                [Path(path) for path in piper_voice_paths],
+                piper_voice_paths,
             )
             providers[provider.provider_name] = provider
-        elif settings.piper_model_path:
-            provider = PiperTtsProvider(Path(settings.piper_model_path))
+        elif piper_voice_paths:
+            provider = PiperTtsProvider(piper_voice_paths)
             providers[provider.provider_name] = provider
 
     if allow_cloud and settings.elevenlabs_api_key:

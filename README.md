@@ -64,7 +64,7 @@ Starts the command-line interface.
 | Create Card | Generate and review one Vocabulary or Grammar card in one workspace. |
 | Queue | Fast path for clean structured TXT/CSV/pasted rows. Choose Vocabulary, Grammar, Mixed or Provided examples before loading. |
 | Import Material | Advanced/raw-source path for lessons, TXT/HTML, PDFs, screenshots, scans and mixed material. TXT/HTML are read locally; OCR/vision is only for sources that need it. |
-| Speech / Audio | Test voices in the in-app Voice Lab, generate/repair example audio and backfill existing Anki cards without opening an external player. |
+| Speech / Audio | Test voices in Voice Lab, browse/download Piper voices, browse OpenAI and Gemini built-in voices, browse/add ElevenLabs voices with your own API key, and generate/repair Anki audio without opening an external player. |
 | Fix Cards | Find and repair existing Anki cards. |
 | Conversation Practice | Practise by free topic, a selected Anki deck, or current Queue. Flashcard mode adds persistent deck rotation, due/random/repeat selection, session coverage, speaking cues, genuinely new card candidates, TXT/Markdown export, and in-app tutor/question TTS. |
 | Practice & Print | Practise selected cards and create printable tests. |

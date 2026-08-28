@@ -1,3 +1,59 @@
+## v12.3.3 - Mixed Queue routing fix
+
+- Fix mixed Import Material transfers so Queue shows `Mixed` whenever imported rows contain more than one preserved card type.
+- Keep the Queue-wide selector stable while browsing typed imported rows instead of replacing it with the current row's Vocabulary / Grammar / Provided examples type.
+- Preserve each imported row's own `batch_mode` and route generation per item.
+- Recompute the correct Mixed/single imported Queue mode when resuming older Queue autosaves.
+
+## v12.3.2 - Unified OpenAI and Gemini Voice Library
+
+- Added **OpenAI built-in voices** to the in-app Voice Library alongside Piper and ElevenLabs. The library now exposes the current built-in OpenAI TTS voice set, including Nova, Shimmer, Marin and Cedar.
+- Added all **30 Gemini TTS voices** with their provider style labels (for example Zephyr / Bright, Puck / Upbeat and Sulafat / Warm).
+- OpenAI and Gemini voice previews are generated directly inside the app with the user's own configured API key and the current Voice Lab sample text; no external player is opened.
+- `Use selected` now switches the active Speech & Audio provider/voice and synchronizes Conversation audio settings. Built-in cloud voices require no download step.
+- Fixed runtime voice-ID resolution in Conversation so user-added ElevenLabs/Piper voices and newly selected cloud voices are sent to the provider by their real voice ID/path instead of a UI label.
+- Voice Library search works for OpenAI/Gemini names and Gemini style descriptors.
+- Expanded the normal OpenAI/Gemini voice dropdowns to the same complete provider voice sets, so the Voice Library and regular TTS selectors no longer disagree.
+- Preview UI explains that OpenAI/Gemini preview generation may incur normal API usage.
+
+## v12.3.1 - Smart Vocabulary example routing and review fixes
+
+- Smart Vocabulary now automatically routes a candidate to `Provided example` when the imported source contains a complete real usage sentence that uses the target. Users no longer need to reclassify every vocabulary+example row manually before Queue.
+- Glossary definitions and source context remain `Vocabulary`; definition-like text is never promoted merely because it explains the target.
+- Queue therefore preserves exact Smart Vocabulary source examples as `target | sentence` and uses the Provided Example generation path automatically.
+- Recalibrated Candidate Review so `Recommended` can mean either advanced + relevant language or strongly topic-central language with high learning value, without quotas. `Useful` remains the default middle tier and `Optional` remains for odd/document-specific material.
+- Added visible `Select all` and `Select visible` actions to Candidate Review, alongside Recommended/Useful selection controls.
+- Fixed standalone Piper on Windows to send subprocess stdin explicitly as UTF-8, preventing `UnicodeEncodeError` for emoji, Polish, Spanish and other non-cp1252 text.
+
+## v12.3.0 - In-app Voice Library for Piper and ElevenLabs
+
+- Added a dedicated **Voice Library** window inside Speech & Audio so users can browse, preview and add voices without leaving the app.
+- Piper now loads the public `rhasspy/piper-voices` catalog on demand, filters by language/search text, plays public preview samples in-app, downloads the `.onnx` + `.onnx.json` pair, and automatically reloads TTS providers after installation.
+- Added **Add local Piper .onnx** and **Open Piper folder** actions. Imported Piper voices are copied into the user voice library and discovered automatically on later starts.
+- Piper TTS providers now support multiple installed voice models instead of a single fixed model path. Voice selection uses the chosen model rather than silently falling back to the first configured Piper voice.
+- Added ElevenLabs **Voice Library** search and **My Voices** browsing through the user's own `ELEVENLABS_API_KEY`, including in-app preview of provider samples and adding shared voices to the user's ElevenLabs voice collection.
+- User-selected ElevenLabs voice IDs are remembered in a local non-secret registry so they remain selectable after restarting the app; API keys remain only in `.env`.
+- Added `PIPER_VOICE_DIR` support (default `voices/piper`) so downloaded/local voices no longer need to be individually hard-coded in `.env`.
+- Voice Library network work runs in background threads so catalog searches/downloads do not freeze the Tk UI.
+
+## v12.2.9 - Educational priorities and source safety limits
+
+- Reworked Candidate Review priorities around learning value instead of source location. `Recommended` now requires an advanced item that is strongly relevant to the lesson/topic and remains reusable; ordinary useful vocabulary stays `Useful`; odd, document-specific, low-reusability, low-confidence and very long items stay `Optional`.
+- Added explicit review metadata to Import Material AI extraction (`advancedness`, `topic_relevance`, `reusability`, `learning_value`, `document_specificity`) without changing Smart Vocabulary candidate-count semantics or imposing quotas.
+- Removed the old behavior where merely appearing in a Vocabulary/Key Terms section could make nearly every candidate `Recommended`. Missing review metadata now safely falls back to `Useful` rather than `Recommended`.
+- Large reviews (>25 candidates) now select only `Recommended` items by default so 70–150 candidates do not immediately flood Queue. Small reviews select `Recommended + Useful` but leave `Optional` unchecked. Added a `Select recommended + useful` action.
+- Candidate cards now show the educational signals used for review ranking so users can understand why an item landed in a tier.
+- Strengthened Import Material source-size protection with an explicit maximum of 8 full-source AI analysis parts in addition to word/character safeguards. Larger/book-sized sources must be analysed by selected chapter/section.
+- Material-size summaries now show the full-source analysis-part safety limit while keeping candidate count entirely content-driven.
+
+## v12.2.8 - Balanced candidate review priorities
+
+- Fixed Candidate Review classifying nearly every Smart Vocabulary result as `Recommended`.
+- `Recommended` is now deliberately conservative and reserved mainly for explicit lesson vocabulary/expression sections, highlighted items, and strong idioms.
+- Generic phrases, collocations, grammar candidates, provided examples and candidates that merely have a valid source sentence now default to `Useful` instead of being promoted automatically.
+- Low-confidence, review-needed, very long and obvious document-specific/named-entity candidates remain `Optional`.
+- Review priority still never deletes candidates and does not affect Smart Vocabulary extraction itself.
+
 ## v12.2.7 - Import size guardrails and scalable candidate review
 
 - Added source-size guardrails to Import Material without reintroducing a fixed candidate-count target. Small sources run normally; large sources are warned before AI analysis; very large/book-sized sources require a selected chapter/section instead of one full-source run.

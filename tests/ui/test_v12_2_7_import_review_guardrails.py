@@ -59,6 +59,32 @@ def test_review_priority_uses_existing_metadata_without_fixed_quota() -> None:
             "target": "a bottleneck",
             "candidate_kind": "collocation",
             "source_section": "reading_text",
+            "confidence": "high",
+        }
+    ) == "Useful"
+
+    assert ModernVocabularyGui._candidate_review_priority(
+        {
+            "type": "vocabulary",
+            "target": "a bottleneck",
+            "candidate_kind": "collocation",
+            "source_section": "vocabulary_list",
+            "confidence": "high",
+        }
+    ) == "Useful"
+
+    assert ModernVocabularyGui._candidate_review_priority(
+        {
+            "type": "vocabulary",
+            "target": "regulatory capture",
+            "candidate_kind": "specialist_term",
+            "source_section": "reading_text",
+            "confidence": "high",
+            "advancedness": "advanced",
+            "topic_relevance": "high",
+            "reusability": "high",
+            "learning_value": "high",
+            "document_specificity": "low",
         }
     ) == "Recommended"
 
@@ -82,14 +108,21 @@ def test_review_priority_uses_existing_metadata_without_fixed_quota() -> None:
 def test_review_filters_and_pagination_do_not_drop_candidates() -> None:
     items = []
     for i in range(60):
-        items.append(
-            {
-                "type": "vocabulary",
-                "target": f"phrase {i}",
-                "candidate_kind": "collocation" if i < 30 else "word",
-                "source_section": "reading_text",
-            }
-        )
+        item = {
+            "type": "vocabulary",
+            "target": f"phrase {i}",
+            "candidate_kind": "collocation" if i < 30 else "word",
+            "source_section": "vocabulary_list" if i < 30 else "reading_text",
+        }
+        if i < 30:
+            item.update(
+                advancedness="advanced",
+                topic_relevance="high",
+                reusability="high",
+                learning_value="high",
+                document_specificity="low",
+            )
+        items.append(item)
     gui = _review_gui(items)
 
     assert len(gui._ocr_filtered_candidate_indices()) == 60
@@ -106,7 +139,17 @@ def test_review_filters_and_pagination_do_not_drop_candidates() -> None:
 
 def test_select_recommended_selects_only_recommended_items() -> None:
     items = [
-        {"type": "vocabulary", "target": "a bottleneck", "candidate_kind": "collocation"},
+        {
+            "type": "vocabulary",
+            "target": "regulatory capture",
+            "candidate_kind": "specialist_term",
+            "source_section": "reading_text",
+            "advancedness": "advanced",
+            "topic_relevance": "high",
+            "reusability": "high",
+            "learning_value": "high",
+            "document_specificity": "low",
+        },
         {"type": "vocabulary", "target": "systemic problems"},
         {"type": "vocabulary", "target": "The Phoebus Cartel"},
     ]
@@ -116,3 +159,30 @@ def test_select_recommended_selects_only_recommended_items() -> None:
 
     assert [var.get() for var in gui._ocr_candidate_vars] == [True, False, False]
     assert "1 Recommended" in gui._ocr_candidate_status_var.get()
+
+
+def test_review_priority_does_not_mark_every_phrase_with_sentence_recommended() -> None:
+    items = [
+        {
+            "type": "vocabulary",
+            "target": f"useful phrase {i}",
+            "sentence": f"This sentence uses useful phrase {i} naturally.",
+            "candidate_kind": "phrase",
+            "source_section": "reading_text",
+            "confidence": "high",
+        }
+        for i in range(40)
+    ]
+    priorities = [ModernVocabularyGui._candidate_review_priority(item) for item in items]
+    assert set(priorities) == {"Useful"}
+
+
+def test_review_priority_does_not_promote_explicit_list_items_without_learning_signals() -> None:
+    item = {
+        "type": "vocabulary",
+        "target": "sleep deprivation",
+        "candidate_kind": "phrase",
+        "source_section": "vocabulary_list",
+        "confidence": "high",
+    }
+    assert ModernVocabularyGui._candidate_review_priority(item) == "Useful"

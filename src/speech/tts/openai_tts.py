@@ -36,7 +36,7 @@ class OpenAiTtsProvider(TextToSpeechProvider):
 
     @property
     def voices(self) -> list[str]:
-        return ["coral", "alloy", "nova", "sage", "shimmer"]
+        return ["alloy", "ash", "ballad", "coral", "echo", "fable", "nova", "onyx", "sage", "shimmer", "verse", "marin", "cedar"]
 
     @property
     def output_extension(self) -> str:

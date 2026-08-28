@@ -57,6 +57,7 @@ SUPPORTED_ENV_KEYS = {
     "PIPER_VOICE_ES",
     "PIPER_VOICE_PL",
     "PIPER_MODEL_PATH",
+    "PIPER_VOICE_DIR",
     "AUDIO_CACHE_DIR",
     "STT_PROVIDER",
     "WHISPER_MODEL",
@@ -200,6 +201,7 @@ def starter_updates(mode: str) -> dict[str, str]:
                 "PIPER_VOICE_ES": "",
                 "PIPER_VOICE_PL": "",
                 "PIPER_MODEL_PATH": "",
+                "PIPER_VOICE_DIR": "voices/piper",
             }
         )
     if normalized in {"api", "hybrid"}:
@@ -235,10 +237,14 @@ def create_or_update_starter_env(mode: str, path: str | Path = ".env") -> Path:
 def configured_status(values: dict[str, str]) -> dict[str, bool]:
     """Return non-secret configured/missing flags for the setup screen."""
     nonempty = lambda key: bool((values.get(key) or "").strip())
+    piper_dir = Path(values.get("PIPER_VOICE_DIR") or "voices/piper")
+    has_piper_library = piper_dir.exists() and any(
+        model.with_name(model.name + ".json").exists() for model in piper_dir.rglob("*.onnx")
+    )
     return {
         "ollama": nonempty("OLLAMA_MODEL"),
         "whisper": (values.get("STT_PROVIDER") or "local_whisper").casefold() in {"local_whisper", "whisper", "faster_whisper"},
-        "piper": nonempty("PIPER_MODEL_PATH") or (nonempty("PIPER_EXE_PATH") and any(nonempty(k) for k in ("PIPER_VOICE_EN", "PIPER_VOICE_ES", "PIPER_VOICE_PL"))),
+        "piper": nonempty("PIPER_MODEL_PATH") or has_piper_library or (nonempty("PIPER_EXE_PATH") and any(nonempty(k) for k in ("PIPER_VOICE_EN", "PIPER_VOICE_ES", "PIPER_VOICE_PL"))),
         "openai": nonempty("OPENAI_API_KEY"),
         "gemini": nonempty("GEMINI_API_KEY") or nonempty("GOOGLE_API_KEY"),
         "claude": nonempty("ANTHROPIC_API_KEY") or nonempty("CLAUDE_API_KEY"),

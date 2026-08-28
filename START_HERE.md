@@ -19,7 +19,7 @@ AI Anki Language Assistant can run in three profiles from the **Setup** tab.
    ```
 
 5. Open **Setup → Fully local → Create / update .env**.
-6. Check/edit `OLLAMA_MODEL`, optional Piper paths, then click **Reload configuration** and **Check Ollama**.
+6. Check/edit `OLLAMA_MODEL`, then click **Reload configuration** and **Check Ollama**. For Piper, you can now use **Speech & Audio → Voice Library** to preview/download voices directly; downloaded voices are stored under `PIPER_VOICE_DIR` (default `voices/piper`).
 
 ## Hybrid / BYOK
 

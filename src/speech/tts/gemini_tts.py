@@ -42,7 +42,13 @@ class GeminiTtsProvider(TextToSpeechProvider):
 
     @property
     def voices(self) -> list[str]:
-        return ["Kore", "Puck", "Charon", "Fenrir", "Aoede"]
+        return [
+            "Zephyr", "Puck", "Charon", "Kore", "Fenrir", "Leda", "Orus", "Aoede",
+            "Callirrhoe", "Autonoe", "Enceladus", "Iapetus", "Umbriel", "Algieba",
+            "Despina", "Erinome", "Algenib", "Rasalgethi", "Laomedeia", "Achernar",
+            "Alnilam", "Schedar", "Gacrux", "Pulcherrima", "Achird", "Zubenelgenubi",
+            "Vindemiatrix", "Sadachbia", "Sadaltager", "Sulafat",
+        ]
 
     @property
     def output_extension(self) -> str:

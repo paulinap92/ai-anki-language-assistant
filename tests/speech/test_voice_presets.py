@@ -32,3 +32,21 @@ def test_english_voice_filter_does_not_include_spanish_presets() -> None:
     labels = get_voice_labels("ElevenLabs", "English")
     assert labels
     assert all("Spanish" not in label for label in labels)
+
+
+
+def test_openai_tts_exposes_all_current_builtin_voice_labels() -> None:
+    labels = get_voice_labels("OpenAI TTS", "Spanish")
+    assert len(labels) == 13
+    assert "OpenAI · Nova" in labels
+    assert "OpenAI · Shimmer" in labels
+    assert "OpenAI · Marin" in labels
+    assert get_voice_by_label("OpenAI TTS", "OpenAI · Cedar") == "cedar"
+
+
+def test_gemini_tts_exposes_all_30_voice_labels() -> None:
+    labels = get_voice_labels("Gemini TTS", "Polish")
+    assert len(labels) == 30
+    assert "Gemini · Zephyr — Bright" in labels
+    assert "Gemini · Sulafat — Warm" in labels
+    assert get_voice_by_label("Gemini TTS", "Gemini · Puck — Upbeat") == "Puck"
