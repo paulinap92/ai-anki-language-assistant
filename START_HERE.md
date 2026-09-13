@@ -1,6 +1,8 @@
 # Start here
 
-AI Anki Language Assistant can run in three profiles from the **Setup** tab.
+On the first launch, the app requires a **Learning Profile** before the main interface opens. Choose your learning language, target level and explanation/feedback language once. These settings are then reused across cards, Import Material, Queue, Conversation, STT and TTS. Provider/API configuration stays separate in **Setup**.
+
+AI Anki Language Assistant can run in three provider profiles from the **Setup** tab.
 
 ## Fully local
 
@@ -18,8 +20,8 @@ AI Anki Language Assistant can run in three profiles from the **Setup** tab.
    python main_gui_custom.py
    ```
 
-5. Open **Setup → Fully local → Create / update .env**.
-6. Check/edit `OLLAMA_MODEL`, then click **Reload configuration** and **Check Ollama**. For Piper, you can now use **Speech & Audio → Voice Library** to preview/download voices directly; downloaded voices are stored under `PIPER_VOICE_DIR` (default `voices/piper`).
+5. Complete the first-run Learning Profile, then open **Setup → Fully local → Create / update .env**.
+6. Check/edit `OLLAMA_MODEL`, then click **Reload configuration** and **Check Ollama**. For Piper, use **Speech & Audio → Voice Library** to preview/download voices for the active Learning Profile language. Downloaded voices are stored under `PIPER_VOICE_DIR` (default `voices/piper`). Piper will not silently use a voice from another language.
 
 ## Hybrid / BYOK
 
@@ -40,4 +42,4 @@ Use the same Hybrid dependency install, choose **API / BYOK**, and configure you
 
 ## Privacy
 
-The clean release does not include `.env`, API keys, logs, caches, generated audio, Batch autosaves or Conversation rotation state. API keys stay in your local `.env` file.
+The clean release does not include `.env`, `user_profile.json`, API keys, logs, caches, generated audio, Queue autosaves or Conversation rotation state. API keys stay in your local `.env` file.

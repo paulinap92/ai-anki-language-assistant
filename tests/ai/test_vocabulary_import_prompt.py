@@ -55,3 +55,16 @@ def test_vocabulary_modes_keep_their_existing_type_contracts() -> None:
     assert 'source examples when they are clearly available' in with_examples
     assert 'may mix vocabulary candidates and provided_example candidates' in smart
     assert 'Never return type="grammar" in Smart vocabulary mode.' in smart
+
+
+def test_smart_vocabulary_prompt_requires_semantic_source_role() -> None:
+    prompt = _prompt("Smart vocabulary")
+
+    assert 'source_role="usage_example"' in prompt
+    assert 'heading_label' in prompt
+    assert 'definition_context' in prompt
+    assert 'list_item' in prompt
+    assert 'fragment' in prompt
+    assert 'exercise' in prompt
+    assert '"A PLANNER or SPONTANEOUS"' in prompt
+    assert 'must remain type="vocabulary"' in prompt

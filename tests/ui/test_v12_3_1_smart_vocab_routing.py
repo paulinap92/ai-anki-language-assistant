@@ -170,3 +170,85 @@ def test_smart_vocabulary_real_example_reaches_queue_as_provided_example() -> No
     assert item["provided_target"] == "bounce back"
     assert item["provided_sentence"] == "She bounced back quickly after the setback."
     assert item["word"] == "bounce back | She bounced back quickly after the setback."
+
+
+def test_smart_vocabulary_heading_label_never_becomes_provided_example() -> None:
+    gui = ModernVocabularyGui.__new__(ModernVocabularyGui)
+    raw = json.dumps(
+        {
+            "candidates": [
+                {
+                    "type": "provided_example",
+                    "target": "planner",
+                    "sentence": "A PLANNER or SPONTANEOUS",
+                    "source_role": "heading_label",
+                    "candidate_kind": "word",
+                    "source_section": "highlighted_item",
+                    "reason": "Personality type heading",
+                }
+            ]
+        }
+    )
+
+    items = gui._ocr_candidate_items_from_ai_response(raw, default_mode="Smart vocabulary", source="test")
+
+    assert len(items) == 1
+    assert items[0]["type"] == "vocabulary"
+    assert items[0]["target"] == "planner"
+    assert items[0]["sentence"] == "A PLANNER or SPONTANEOUS"
+    assert items[0]["source_role"] == "heading_label"
+    assert items[0]["source_type"] == "heading_label"
+    assert items[0]["strategy"] == "generate_example_from_target"
+
+
+def test_smart_vocabulary_heading_label_reaches_queue_as_generated_vocabulary() -> None:
+    gui = ModernVocabularyGui.__new__(ModernVocabularyGui)
+    raw = json.dumps(
+        {
+            "candidates": [
+                {
+                    "type": "vocabulary",
+                    "target": "planner",
+                    "source_sentence": "A PLANNER or SPONTANEOUS",
+                    "source_role": "heading_label",
+                    "candidate_kind": "word",
+                    "source_section": "highlighted_item",
+                }
+            ]
+        }
+    )
+    gui._ocr_candidate_items = gui._ocr_candidate_items_from_ai_response(
+        raw, default_mode="Smart vocabulary", source="test"
+    )
+    gui._ocr_candidate_vars = [_Var(True)]
+    gui._batch_topic_var = _Var("")
+    gui._language_var = _Var("English")
+    gui._explanation_language_var = _Var("Polish")
+    gui._batch_mode_var = _Var("Vocabulary")
+    gui._batch_mode_help_var = _Var("")
+    gui._batch_source_summary_var = _Var("")
+    gui._ocr_candidate_status_var = _Var("")
+    gui._tabs = _Tabs()
+    gui._batch_items = []
+    gui._batch_index = 0
+    gui._batch_autosave_path = None
+    gui._batch_generated_card = None
+    gui._batch_generated_provider_name = None
+    gui._batch_generated_grammar = None
+    gui._show_current_batch_item = lambda generate=False: None
+    gui._update_batch_mode_help = lambda: None
+    gui._autosave_batch_session = lambda *args, **kwargs: None
+    gui._cleanup_runtime_memory = lambda *args, **kwargs: None
+    gui._record_activity = lambda *args, **kwargs: None
+
+    gui._send_ocr_candidates_to_batch()
+
+    assert len(gui._batch_items) == 1
+    item = gui._batch_items[0]
+    assert item["batch_mode"] == "Vocabulary"
+    assert item["word"] == "planner"
+    assert item["source_role"] == "heading_label"
+    assert item["generation_strategy"] == "generate_example_from_target"
+    assert "source_sentence" not in item
+    assert "provided_sentence" not in item
+    assert item["source_definition"] == "A PLANNER or SPONTANEOUS"

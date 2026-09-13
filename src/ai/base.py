@@ -42,12 +42,21 @@ class VocabularyAiClient(ABC):
         """Generate the first question for a topic or flashcard-based conversation."""
 
     @abstractmethod
-    def analyze_grammar(self, sentence: str, target_language: str) -> GrammarAnalysis:
+    def analyze_grammar(
+        self,
+        sentence: str,
+        target_language: str,
+        explanation_language: str = "Same as target",
+    ) -> GrammarAnalysis:
         """Analyze the grammar and natural usage of one sentence."""
 
     @abstractmethod
     def generate_grammar_card(
-        self, grammar_item: str, target_language: str, topic_context: str = ""
+        self,
+        grammar_item: str,
+        target_language: str,
+        topic_context: str = "",
+        explanation_language: str = "Same as target",
     ) -> GrammarAnalysis:
         """Generate one grammar card for a Batch grammar item."""
 
@@ -110,12 +119,68 @@ class VocabularyAiClient(ABC):
 
     @classmethod
     def _parse_grammar_analysis(
-        cls, raw_text: str, provider_name: str
+        cls, raw_text: str, provider_name: str, target_language: str = "", explanation_language: str = ""
     ) -> GrammarAnalysis:
-        """Parse and validate a sentence-first grammar analysis response."""
-        return cls._parse_response(
-            raw_text, provider_name, GrammarAnalysis, "grammar analysis"
-        )
+        """Parse the strict Grammar generation contract and adapt it to the existing app model.
+
+        Grammar generation deliberately has a much smaller LLM contract than the
+        legacy GrammarAnalysis model.  Downstream UI/Anki code remains unchanged.
+        """
+        cleaned_text = raw_text.replace("```json", "").replace("```", "").strip()
+        try:
+            data = json.loads(cleaned_text)
+            required = {
+                "target",
+                "structure",
+                "rule",
+                "example",
+                "explanation",
+                "example_demonstrates_structure",
+                "target_is_structure",
+            }
+            missing = sorted(required.difference(data))
+            if missing:
+                raise ValueError(f"missing Grammar fields: {', '.join(missing)}")
+
+            if data["example_demonstrates_structure"] is not True:
+                raise ValueError("Grammar example does not demonstrate the requested structure")
+            if data["target_is_structure"] is not True:
+                raise ValueError("Grammar target is not a concise grammar structure")
+
+            target = str(data["target"]).strip()
+            structure = str(data["structure"]).strip()
+            rule = str(data["rule"]).strip()
+            example = str(data["example"]).strip()
+            explanation = str(data["explanation"]).strip()
+            if not all((target, structure, rule, example, explanation)):
+                raise ValueError("Grammar contract fields must not be empty")
+
+            # Compatibility adapter only: keep the rest of v12.4.3+ untouched.
+            return GrammarAnalysis(
+                target=target,
+                sentence=example,
+                target_language=target_language,
+                explanation_language=(
+                    target_language
+                    if not explanation_language or explanation_language == "Same as target"
+                    else explanation_language
+                ),
+                meaning=rule,
+                structure=structure,
+                breakdown=[explanation],
+                usage=rule,
+                context_example=example,
+                contrasts=[],
+                common_mistakes=[],
+                target_is_valid=True,
+                example_demonstrates_target=True,
+                validation_note="",
+            )
+        except Exception as exc:
+            raise ValueError(
+                f"{provider_name} returned invalid grammar analysis data.\n"
+                f"Raw response:\n{raw_text}"
+            ) from exc
 
     @classmethod
     def _parse_conversation_feedback(

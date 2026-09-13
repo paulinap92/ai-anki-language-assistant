@@ -38,9 +38,20 @@ from src.domain.models import GrammarAnalysis, VocabularyCard
 class DuplicateNoteError(ValueError):
     """Raised when a matching Anki note already exists."""
 
-    def __init__(self, message: str, note_id: int) -> None:
+    def __init__(
+        self,
+        message: str,
+        note_id: int,
+        *,
+        model_name: str = "",
+        duplicate_count: int = 1,
+        update_safe: bool = True,
+    ) -> None:
         super().__init__(message)
         self.note_id = note_id
+        self.model_name = model_name
+        self.duplicate_count = duplicate_count
+        self.update_safe = update_safe
 
 
 class AnkiClient:
@@ -276,11 +287,18 @@ class AnkiClient:
             ],
         }
 
-        existing_note_id = self.find_existing_vocabulary_note_id(card.word_or_phrase)
-        if existing_note_id is not None:
+        duplicate = self.find_existing_vocabulary_duplicate(card.word_or_phrase)
+        if duplicate is not None:
+            existing_note_id = int(duplicate.get("note_id", 0) or 0)
+            model_name = str(duplicate.get("model") or "")
+            duplicate_count = int(duplicate.get("duplicate_count", 1) or 1)
+            update_safe = model_name == MODEL_NAME and duplicate_count == 1 and existing_note_id > 0
             raise DuplicateNoteError(
-                f"A vocabulary card for '{card.word_or_phrase}' already exists.",
+                f"A vocabulary card for '{card.word_or_phrase}' already exists in the Anki collection.",
                 existing_note_id,
+                model_name=model_name,
+                duplicate_count=duplicate_count,
+                update_safe=update_safe,
             )
 
         result = self._invoke(action="addNote", params={"note": note})
@@ -294,17 +312,17 @@ class AnkiClient:
         extra_tags: list[str] | None = None,
         audio_metadata: dict[str, str] | None = None,
     ) -> None:
-        """Add one sentence-first grammar card to the active Anki deck."""
+        """Add one target-first grammar card with a concrete example to the active Anki deck."""
         self.ensure_grammar_model_exists()
         language_tag = get_language_tag(card.target_language)
         note = {
             "deckName": self._deck_name,
             "modelName": GRAMMAR_MODEL_NAME,
             "fields": GrammarFieldBuilder.build_fields(card, audio_metadata),
-            # Grammar cards are sentence-first. We do an exact Sentence-field
-            # duplicate precheck below, then allow Anki to add the note so
-            # repeated grammar structures with different sentences are not
-            # falsely blocked by Anki duplicate heuristics.
+            # v12.4.4 made Grammar target-first, so duplicate identity is the
+            # learner-facing Target rather than the generated example sentence.
+            # Anki's built-in first-field heuristic is not relied on here; the
+            # collection-wide exact Target check below is the source of truth.
             "options": {"allowDuplicate": True},
             "tags": [
                 "ai_grammar",
@@ -315,32 +333,91 @@ class AnkiClient:
             ],
         }
 
-        existing_note_id = self.find_existing_grammar_note_id(card.sentence)
+        grammar_key = (card.target or card.structure).strip()
+        existing_note_id = self.find_existing_grammar_note_id(
+            grammar_key,
+            structure=card.structure,
+        )
         if existing_note_id is not None:
             raise DuplicateNoteError(
-                f"A grammar card for this sentence already exists: {card.sentence}",
+                f"A grammar card for '{grammar_key}' already exists in the Anki collection.",
                 existing_note_id,
+                model_name=GRAMMAR_MODEL_NAME,
+                duplicate_count=1,
+                update_safe=True,
             )
 
         result = self._invoke(action="addNote", params={"note": note})
         if result is None:
             raise ValueError(f"Could not add grammar card: {card.sentence}")
 
+    def find_existing_vocabulary_duplicate(self, word_or_phrase: str) -> dict[str, Any] | None:
+        """Return a collection-wide exact vocabulary duplicate across recognised note types.
+
+        Vocabulary identity is the learner-facing lexical target (``Word`` for the
+        current model, or the first recognised front/term field for legacy notes).
+        Grammar notes are intentionally excluded because Vocabulary and Grammar are
+        different learning objects even when a piece of text happens to match.
+        """
+        note_ids = self._invoke(action="findNotes", params={"query": ""}) or []
+        if not note_ids:
+            return None
+        notes = self._invoke(action="notesInfo", params={"notes": note_ids}) or []
+        expected = self._normalise_field_value(word_or_phrase)
+        matches: list[dict[str, Any]] = []
+        for note in notes:
+            if str(note.get("modelName") or "") == GRAMMAR_MODEL_NAME:
+                continue
+            summary = self._summarise_note(note)
+            if self._normalise_field_value(str(summary.get("word") or "")) == expected:
+                matches.append(summary)
+        if not matches:
+            return None
+        result = dict(matches[0])
+        result["duplicate_count"] = len(matches)
+        return result
+
     def find_existing_vocabulary_note_id(self, word_or_phrase: str) -> int | None:
-        """Return the exact matching vocabulary note ID in the active deck."""
+        """Return the exact matching current-model vocabulary note ID collection-wide."""
         return self._find_existing_note_id(
             model_name=MODEL_NAME,
             field_name="Word",
             expected_value=word_or_phrase,
+            include_all_decks=True,
         )
 
-    def find_existing_grammar_note_id(self, sentence: str) -> int | None:
-        """Return the exact matching grammar note ID in the active deck."""
-        return self._find_existing_note_id(
-            model_name=GRAMMAR_MODEL_NAME,
-            field_name="Sentence",
-            expected_value=sentence,
-        )
+    def find_existing_grammar_note_id(self, target: str, *, structure: str = "") -> int | None:
+        """Return an exact matching target-first grammar note ID collection-wide.
+
+        Since v12.4.4 the visible grammar-card identity is ``Target``.  Older
+        cards may have an empty Target field, so Structure is used only as a
+        compatibility fallback when both the candidate structure and existing
+        legacy Structure are available.
+        """
+        model = self._escape_search_value(GRAMMAR_MODEL_NAME)
+        note_ids = self._invoke(
+            action="findNotes",
+            params={"query": f'note:"{model}"'},
+        ) or []
+        if not note_ids:
+            return None
+        notes = self._invoke(action="notesInfo", params={"notes": note_ids}) or []
+        expected_target = self._normalise_field_value(target)
+        expected_structure = self._normalise_field_value(structure)
+        for note in notes:
+            fields = note.get("fields") or {}
+            existing_target = self._normalise_field_value(
+                ((fields.get("Target") or {}).get("value", ""))
+            )
+            if expected_target and existing_target == expected_target:
+                return int(note["noteId"])
+            if not existing_target and expected_structure:
+                existing_structure = self._normalise_field_value(
+                    ((fields.get("Structure") or {}).get("value", ""))
+                )
+                if existing_structure == expected_structure:
+                    return int(note["noteId"])
+        return None
 
     def existing_vocabulary_note_map(self) -> dict[str, int]:
         """Return app vocabulary note IDs indexed by normalized word value.
@@ -400,7 +477,12 @@ class AnkiClient:
         extra_tags: list[str] | None = None,
         audio_metadata: dict[str, str] | None = None,
     ) -> None:
-        """Add one vocabulary card without an extra exact-match deck scan."""
+        """Add one batch vocabulary card with a final collection-wide safety guard.
+
+        Batch already performs one broad duplicate scan for performance.  This
+        method keeps that fast path, but it must never bypass the final exact
+        current-model check because the collection can change after the precheck.
+        """
         self.ensure_vocabulary_model_exists()
         language_tag = get_language_tag(card.target_language)
         note = {
@@ -416,6 +498,15 @@ class AnkiClient:
                 *(extra_tags or []),
             ],
         }
+        existing_note_id = self.find_existing_vocabulary_note_id(card.word_or_phrase)
+        if existing_note_id is not None:
+            raise DuplicateNoteError(
+                f"A vocabulary card for '{card.word_or_phrase}' already exists in the Anki collection.",
+                existing_note_id,
+                model_name=MODEL_NAME,
+                duplicate_count=1,
+                update_safe=True,
+            )
         result = self._invoke(action="addNote", params={"note": note})
         if result is None:
             raise ValueError(f"Could not add card: {card.word_or_phrase}")
@@ -483,7 +574,10 @@ class AnkiClient:
     ) -> int:
         """Replace fields of an existing grammar note and return its ID."""
         self.ensure_grammar_model_exists()
-        note_id = self.find_existing_grammar_note_id(card.sentence)
+        note_id = self.find_existing_grammar_note_id(
+            (card.target or card.structure).strip(),
+            structure=card.structure,
+        )
         if note_id is None:
             raise ValueError(f"No existing grammar card found for: {card.sentence}")
         self._invoke(
@@ -768,14 +862,23 @@ class AnkiClient:
                 )
 
     def _find_existing_note_id(
-        self, model_name: str, field_name: str, expected_value: str
+        self,
+        model_name: str,
+        field_name: str,
+        expected_value: str,
+        *,
+        include_all_decks: bool = True,
     ) -> int | None:
         """Find an exact field match without relying on Anki duplicate heuristics."""
-        deck = self._escape_search_value(self._deck_name)
         model = self._escape_search_value(model_name)
+        query_parts: list[str] = []
+        if not include_all_decks:
+            deck = self._escape_search_value(self._deck_name)
+            query_parts.append(f'deck:"{deck}"')
+        query_parts.append(f'note:"{model}"')
         note_ids = self._invoke(
             action="findNotes",
-            params={"query": f'deck:"{deck}" note:"{model}"'},
+            params={"query": " ".join(query_parts)},
         ) or []
         if not note_ids:
             return None

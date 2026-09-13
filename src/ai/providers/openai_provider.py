@@ -108,24 +108,38 @@ class OpenAiVocabularyClient(VocabularyAiClient):
         )
         return self._parse_conversation_start(raw_text, self.provider_name)
 
-    def analyze_grammar(self, sentence: str, target_language: str) -> GrammarAnalysis:
+    def analyze_grammar(
+        self,
+        sentence: str,
+        target_language: str,
+        explanation_language: str = "Same as target",
+    ) -> GrammarAnalysis:
         """Analyze one sentence and return a structured grammar explanation."""
         raw_text = self._generate_text(
-            build_grammar_analysis_prompt(sentence, target_language),
+            build_grammar_analysis_prompt(sentence, target_language, explanation_language),
             workflow="card",
         )
-        return self._parse_grammar_analysis(raw_text, self.provider_name)
+        return self._parse_grammar_analysis(raw_text, self.provider_name, target_language, explanation_language)
 
     def generate_grammar_card(
-        self, grammar_item: str, target_language: str, topic_context: str = ""
+        self,
+        grammar_item: str,
+        target_language: str,
+        topic_context: str = "",
+        explanation_language: str = "Same as target",
     ) -> GrammarAnalysis:
         """Generate one Batch grammar card."""
         workflow = "import" if any(token in str(topic_context or "").casefold() for token in ("source", "ocr", "import", "rule-only", "detected")) else "card"
         raw_text = self._generate_text(
-            build_batch_grammar_prompt(grammar_item, target_language, topic_context),
+            build_batch_grammar_prompt(
+                grammar_item,
+                target_language,
+                topic_context,
+                explanation_language=explanation_language,
+            ),
             workflow=workflow,
         )
-        return self._parse_grammar_analysis(raw_text, self.provider_name)
+        return self._parse_grammar_analysis(raw_text, self.provider_name, target_language, explanation_language)
 
     def generate_sentence_card(
         self,

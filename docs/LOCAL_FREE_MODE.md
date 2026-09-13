@@ -25,6 +25,8 @@ STT_PROVIDER=local_whisper
 WHISPER_MODEL=small
 PIPER_EXE_PATH=C:\tools\piper\piper.exe
 PIPER_VOICE_EN=C:\tools\piper\voices\en_US-lessac-medium.onnx
+# Optional explicit paths also exist for ES/PL/DE/FR/IT/PT.
+# Downloaded voices in voices/piper are auto-discovered for any Piper language.
 ```
 
 Install the Python dependencies with:
@@ -45,9 +47,11 @@ OLLAMA_MODEL=gemma3:4b
 OPENAI_API_KEY=...
 GEMINI_API_KEY=...
 ELEVENLABS_API_KEY=...
-STT_PROVIDER=local_whisper
-WHISPER_MODEL=small
+STT_PROVIDER=openai
+OPENAI_STT_MODEL=gpt-4o-mini-transcribe
 ```
+
+`STT_PROVIDER=local_whisper` is still available in Hybrid mode.
 
 Install with:
 
@@ -59,14 +63,20 @@ The UI shows only configured AI providers. Cloud OCR methods are shown only when
 
 ## API / BYOK
 
-Use the user's own configured cloud AI/TTS providers. Ollama and Piper are not activated by the provider factories in this profile. Local Whisper remains available for speech input in this release.
+Use the user's own configured cloud AI/TTS providers. Ollama and Piper are not activated by the provider factories in this profile. Speech input can use OpenAI Cloud STT instead of loading a local Whisper model.
 
 ```env
 AI_SETUP_MODE=api
 OPENAI_API_KEY=...
 ELEVENLABS_API_KEY=...
-STT_PROVIDER=local_whisper
-WHISPER_MODEL=small
+STT_PROVIDER=openai
+OPENAI_STT_MODEL=gpt-4o-mini-transcribe
+```
+
+For a cloud-only Python install without `faster-whisper` / `piper-tts`, use:
+
+```powershell
+pip install -r requirements-cloud.txt
 ```
 
 ## First-run setup

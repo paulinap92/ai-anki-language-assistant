@@ -122,17 +122,26 @@ USER TASK:
         )
         return self._parse_conversation_start(raw_text, self.provider_name)
 
-    def analyze_grammar(self, sentence: str, target_language: str) -> GrammarAnalysis:
-        raw_text = self._generate_text(build_grammar_analysis_prompt(sentence, target_language))
-        return self._parse_grammar_analysis(raw_text, self.provider_name)
+    def analyze_grammar(
+        self,
+        sentence: str,
+        target_language: str,
+        explanation_language: str = "Same as target",
+    ) -> GrammarAnalysis:
+        raw_text = self._generate_text(build_grammar_analysis_prompt(sentence, target_language, explanation_language))
+        return self._parse_grammar_analysis(raw_text, self.provider_name, target_language, explanation_language)
 
     def generate_grammar_card(
-        self, grammar_item: str, target_language: str, topic_context: str = ""
+        self,
+        grammar_item: str,
+        target_language: str,
+        topic_context: str = "",
+        explanation_language: str = "Same as target",
     ) -> GrammarAnalysis:
         raw_text = self._generate_text(
-            build_batch_grammar_prompt(grammar_item, target_language, topic_context)
+            build_batch_grammar_prompt(grammar_item, target_language, topic_context, explanation_language=explanation_language)
         )
-        return self._parse_grammar_analysis(raw_text, self.provider_name)
+        return self._parse_grammar_analysis(raw_text, self.provider_name, target_language, explanation_language)
 
     def generate_sentence_card(
         self,

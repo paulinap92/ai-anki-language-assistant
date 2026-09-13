@@ -190,3 +190,36 @@ def test_gemini_builtin_voice_library_has_all_30_and_search():
     assert any(item.voice_id == "Zephyr" and item.quality == "Bright" for item in items)
     filtered = voice_library.gemini_builtin_voice_items(query="warm")
     assert [item.voice_id for item in filtered] == ["Sulafat"]
+
+
+def test_piper_catalog_supports_languages_outside_original_shortlist(monkeypatch):
+    payload = {
+        "uk_UA-demo-medium": {
+            "name": "demo",
+            "language": {
+                "code": "uk_UA",
+                "family": "uk",
+                "name_english": "Ukrainian",
+                "country_english": "Ukraine",
+            },
+            "quality": "medium",
+            "files": {
+                "uk/uk_UA/demo/medium/uk_UA-demo-medium.onnx": {},
+                "uk/uk_UA/demo/medium/uk_UA-demo-medium.onnx.json": {},
+            },
+        },
+        "de_DE-demo-medium": {
+            "name": "demo-de",
+            "language": {"code": "de_DE", "family": "de", "name_english": "German"},
+            "quality": "medium",
+            "files": {
+                "de/de_DE/demo/medium/de_DE-demo-medium.onnx": {},
+                "de/de_DE/demo/medium/de_DE-demo-medium.onnx.json": {},
+            },
+        },
+    }
+    monkeypatch.setattr(voice_library.requests, "get", lambda *a, **k: FakeResponse(payload))
+
+    assert voice_library.fetch_piper_language_names() == ["German", "Ukrainian"]
+    items = voice_library.fetch_piper_catalog(language_name="Ukrainian")
+    assert [item.locale for item in items] == ["uk_UA"]

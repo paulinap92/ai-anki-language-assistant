@@ -1,8 +1,8 @@
-"""Local speech-to-text helpers for Conversation Practice.
+"""Speech-to-text services for Conversation Practice.
 
-This module records microphone input, keeps the last WAV file for diagnostics,
-and transcribes it with faster-whisper. The GUI still uses text as the source of
-truth, so users can edit the transcript before sending it for feedback.
+Both local and cloud providers share the same microphone recording flow. The last
+WAV recording is always kept for diagnostics, and the resulting transcript stays
+editable in the GUI before it is sent to the conversation model.
 """
 
 from __future__ import annotations
@@ -25,18 +25,14 @@ class SttResult:
     duration_seconds: float = 0.0
 
 
-class LocalWhisperSttService:
-    """Record microphone audio and transcribe it with faster-whisper.
+class RecordedSttService:
+    """Common microphone recorder used by local and cloud STT providers."""
 
-    Dependencies are imported lazily so the rest of the app can still start even
-    when STT packages are not installed yet.
-    """
-
-    provider_name = "Local Whisper"
+    provider_name = "Speech-to-text"
 
     def __init__(
         self,
-        model_name: str = "base",
+        model_name: str,
         language: str | None = None,
         sample_rate: int = 16000,
         cache_dir: str | Path = ".audio_cache",
@@ -49,7 +45,6 @@ class LocalWhisperSttService:
         self.stop_tail_seconds = stop_tail_seconds
         self._stream: Any | None = None
         self._frames: list[Any] = []
-        self._model: Any | None = None
         self._is_recording = False
         self._recording_started_at: float | None = None
         self.last_recording_path: Path | None = None
@@ -57,18 +52,15 @@ class LocalWhisperSttService:
 
     @property
     def is_recording(self) -> bool:
-        """Whether an audio stream is currently recording."""
         return self._is_recording
 
     @property
     def recording_duration_seconds(self) -> float:
-        """Current recording duration for GUI status display."""
         if not self._is_recording or self._recording_started_at is None:
             return self.last_recording_duration_seconds
         return max(0.0, time.monotonic() - self._recording_started_at)
 
     def start_recording(self) -> None:
-        """Start recording microphone audio into memory."""
         if self._is_recording:
             raise RuntimeError("Recording is already running.")
 
@@ -76,7 +68,7 @@ class LocalWhisperSttService:
             import sounddevice as sd  # type: ignore
         except ImportError as exc:
             raise RuntimeError(
-                "sounddevice is not installed. Run: pipenv install sounddevice soundfile faster-whisper"
+                "sounddevice is not installed. Run: pipenv install sounddevice soundfile"
             ) from exc
 
         input_device = self._select_input_device(sd)
@@ -86,7 +78,6 @@ class LocalWhisperSttService:
 
         def _callback(indata: Any, frames: int, time_info: Any, status: Any) -> None:
             if status:
-                # Keep recording; status is informational for temporary underflows.
                 pass
             self._frames.append(indata.copy())
 
@@ -103,7 +94,6 @@ class LocalWhisperSttService:
 
     @staticmethod
     def _select_input_device(sd: Any) -> int | None:
-        """Return a usable input device or raise a friendly no-microphone error."""
         try:
             default_device = sd.default.device
             default_input = default_device[0] if isinstance(default_device, (list, tuple)) else default_device
@@ -137,16 +127,9 @@ class LocalWhisperSttService:
         initial_prompt: str | None = None,
         language: str | None = None,
     ) -> SttResult:
-        """Stop recording, keep last_recording.wav, and transcribe it.
-
-        ``language`` and ``initial_prompt`` may be supplied by Conversation Practice so
-        Whisper is biased toward the selected language, current topic, proper names and
-        active flashcard vocabulary instead of relying on automatic detection alone.
-        """
         if not self._is_recording or self._stream is None:
             raise RuntimeError("No recording is running.")
 
-        # Give the audio callback a short tail so the final words are not lost.
         if self.stop_tail_seconds > 0:
             time.sleep(self.stop_tail_seconds)
 
@@ -166,7 +149,7 @@ class LocalWhisperSttService:
             import soundfile as sf  # type: ignore
         except ImportError as exc:
             raise RuntimeError(
-                "soundfile/numpy is not installed. Run: pipenv install sounddevice soundfile faster-whisper"
+                "soundfile/numpy is not installed. Run: pipenv install sounddevice soundfile numpy"
             ) from exc
 
         audio = np.concatenate(self._frames, axis=0)
@@ -191,6 +174,32 @@ class LocalWhisperSttService:
             audio_path=wav_path,
             duration_seconds=self.last_recording_duration_seconds,
         )
+
+    def _transcribe_wav(
+        self,
+        wav_path: Path,
+        *,
+        initial_prompt: str | None = None,
+        language: str | None = None,
+    ) -> tuple[str, str | None]:
+        raise NotImplementedError
+
+
+class LocalWhisperSttService(RecordedSttService):
+    """Transcribe recordings locally with faster-whisper."""
+
+    provider_name = "Local Whisper"
+
+    def __init__(
+        self,
+        model_name: str = "base",
+        language: str | None = None,
+        sample_rate: int = 16000,
+        cache_dir: str | Path = ".audio_cache",
+        stop_tail_seconds: float = 0.8,
+    ) -> None:
+        super().__init__(model_name, language, sample_rate, cache_dir, stop_tail_seconds)
+        self._model: Any | None = None
 
     def _load_model(self) -> Any:
         if self._model is not None:
@@ -218,8 +227,6 @@ class LocalWhisperSttService:
     ) -> tuple[str, str | None]:
         model = self._load_model()
         prompt = (initial_prompt or "").strip()
-        # faster-whisper accepts a free-text initial prompt. Keep it bounded so a long
-        # conversation history cannot dominate the acoustic transcription.
         if len(prompt) > 1200:
             prompt = prompt[-1200:]
         segments, info = model.transcribe(
@@ -233,3 +240,60 @@ class LocalWhisperSttService:
         )
         parts = [segment.text.strip() for segment in segments if segment.text.strip()]
         return " ".join(parts).strip(), getattr(info, "language", None)
+
+
+class OpenAiSttService(RecordedSttService):
+    """Transcribe recordings with OpenAI's cloud audio transcription endpoint."""
+
+    provider_name = "OpenAI Cloud STT"
+
+    def __init__(
+        self,
+        api_key: str,
+        model_name: str = "gpt-4o-mini-transcribe",
+        language: str | None = None,
+        sample_rate: int = 16000,
+        cache_dir: str | Path = ".audio_cache",
+        stop_tail_seconds: float = 0.8,
+    ) -> None:
+        if not api_key.strip():
+            raise ValueError("OPENAI_API_KEY is required for OpenAI Cloud STT.")
+        super().__init__(model_name, language, sample_rate, cache_dir, stop_tail_seconds)
+        self._api_key = api_key.strip()
+        self._client: Any | None = None
+
+    def _load_client(self) -> Any:
+        if self._client is not None:
+            return self._client
+        try:
+            from openai import OpenAI  # type: ignore
+        except ImportError as exc:
+            raise RuntimeError(
+                "openai is not installed. Run: pipenv install openai sounddevice soundfile"
+            ) from exc
+        self._client = OpenAI(api_key=self._api_key)
+        return self._client
+
+    def _transcribe_wav(
+        self,
+        wav_path: Path,
+        *,
+        initial_prompt: str | None = None,
+        language: str | None = None,
+    ) -> tuple[str, str | None]:
+        client = self._load_client()
+        prompt = (initial_prompt or "").strip()
+        if len(prompt) > 1200:
+            prompt = prompt[-1200:]
+        request_language = language or self.language
+        kwargs: dict[str, Any] = {
+            "model": self.model_name,
+        }
+        if request_language:
+            kwargs["language"] = request_language
+        if prompt:
+            kwargs["prompt"] = prompt
+        with wav_path.open("rb") as audio_file:
+            result = client.audio.transcriptions.create(file=audio_file, **kwargs)
+        text = str(getattr(result, "text", "") or "").strip()
+        return text, request_language

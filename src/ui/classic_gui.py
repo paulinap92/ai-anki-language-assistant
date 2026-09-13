@@ -528,10 +528,21 @@ class VocabularyGui:
                 provider_name=provider_name,
             )
         except DuplicateNoteError as exc:
+            if not exc.update_safe:
+                model = exc.model_name or "another/legacy note type"
+                self._flashcard_status_var.set("Duplicate found; existing card was left unchanged.")
+                messagebox.showwarning(
+                    "Card already exists",
+                    f"A card for '{self._generated_card.word_or_phrase}' already exists "
+                    f"somewhere in the Anki collection ({model}).\n\n"
+                    "It was not overwritten automatically because the existing note is not "
+                    "a single current AI Vocabulary Light Card.",
+                )
+                return
             replace = messagebox.askyesno(
                 "Card already exists",
                 f"A card for '{self._generated_card.word_or_phrase}' already exists "
-                "in this deck.\n\nReplace its fields with the reviewed version?",
+                "in the Anki collection.\n\nReplace its fields with the reviewed version?",
             )
             if not replace:
                 self._flashcard_status_var.set("Existing card was not changed.")
@@ -775,10 +786,15 @@ class VocabularyGui:
                     raise ValueError(detail)
                 try:
                     self._anki_client.add_card(card, provider_name=provider_name)
-                except DuplicateNoteError:
+                except DuplicateNoteError as exc:
+                    if not exc.update_safe:
+                        model = exc.model_name or "another/legacy note type"
+                        raise ValueError(
+                            f"Duplicate already exists in the Anki collection ({model}); existing note was left unchanged."
+                        )
                     replace = messagebox.askyesno(
                         "Card already exists",
-                        f"A card for '{expression}' already exists. Replace it?",
+                        f"A card for '{expression}' already exists in the Anki collection. Replace it?",
                     )
                     if not replace:
                         raise ValueError("Existing card was not changed.")

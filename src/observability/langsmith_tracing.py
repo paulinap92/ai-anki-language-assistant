@@ -83,8 +83,8 @@ FEATURE_DEFAULTS: dict[str, dict[str, str]] = {
     "vocabulary_card_generation": {"prompt_version": "vocab_prompt_v3", "source": "single_flashcard"},
     "batch_card_generation": {"prompt_version": "vocab_prompt_v3", "source": "batch_queue"},
     "provided_example_card_generation": {"prompt_version": "provided_example_prompt_v1", "source": "batch_provided_examples"},
-    "grammar_analysis": {"prompt_version": "sentence_first_grammar_prompt_v1", "source": "grammar_tab"},
-    "grammar_card_generation": {"prompt_version": "grammar_card_prompt_v1", "source": "batch_grammar"},
+    "grammar_analysis": {"prompt_version": "target_first_grammar_prompt_v2", "source": "grammar_tab"},
+    "grammar_card_generation": {"prompt_version": "target_first_grammar_card_prompt_v2", "source": "batch_grammar"},
     "conversation_start": {"prompt_version": "conversation_start_prompt_v1", "source": "conversation_practice"},
     "conversation_feedback": {"prompt_version": "conversation_feedback_prompt_v3", "source": "conversation_practice"},
     "llmops_test_trace": {"prompt_version": "manual_test", "source": "llmops_tab"},
@@ -357,6 +357,7 @@ class LlmOpsTracer:
             quality = self.quality_snapshot("grammar_card_generation", value).as_metadata()
             return {
                 "type": "GrammarAnalysis",
+                "target": value.target,
                 "structure": value.structure,
                 "target_language": value.target_language,
                 "sentence_preview": (value.sentence or "")[:220],
@@ -429,6 +430,7 @@ class LlmOpsTracer:
             missing = [
                 name
                 for name, value in {
+                    "target": result.target,
                     "sentence": result.sentence,
                     "structure": result.structure,
                     "meaning": result.meaning,
@@ -445,6 +447,10 @@ class LlmOpsTracer:
             context = str(result.context_example or "").strip()
             if sentence and context and sentence not in context and context not in sentence:
                 issues.append("possible_sentence_context_mismatch")
+            if not bool(result.target_is_valid):
+                issues.append("provider_target_self_check_failed")
+            if not bool(result.example_demonstrates_target):
+                issues.append("provider_example_self_check_failed")
             validation_passed = not issues
             return QualitySnapshot(
                 validation_passed=validation_passed,
@@ -1261,24 +1267,47 @@ class TracedVocabularyAiClient(VocabularyAiClient):
             workflow="card",
         )
 
-    def analyze_grammar(self, sentence: str, target_language: str) -> GrammarAnalysis:
+    def analyze_grammar(
+        self,
+        sentence: str,
+        target_language: str,
+        explanation_language: str = "Same as target",
+    ) -> GrammarAnalysis:
         return self._trace(
             "grammar_analysis",
-            {"sentence": sentence, "target_language": target_language},
-            lambda: self._inner.analyze_grammar(sentence, target_language),
+            {
+                "sentence": sentence,
+                "target_language": target_language,
+                "explanation_language": explanation_language,
+            },
+            lambda: self._inner.analyze_grammar(sentence, target_language, explanation_language),
             workflow="card",
         )
 
     def generate_grammar_card(
-        self, grammar_item: str, target_language: str, topic_context: str = ""
+        self,
+        grammar_item: str,
+        target_language: str,
+        topic_context: str = "",
+        explanation_language: str = "Same as target",
     ) -> GrammarAnalysis:
         source = "batch_grammar"
         if any(token in str(topic_context or "").casefold() for token in ("source", "ocr", "import", "rule-only", "detected")):
             source = "import_material_grammar"
         return self._trace(
             "grammar_card_generation",
-            {"grammar_item": grammar_item, "target_language": target_language, "topic_context": topic_context},
-            lambda: self._inner.generate_grammar_card(grammar_item, target_language, topic_context),
+            {
+                "grammar_item": grammar_item,
+                "target_language": target_language,
+                "explanation_language": explanation_language,
+                "topic_context": topic_context,
+            },
+            lambda: self._inner.generate_grammar_card(
+                grammar_item,
+                target_language,
+                topic_context,
+                explanation_language=explanation_language,
+            ),
             metadata={"source": source},
             workflow="import" if source == "import_material_grammar" else "card",
         )

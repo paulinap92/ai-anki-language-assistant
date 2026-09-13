@@ -35,7 +35,7 @@ def test_prompt_v5_includes_user_topic_and_quality_self_check() -> None:
         "character / personality traits",
     )
 
-    assert VOCABULARY_PROMPT_VERSION == "v10-lesson-context-validation"
+    assert VOCABULARY_PROMPT_VERSION == "v11-semantic-target-usage-validation"
     assert "User topic/context" in prompt
     assert "character / personality traits" in prompt
     assert "quality_warnings" in prompt
@@ -158,7 +158,7 @@ def test_validator_ignores_outer_quotes_in_exact_input_match() -> None:
 def test_prompt_v7_requires_example_to_use_target_item() -> None:
     prompt = build_vocabulary_prompt("derrumbar(se)", "Spanish", "Polish")
 
-    assert VOCABULARY_PROMPT_VERSION == "v10-lesson-context-validation"
+    assert VOCABULARY_PROMPT_VERSION == "v11-semantic-target-usage-validation"
     assert "MUST use the target word/phrase" in prompt
     assert "Do not replace the target with a synonym" in prompt
     assert "used_form_in_example" in prompt
@@ -166,7 +166,7 @@ def test_prompt_v7_requires_example_to_use_target_item() -> None:
     assert "translation_naturalness" in prompt
 
 
-def test_validator_blocks_spanish_verb_example_that_uses_synonym() -> None:
+def test_legacy_card_without_semantic_metadata_gets_review_warning_not_fake_morphology_certainty() -> None:
     card = _card(
         word_or_phrase="derrumbar(se)",
         target_language="Spanish",
@@ -185,7 +185,8 @@ def test_validator_blocks_spanish_verb_example_that_uses_synonym() -> None:
         expected_explanation_language="Polish",
     )
 
-    assert any("example does not use the target word/phrase" in warning for warning in warnings)
+    assert any("legacy local matcher could not confirm" in warning for warning in warnings)
+    assert not any("HARD: example does not use the target word/phrase" in warning for warning in warnings)
 
 
 def test_validator_allows_spanish_verb_valid_conjugated_form() -> None:
@@ -468,3 +469,142 @@ def test_validator_uses_left_side_for_tab_separated_provided_example_rows() -> N
     )
 
     assert not any("input phrase changed" in warning for warning in warnings)
+
+
+def test_prompt_requires_semantic_target_usage_metadata() -> None:
+    prompt = build_vocabulary_prompt("adherirse a", "Spanish", "Polish")
+
+    assert 'target_usage' in prompt
+    assert '"valid_inflection"' in prompt
+    assert 'EXACT surface form copied from the example' in prompt
+    assert 'adherirse a" → "se adhiere a' in prompt
+
+
+def test_validator_accepts_provider_verified_spanish_reflexive_inflection() -> None:
+    card = _card(
+        word_or_phrase="adherirse a",
+        target_language="Spanish",
+        part_of_speech="frase verbal",
+        definition="Unirse o pegarse firmemente a algo o alguien.",
+        translation_pl="przylegać do, przywierać do",
+        example="Este microorganismo se adhiere a la ropa, los zapatos y los animales.",
+        example_pl="Ten mikroorganizm przywiera do ubrań, butów i zwierząt.",
+        grammar_note="El verbo adherirse se usa con la preposición a.",
+        example_uses_target=True,
+        used_form_in_example="se adhiere a",
+        target_usage="valid_inflection",
+    )
+
+    warnings = validate_vocabulary_card(
+        card,
+        expected_input="adherirse a",
+        expected_target_language="Spanish",
+        expected_explanation_language="Polish",
+    )
+
+    assert not any("example does not use the target" in warning for warning in warnings)
+    assert not any("provider semantic self-check" in warning for warning in warnings)
+    assert not any("used_form_in_example was not found" in warning for warning in warnings)
+
+
+def test_validator_accepts_provider_verified_irregular_form_without_language_specific_rules() -> None:
+    card = _card(
+        word_or_phrase="go",
+        target_language="English",
+        part_of_speech="verb",
+        definition="To move or travel somewhere.",
+        translation_pl="iść, jechać",
+        example="She went home early.",
+        example_pl="Poszła wcześnie do domu.",
+        grammar_note="Irregular verb.",
+        example_uses_target=True,
+        used_form_in_example="went",
+        target_usage="valid_inflection",
+    )
+
+    warnings = validate_vocabulary_card(
+        card,
+        expected_input="go",
+        expected_target_language="English",
+        expected_explanation_language="Polish",
+    )
+
+    assert not any("example does not use the target" in warning for warning in warnings)
+
+
+def test_validator_rejects_provider_semantic_mismatch() -> None:
+    card = _card(
+        word_or_phrase="adherirse a",
+        target_language="Spanish",
+        part_of_speech="frase verbal",
+        definition="Unirse o pegarse firmemente.",
+        translation_pl="przylegać do",
+        example="El microorganismo se pega a la ropa.",
+        example_pl="Mikroorganizm przykleja się do ubrania.",
+        grammar_note="Verbo pronominal.",
+        example_uses_target=False,
+        used_form_in_example="se pega a",
+        target_usage="mismatch",
+    )
+
+    warnings = validate_vocabulary_card(
+        card,
+        expected_input="adherirse a",
+        expected_target_language="Spanish",
+        expected_explanation_language="Polish",
+    )
+
+    assert any("provider semantic self-check says" in warning for warning in warnings)
+
+
+def test_validator_does_not_blindly_trust_missing_surface_form() -> None:
+    card = _card(
+        word_or_phrase="adherirse a",
+        target_language="Spanish",
+        part_of_speech="frase verbal",
+        definition="Unirse o pegarse firmemente.",
+        translation_pl="przylegać do",
+        example="Este microorganismo se adhiere a la ropa.",
+        example_pl="Mikroorganizm przywiera do ubrania.",
+        grammar_note="Verbo pronominal.",
+        example_uses_target=True,
+        used_form_in_example="se adherió a",
+        target_usage="valid_inflection",
+    )
+
+    warnings = validate_vocabulary_card(
+        card,
+        expected_input="adherirse a",
+        expected_target_language="Spanish",
+        expected_explanation_language="Polish",
+    )
+
+    assert any("used_form_in_example was not found literally" in warning for warning in warnings)
+
+
+def test_semantic_target_usage_removes_stale_morphology_warning_from_autosave() -> None:
+    card = _card(
+        word_or_phrase="adherirse a",
+        target_language="Spanish",
+        part_of_speech="frase verbal",
+        definition="Unirse o pegarse firmemente.",
+        translation_pl="przylegać do",
+        example="Este microorganismo se adhiere a la ropa.",
+        example_pl="Mikroorganizm przywiera do ubrania.",
+        grammar_note="Verbo pronominal.",
+        example_uses_target=True,
+        used_form_in_example="se adhiere a",
+        target_usage="valid_inflection",
+        quality_warnings=[
+            "HARD: example does not use the target word/phrase or a valid-looking inflected form; do not replace the target with a synonym, typo, or visually similar word."
+        ],
+    )
+
+    warnings = validate_vocabulary_card(
+        card,
+        expected_input="adherirse a",
+        expected_target_language="Spanish",
+        expected_explanation_language="Polish",
+    )
+
+    assert not any("example does not use the target word/phrase" in warning for warning in warnings)

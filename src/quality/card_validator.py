@@ -260,11 +260,16 @@ def _check_expected_values(
 
 
 def _check_example_uses_target_item(card: VocabularyCard, warnings: list[str], *, expected_input: str) -> None:
-    """Ensure the example teaches the requested lexical item, not a synonym/typo.
+    """Validate target usage without trying to encode every language's morphology.
 
-    This is language-neutral by design. It uses conservative lexical anchors
-    instead of a full conjugation engine, so it catches obvious wrong-word cases
-    without pretending to understand every morphology of every language.
+    New cards carry a semantic self-check produced by the SAME model in the
+    generation request. The local validator verifies the deterministic part:
+    the provider-declared surface form must literally occur in the example.
+
+    Morphology itself (conjugation, reflexive/pronominal forms, declension,
+    irregular forms, separable verbs, etc.) stays with the language model.
+    Older cards that do not contain semantic metadata still use the legacy
+    conservative lexical matcher as a backward-compatible fallback.
     """
     if not card.is_valid:
         return
@@ -273,43 +278,71 @@ def _check_example_uses_target_item(card: VocabularyCard, warnings: list[str], *
     if not str(target).strip() or not str(example).strip():
         return
 
-    if card.example_uses_target is False:
-        warnings.append("SOFT: provider self-check says the example may not use the target item; local validation will verify it.")
+    target_compact = _normalize_for_substring(_prepare_lexical_text(target))
+    example_compact = _normalize_for_substring(_prepare_lexical_text(example))
 
-    used_form = str(card.used_form_in_example or "").strip()
-    if used_form and _normalize_for_substring(used_form) not in _normalize_for_substring(example):
-        warnings.append("SOFT: provider used_form_in_example was not found literally in the example; verify target usage.")
-
-    target_norm = _prepare_lexical_text(target)
-    example_norm = _prepare_lexical_text(example)
-    target_compact = _normalize_for_substring(target_norm)
-    example_compact = _normalize_for_substring(example_norm)
+    # Strong deterministic success: the exact requested target is visibly there.
     if target_compact and target_compact in example_compact:
         return
 
+    usage = str(getattr(card, "target_usage", "") or "").strip().casefold().replace("-", "_").replace(" ", "_")
+    used_form = str(card.used_form_in_example or "").strip()
+    used_form_found = bool(
+        used_form
+        and _normalize_for_substring(used_form) in _normalize_for_substring(example)
+    )
+
+    # Semantic-first path for current prompts. If the same model says the
+    # example uses the same lexical target as a valid inflection AND the exact
+    # claimed surface form is really present in the sentence, accept it.
+    if card.example_uses_target is True and usage in {"exact", "valid_inflection"}:
+        if used_form_found:
+            return
+        if not used_form:
+            warnings.append(
+                "SOFT: provider confirmed target usage but did not return the exact surface form used in the example."
+            )
+        else:
+            warnings.append(
+                "SOFT: provider used_form_in_example was not found literally in the example; verify target usage."
+            )
+        # Metadata is internally inconsistent, so fall through to the legacy
+        # matcher rather than blindly trusting it.
+
+    if usage == "mismatch" or card.example_uses_target is False:
+        warnings.append(
+            "HARD: provider semantic self-check says the example does not use the requested target "
+            "or a valid grammatical form of that same target."
+        )
+        return
+
+    if usage == "uncertain":
+        warnings.append(
+            "SOFT: provider is uncertain whether the example uses a valid grammatical form of the requested target."
+        )
+
+    # Backward-compatible fallback for old autosaves/providers that do not yet
+    # return target_usage + a verifiable used_form_in_example.
     anchors = _target_anchors(target)
     if not anchors:
         return
+    example_norm = _prepare_lexical_text(example)
     example_tokens = _tokens_for_matching(example)
     hits = [anchor for anchor in anchors if _anchor_hits_example(anchor, example_tokens, example_norm)]
 
     if not hits:
         if _looks_like_pattern_target(target):
             warnings.append(
-                "SOFT: pattern target was not found by the local exact matcher; "
-                "verify that the example uses a valid inflected form of the pattern."
+                "SOFT: legacy local matcher could not confirm the pattern target; "
+                "new generations should use semantic target_usage validation."
             )
         else:
             warnings.append(
                 "HARD: example does not use the target word/phrase or a valid-looking inflected form; "
-                "do not replace the target with a synonym, typo, or visually similar word."
+                "provider semantic validation metadata was unavailable or inconsistent."
             )
         return
 
-    # Multi-word expressions can be discontinuous or inflected. Anchor variants
-    # for a single word (e.g. oversleep/overslept/oversleeping) must not count
-    # as multiple required words. Only warn about partial matches when the
-    # original target actually contains more than one lexical anchor token.
     original_anchor_tokens = [
         token
         for token in _tokens_for_matching(_remove_outer_to(_prepare_lexical_text(target)))
@@ -319,7 +352,6 @@ def _check_example_uses_target_item(card: VocabularyCard, warnings: list[str], *
         warnings.append(
             "SOFT: example only partially matches the target phrase; check that it teaches the requested expression."
         )
-
 
 
 
@@ -557,11 +589,30 @@ def _check_naturalness(card: VocabularyCard, warnings: list[str]) -> None:
 
 
 def _check_llm_self_warnings(card: VocabularyCard, warnings: list[str]) -> None:
+    usage = str(getattr(card, "target_usage", "") or "").strip().casefold().replace("-", "_").replace(" ", "_")
+    used_form = str(card.used_form_in_example or "").strip()
+    semantic_target_verified = bool(
+        card.example_uses_target is True
+        and usage in {"exact", "valid_inflection"}
+        and used_form
+        and _normalize_for_substring(used_form) in _normalize_for_substring(card.example or "")
+    )
+
     for warning in card.quality_warnings:
         warning_text = str(warning or "").strip()
         if not warning_text:
             continue
         if _is_noisy_provider_warning(warning_text):
+            continue
+        # Old autosaves may contain a local morphology warning that was persisted
+        # into quality_warnings. Once current semantic metadata proves a valid
+        # surface form, do not resurrect that stale warning forever.
+        warning_lower = warning_text.casefold()
+        if semantic_target_verified and (
+            "example does not use the target word/phrase" in warning_lower
+            or "used_form_in_example was not found" in warning_lower
+            or "provider self-check says the example may not use the target" in warning_lower
+        ):
             continue
         if warning_text.startswith(("HARD:", "SOFT:")):
             warnings.append(warning_text)

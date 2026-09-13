@@ -96,13 +96,15 @@ class GrammarFieldBuilder:
     ) -> dict[str, str]:
         """Return Anki note fields for the grammar note type."""
         return {
+            "Target": cls.safe(card.target or card.structure),
             "Sentence": cls.safe(card.sentence),
             "Language": cls.safe(card.target_language),
+            "ExplanationLanguage": cls.safe(card.explanation_language or card.target_language),
             "Meaning": cls.safe(card.meaning),
             "Structure": cls.safe(card.structure),
             "Breakdown": cls.blocks(card.breakdown),
             "Usage": cls.safe(card.usage),
-            "ContextExample": cls.safe(card.context_example),
+            "ContextExample": cls.safe(card.sentence),
             "Audio": getattr(card, "audio", ""),
             "ExampleAudio": getattr(card, "audio", ""),
             "Contrasts": cls.blocks(card.contrasts),

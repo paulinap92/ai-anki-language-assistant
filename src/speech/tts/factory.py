@@ -46,6 +46,10 @@ def build_tts_providers(settings: Settings) -> dict[str, TextToSpeechProvider]:
             settings.piper_voice_en,
             settings.piper_voice_es,
             settings.piper_voice_pl,
+            settings.piper_voice_de,
+            settings.piper_voice_fr,
+            settings.piper_voice_it,
+            settings.piper_voice_pt,
             settings.piper_model_path,
         ]
         piper_voice_paths: list[Path] = []

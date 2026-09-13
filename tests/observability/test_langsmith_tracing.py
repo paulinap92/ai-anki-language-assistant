@@ -28,10 +28,12 @@ class DummyClient(VocabularyAiClient):
     def start_conversation(self, topic, target_language, flashcard_context=""):
         return ConversationStart(question=f"Question about {topic}?")
 
-    def analyze_grammar(self, sentence, target_language):
+    def analyze_grammar(self, sentence, target_language, explanation_language="Same as target"):
         return GrammarAnalysis(
+            target="dummy grammar target",
             sentence=sentence,
             target_language=target_language,
+            explanation_language=explanation_language,
             meaning="meaning",
             structure="structure",
             breakdown=[],
@@ -41,8 +43,8 @@ class DummyClient(VocabularyAiClient):
             common_mistakes=[],
         )
 
-    def generate_grammar_card(self, grammar_item, target_language, topic_context=""):
-        return self.analyze_grammar(f"Example for {grammar_item}.", target_language)
+    def generate_grammar_card(self, grammar_item, target_language, topic_context="", explanation_language="Same as target"):
+        return self.analyze_grammar(f"Example for {grammar_item}.", target_language, explanation_language)
 
     def generate_sentence_card(self, raw_item, target_language, explanation_language, topic_context=""):
         return self.generate_card(raw_item.split("|")[0].strip(), target_language, explanation_language, topic_context)
@@ -128,3 +130,15 @@ def test_wrapper_accepts_flashcard_conversation_context():
     features = [event.feature for event in tracer.snapshot_events()]
     assert "conversation_start" in features
     assert "conversation_feedback" in features
+
+
+def test_wrapper_forwards_grammar_explanation_language():
+    configure_llmops(enabled=False, project_name="test-project", api_key=None, redact_inputs=True)
+    client = wrap_ai_client(DummyClient())
+    card = client.generate_grammar_card(
+        "Third conditional",
+        "English",
+        explanation_language="Polish",
+    )
+    assert card.target == "dummy grammar target"
+    assert card.explanation_language == "Polish"

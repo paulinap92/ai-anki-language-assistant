@@ -72,7 +72,7 @@ def _generated_grammar_row(
     item: dict[str, Any],
     card: GrammarAnalysis,
 ) -> tuple[str, str]:
-    target = _compact(item.get("grammar_target") or card.structure or item.get("word"))
+    target = _compact(item.get("grammar_target") or card.target or card.structure or item.get("word"))
     parts = [f"GRAMMAR TARGET: {target}"]
     if card.meaning:
         parts.append(f"MEANING: {_compact(card.meaning)}")

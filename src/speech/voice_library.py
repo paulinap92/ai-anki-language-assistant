@@ -181,7 +181,9 @@ def fetch_piper_catalog(
     """Fetch and filter the public Piper voice catalog."""
     response = requests.get(PIPER_CATALOG_URL, timeout=timeout)
     payload = _response_json(response)
-    family = LANGUAGE_FAMILY_BY_NAME.get((language_name or "").strip(), "")
+    requested_language = (language_name or "").strip()
+    family = LANGUAGE_FAMILY_BY_NAME.get(requested_language, "")
+    requested_language_folded = requested_language.casefold()
     needle = query.strip().casefold()
     results: list[VoiceLibraryItem] = []
 
@@ -190,12 +192,14 @@ def fetch_piper_catalog(
             continue
         language = raw.get("language") if isinstance(raw.get("language"), dict) else {}
         language_family = str(language.get("family") or "")
+        language_english = str(language.get("name_english") or "")
         if family and language_family != family:
+            continue
+        if requested_language and not family and language_english.casefold() != requested_language_folded:
             continue
 
         name = str(raw.get("name") or key)
         locale = str(language.get("code") or "")
-        language_english = str(language.get("name_english") or "")
         quality = str(raw.get("quality") or "")
         haystack = " ".join((key, name, locale, language_english, quality)).casefold()
         if needle and needle not in haystack:
@@ -231,6 +235,21 @@ def fetch_piper_catalog(
 
     return sorted(results, key=lambda item: (item.language, item.locale, item.name, item.quality))
 
+
+
+def fetch_piper_language_names(timeout: float = 30.0) -> list[str]:
+    """Return every language currently exposed by the public Piper catalog."""
+    response = requests.get(PIPER_CATALOG_URL, timeout=timeout)
+    payload = _response_json(response)
+    names: set[str] = set()
+    for raw in payload.values():
+        if not isinstance(raw, dict):
+            continue
+        language = raw.get("language") if isinstance(raw.get("language"), dict) else {}
+        name = str(language.get("name_english") or "").strip()
+        if name:
+            names.add(name)
+    return sorted(names, key=str.casefold)
 
 def _download_file(url: str, destination: Path, *, timeout: float = 180.0) -> Path:
     destination.parent.mkdir(parents=True, exist_ok=True)

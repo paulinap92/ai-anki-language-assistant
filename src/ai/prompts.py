@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 
-VOCABULARY_PROMPT_VERSION = "v10-lesson-context-validation"
+VOCABULARY_PROMPT_VERSION = "v11-semantic-target-usage-validation"
 GRAMMAR_BATCH_PROMPT_VERSION = "v3-smart-grammar-generated-example-contract"
 SENTENCE_BASED_CARD_PROMPT_VERSION = "v1-provided-example-card"
 CONVERSATION_PROMPT_VERSION = "v3-direct-reply-history-card-back"
@@ -199,8 +199,13 @@ Quality self-check rules:
 - Set topic_fit to one of: "ok", "weak", "mismatch", "not_applicable".
 - If no user topic/context was provided, use topic_fit "not_applicable" and topic_warning "".
 - If the topic fit is weak or mismatch, explain briefly in topic_warning.
-- Set example_uses_target to true only if the example contains the target item itself or a correct inflected/conjugated form.
-- Put the exact target form used in the example into used_form_in_example.
+- Set example_uses_target to true only if the example contains the target item itself or a correct inflected/conjugated/declined/reflexive form of that SAME lexical target.
+- Set target_usage to exactly one of: "exact", "valid_inflection", "mismatch", "uncertain".
+- Use target_usage="exact" when the requested target appears unchanged in the example.
+- Use target_usage="valid_inflection" when the example uses a grammatically transformed form of the SAME target, e.g. Spanish "adherirse a" → "se adhiere a", "darse cuenta de" → "me di cuenta de", English "go" → "went", or equivalent morphology in any language.
+- Use target_usage="mismatch" when the example uses a synonym, different lexeme, typo, or visually similar word instead of the requested target.
+- Use target_usage="uncertain" only when you genuinely cannot determine whether the surface form belongs to the requested target.
+- Put the EXACT surface form copied from the example into used_form_in_example. It must be a literal substring of example, not the dictionary/headword form unless that exact form appears.
 - Set collocation_naturalness to one of: "ok", "weak", "bad".
 - Set translation_naturalness to one of: "ok", "weak", "bad".
 - Add a warning for any suspected language mixing, spelling issue, unnatural example, weak topic fit, empty required field, uncertain translation, or example that does not use the target item.
@@ -233,6 +238,7 @@ Return this exact JSON structure:
   "quality_warnings": [],
   "used_form_in_example": "string",
   "example_uses_target": true,
+  "target_usage": "exact | valid_inflection | mismatch | uncertain",
   "collocation_naturalness": "ok",
   "translation_naturalness": "ok"
 }}
@@ -308,8 +314,10 @@ Card rules:
 {explanation_rules}
 {topic_rules}
 Quality self-check:
-- Set example_uses_target to true only if the final example contains the selected target item or a valid inflected form.
-- Put the exact target form used in the example into used_form_in_example.
+- Set example_uses_target to true only if the final example contains the selected target item or a correct inflected/conjugated/declined/reflexive form of that SAME lexical target.
+- Set target_usage to exactly one of: "exact", "valid_inflection", "mismatch", "uncertain".
+- Use "valid_inflection" for a grammatically transformed form of the same lexical target, not for a synonym.
+- Put the EXACT surface form copied from the final example into used_form_in_example; it must occur literally in the example.
 - Set collocation_naturalness to ok/weak/bad.
 - Set translation_naturalness to ok/weak/bad.
 - Add quality_warnings for any target mismatch, sentence rewrite, awkward translation, weak topic fit, or uncertainty.
@@ -337,6 +345,7 @@ Return ONLY valid JSON. Do not use markdown or comments outside JSON.
   "quality_warnings": [],
   "used_form_in_example": "string",
   "example_uses_target": true,
+  "target_usage": "exact | valid_inflection | mismatch | uncertain",
   "collocation_naturalness": "ok",
   "translation_naturalness": "ok"
 }}
@@ -347,75 +356,82 @@ def build_batch_grammar_prompt(
     grammar_item: str,
     target_language: str,
     topic_context: str = "",
+    explanation_language: str = "Same as target",
 ) -> str:
-    """Build a prompt for Batch grammar cards from structures/connectors/patterns.
-
-    This is different from sentence analysis: the input may be a grammar
-    construction such as ``aunque + subjuntivo`` or a discourse connector such
-    as ``por consiguiente``. The output reuses ``GrammarAnalysis`` because the
-    Anki grammar template is sentence/structure-first and audio-ready.
-    """
-    topic_rules = _topic_rules(topic_context)
+    """Generate one Grammar card using the strict v12.4.5 contract."""
+    effective_explanation_language = (
+        target_language
+        if not explanation_language.strip() or explanation_language == "Same as target"
+        else explanation_language
+    )
+    context = topic_context.strip()
+    context_block = f"\nSOURCE CONTEXT (use only to understand the requested grammar):\n{context}\n" if context else ""
     return f"""
-You are a professional {target_language} grammar teacher and flashcard quality reviewer.
+You are a professional {target_language} grammar teacher.
+Create exactly ONE grammar learning item from the input below.
 
-Create ONE grammar flashcard for this exact user input:
-
-"{grammar_item}"
+INPUT:
+{grammar_item}
 
 Target language: {target_language}
+Explanation language: {effective_explanation_language}
+{context_block}
+The output has exactly five learner-facing fields:
 
-The input may be a grammar structure, connector, discourse phrase, verb pattern,
-exam-writing expression, or a complete example sentence.
+TARGET
+A short name of the grammar construction itself. It must not be a rule, explanation,
+heading, or example sentence.
 
-Requirements:
-- SOURCE-FOCUS RULE: preserve the exact grammar/word-form target from the input. Do not replace a specific target with a broader lesson label.
-- If the input uses the review format "grammar target | source sentence", put ONLY the source sentence, the part after "|", in the "sentence" field, and use the left side as the structure/pattern clue by putting it in "structure" or at the start of "structure".
-- In "grammar target | source sentence" rows, the right side is the sentence/audio target. Never use a textbook rule, explanation, or abstract heading as the sentence/audio field.
-- If the left side is a concrete structure such as "used to + base verb", "Can I + base verb", "should have + past participle", or a word-form transformation such as "un hippi -> hippies", the card must visibly teach that exact target.
-- For word-form or transformation targets, keep the transformation in "structure" and use/generate a sentence that contains the transformed form.
-- If the input is only a real learner example sentence, preserve that sentence exactly in the "sentence" field and infer the most useful structure.
-- If the input is a grammar rule, definition, explanation, textbook note, or meta-sentence about the grammar structure, do NOT preserve it as the "sentence" field. Instead, infer the grammar structure, generate ONE short natural learner example that uses it, and explain the original rule in meaning/usage.
-- If the input is only a connector/discourse word such as "therefore", the "sentence" field may be that connector itself, and "structure" should describe its writing/connector function.
-- If the input is only a grammar pattern with no source sentence, create ONE natural example sentence for the "sentence" field and put the pattern itself in "structure".
-- If the input includes source context such as "Source rule/note, not audio", use it only to understand the target. Do not copy that source rule into "sentence" or "context_example".
-- A natural example sentence using the grammar item is always required unless the target itself is a connector/discourse word to be learned.
-- Identify the useful grammar structure or writing function.
-- Explain the meaning/use in simple {target_language}.
-- Keep it practical for learners, not a long academic lesson.
-- Give a natural context example in {target_language} that uses the structure correctly.
-- Do not create two competing example sentences. If "sentence" is a full learner-visible example, "context_example" must either be the same sentence or include that exact sentence unchanged.
-- If you generate an example from a rule-only source, use the same best natural example as both "sentence" and "context_example" unless the source explicitly provides a different sentence.
-- Include 2-4 short breakdown points.
-- Include 1-3 contrasts with similar structures or common alternatives.
-- Include 1-3 common mistakes with corrected forms.
-- For DELE/writing topics, vary contexts: letters, emails, arguments, reports, opinions, complaints, applications, and written communication. Do not overuse one noun such as "ensayo".
+STRUCTURE
+A compact grammatical pattern/formula showing how the construction is formed.
 
-Final sentence/audio contract:
-- The "sentence" field is the learner-visible/audio sentence.
-- It must be a natural example that uses the structure in communication.
-- It must not define, explain, describe, or teach the grammar item.
-- It must not be a textbook rule, exercise instruction, abstract heading, or meta-sentence about the grammar item itself.
-- If the current candidate sentence is a rule/definition, replace it with a generated natural example and keep the rule information in meaning/usage.
-- context_example must be the same sentence or contain that exact sentence unchanged.
-{topic_rules}
-Return ONLY valid JSON. Do not use markdown or comments outside JSON.
+RULE
+What the construction does and/or when it is used.
 
-Return this exact JSON structure:
+EXAMPLE
+Exactly one natural, real sentence that USES the construction.
+A sentence that merely describes the rule is NOT an example.
 
+EXPLANATION
+A concise learner-friendly explanation written in {effective_explanation_language}.
+
+Bad EXAMPLE:
+"Third conditional sentences are used to talk about unreal past situations."
+Reason: it talks ABOUT the construction but does not USE it.
+
+Good EXAMPLE:
+"If I had known about the meeting, I would have joined you."
+
+Bad TARGET:
+"have with this meaning is a dynamic (action) verb and can be used in continuous tenses"
+Reason: this is a rule/explanation, not the name of the construction.
+
+Good TARGET:
+"have as a dynamic verb"
+
+Good complete example:
+TARGET: have as a dynamic verb
+STRUCTURE: have + activity/experience -> continuous form possible
+RULE: When have describes an activity or experience rather than possession, it can be used in continuous tenses.
+EXAMPLE: We're having dinner at the moment.
+
+Before returning JSON, verify the result semantically in this SAME request:
+- example_demonstrates_structure = true ONLY if EXAMPLE actually contains and demonstrates STRUCTURE.
+- target_is_structure = true ONLY if TARGET is a concise grammar construction, not a rule/explanation/sentence.
+If either check would be false, FIX the learner-facing fields first and check again.
+Do not use regex-style heuristics or keyword matching as a substitute for this semantic check.
+
+Return ONLY valid JSON with EXACTLY these keys:
 {{
-  "sentence": "the exact source sentence after |, the connector itself, or a natural example sentence using the grammar target; never a long rule/explanation",
-  "target_language": "{target_language}",
-  "meaning": "string",
-  "structure": "the exact source grammar target/pattern/word-form transformation whenever one is provided",
-  "breakdown": ["string", "string"],
-  "usage": "string",
-  "context_example": "string",
-  "contrasts": ["string", "string"],
-  "common_mistakes": ["string", "string"]
+  "target": "short grammar construction",
+  "structure": "compact grammar pattern",
+  "rule": "what it does / when to use it",
+  "example": "one real sentence using the construction",
+  "explanation": "explanation in {effective_explanation_language}",
+  "example_demonstrates_structure": true,
+  "target_is_structure": true
 }}
 """
-
 
 def _conversation_flashcard_instructions(flashcard_context: str) -> str:
     """Return strict teaching rules for flashcard-based conversation mode."""
@@ -629,48 +645,53 @@ Output requirements:
 """
 
 
-def build_grammar_analysis_prompt(sentence: str, target_language: str) -> str:
-    """Build a prompt for explaining grammar through one natural sentence."""
+def build_grammar_analysis_prompt(
+    sentence: str,
+    target_language: str,
+    explanation_language: str = "Same as target",
+) -> str:
+    """Analyze one sentence using the same strict Grammar contract as Batch generation."""
+    effective_explanation_language = (
+        target_language
+        if not explanation_language.strip() or explanation_language == "Same as target"
+        else explanation_language
+    )
     return f"""
-You are a professional {target_language} teacher.
+You are a professional {target_language} grammar teacher.
+Create exactly ONE grammar learning item from this source sentence:
 
-Analyze this sentence for a learner:
+{sentence}
 
-"{sentence}"
+Target language: {target_language}
+Explanation language: {effective_explanation_language}
 
-Use ONLY {target_language} in every explanation. Do not translate the sentence
-into Polish or any other language.
+Use this exact learner-facing contract:
+TARGET = short name of the grammar construction.
+STRUCTURE = compact grammatical pattern/formula.
+RULE = what the construction does / when it is used.
+EXAMPLE = exactly one natural sentence that uses the construction. Preserve the source sentence exactly as EXAMPLE.
+EXPLANATION = concise explanation in {effective_explanation_language}.
 
-Requirements:
-- Preserve the original sentence exactly in "sentence".
-- Explain its meaning with a simple natural paraphrase in {target_language}.
-- Identify the most useful grammar structure, not every possible grammar detail.
-- Keep the explanation practical and suitable for a flashcard.
-- Break the structure into 2-4 short, useful parts.
-- Explain when and why a speaker would use this structure.
-- Give ONE natural context containing the original sentence.
-- Provide 1-3 concise contrasts with genuinely similar structures.
-- Provide 1-3 common mistakes with corrected forms.
-- Do not create a long academic grammar lesson.
-- Return ONLY valid JSON.
-- Do not use markdown or comments outside JSON.
+The TARGET must not be a prose rule or sentence.
+The EXAMPLE must demonstrate the selected STRUCTURE; a sentence describing grammar is not a valid example.
+Choose a structure that the supplied source sentence genuinely demonstrates.
 
-Return this exact JSON structure:
+In this SAME request, verify semantically:
+- example_demonstrates_structure = true only if EXAMPLE genuinely demonstrates STRUCTURE.
+- target_is_structure = true only if TARGET names a concise grammar construction.
+If either would be false, fix TARGET/STRUCTURE selection before returning the answer.
 
+Return ONLY valid JSON with EXACTLY these keys:
 {{
-  "sentence": "{sentence}",
-  "target_language": "{target_language}",
-  "meaning": "string",
-  "structure": "string",
-  "breakdown": ["string", "string"],
-  "usage": "string",
-  "context_example": "string",
-  "contrasts": ["string", "string"],
-  "common_mistakes": ["string", "string"]
+  "target": "short grammar construction",
+  "structure": "compact grammar pattern",
+  "rule": "what it does / when to use it",
+  "example": "{sentence}",
+  "explanation": "explanation in {effective_explanation_language}",
+  "example_demonstrates_structure": true,
+  "target_is_structure": true
 }}
 """
-
-
 
 def build_smart_grammar_candidate_extraction_prompt(
     extracted_text: str,
@@ -710,7 +731,9 @@ Your task:
 - Skip OCR garbage, page numbers, isolated headers, and duplicate items.
 
 Core field contract:
-- target = the grammar focus/pattern/source target to learn.
+- target = a SHORT, teachable grammar focus/pattern. It must never be a full textbook rule, definition, explanatory sentence, or example sentence.
+- If a source rule is long (for example "have with this meaning is a dynamic verb and can be used in continuous tenses"), normalize target to a concise label such as "have as a dynamic verb" and keep the original wording in source_rule.
+- Prefer a conventional grammar name when one exists (for example "Third conditional"), otherwise use a compact descriptive label.
 - sentence = ONLY a learner-visible example sentence suitable for audio.
 - source_rule = ONLY the original rule, definition, explanation, use note, or exercise instruction.
 - reason = short reason why this candidate was extracted.
@@ -806,6 +829,7 @@ Review metadata (for UI ranking only; NEVER use it to invent or drop candidates)
 - Do not force a distribution. A source may have many or few items in any tier.
 
 Final self-check before returning JSON:
+- target MUST be a concise grammar item. If target reads like a complete rule/explanation sentence, rewrite it before returning JSON.
 - If source_role="grammar_rule", sentence MUST be newly generated, not copied from source_rule.
 - If source_type="rule" and strategy="generated_example_from_rule", sentence MUST NOT equal source_rule.
 - If sentence defines, explains, describes, names, or teaches the grammar item, it belongs in source_rule, not sentence.
@@ -871,10 +895,21 @@ Use type="vocabulary" for:
 - words, terms, phrases, idioms, collocations, specialist vocabulary, expression headings, and explicit vocabulary-list items when there is NO good exact source usage sentence to preserve.
 - glossary/definition/context items where nearby text explains the target but does not actually use the target in a complete learner example.
 
-Use type="provided_example" automatically when:
+Use type="provided_example" automatically ONLY when source_role="usage_example" and:
 - the source contains a complete useful sentence that is worth preserving as the learning context,
 - the sentence clearly contains the selected target phrase/idiom/collocation (or a normal inflected form),
-- the sentence is a real usage example rather than a definition of the target.
+- the sentence is a real usage example rather than a heading, label, definition, list item, fragment, exercise, or task.
+
+Before choosing the type, classify the visible fragment semantically as source_role:
+- usage_example = a complete natural sentence that actually demonstrates the target in context.
+- heading_label = a title, heading, category label, contrast label, personality-type label, table label, or similar non-sentence text.
+- definition_context = text that defines/explains the target rather than demonstrating it in use.
+- list_item = a vocabulary/list entry or compact paired/alternative item, not a learner sentence.
+- fragment = incomplete or elliptical text that is not a standalone natural sentence.
+- exercise = a question, instruction, gap-fill, transformation task, or other exercise material.
+- unknown = use only when the fragment genuinely cannot be classified.
+
+A fragment can contain the target and still NOT be a usage example. For example, "A PLANNER or SPONTANEOUS" is a heading/contrast label, so target="planner" must remain type="vocabulary" and must NOT preserve that fragment as the learner example.
 
 Do not return a vocabulary candidate with a real source usage sentence merely because the target itself is vocabulary. In Smart vocabulary, a strong exact source usage example should be routed as provided_example so Queue preserves that sentence automatically.
 
@@ -883,7 +918,9 @@ Do not turn exercises/questions/tasks into provided examples.
 """
         source_example_rule = """
 Source example rules:
-- For Smart vocabulary, if a complete source sentence actually USES the target and is suitable as the learner example, return type="provided_example" and put that exact sentence in sentence.
+- For Smart vocabulary, first classify source_role semantically. Only source_role="usage_example" may become type="provided_example".
+- If a complete source sentence actually USES the target and is suitable as the learner example, return source_role="usage_example", type="provided_example", and put that exact sentence in sentence.
+- For heading_label, definition_context, list_item, fragment, exercise, or unknown, keep type="vocabulary". Do not preserve that fragment as the learner example even if it contains the target.
 - Keep type="vocabulary" when there is no good usage example. A definition/context fragment that explains the target without using it may stay in source_sentence as source context; it is NOT a provided example.
 - For provided_example candidates, put the exact source sentence in sentence and the target phrase in target.
 - If a useful context sentence contains blanks/underscores and the missing answer is obvious, return the completed clean sentence, set strategy="completed_gap_source_sentence", needs_review=true, and mention the filled gap in reason.
@@ -989,6 +1026,7 @@ Candidate metadata:
 - candidate_kind = word | phrase | idiom | collocation | specialist_term | expression | body_part | disease | profession | medication | other
 - source_section = vocabulary_list | colloquial_expressions | reading_text | dialogue | table | highlighted_item | other
 - source_sentence = exact source sentence/context when useful and readable, otherwise empty
+- source_role = usage_example | heading_label | definition_context | list_item | fragment | exercise | unknown
 - reason = short reason or source heading
 - needs_review = true only for uncertain, OCR-damaged, or expanded variants
 
@@ -1011,6 +1049,7 @@ Return this exact structure:
       {sentence_schema}
       "candidate_kind": "word | phrase | idiom | collocation | specialist_term | expression | body_part | disease | profession | medication | other",
       "source_section": "vocabulary_list | colloquial_expressions | reading_text | dialogue | table | highlighted_item | other",
+      "source_role": "usage_example | heading_label | definition_context | list_item | fragment | exercise | unknown",
       "reason": "short reason or source heading",
       "source_type": "vocabulary_list | colloquial_expression | reading_text_collocation | dialogue_example | highlighted_item | table_row | expanded_variant | provided_example",
       "strategy": "vocabulary_candidate | vocabulary_with_source_sentence | expanded_vocabulary_variant | preserve_source_sentence",

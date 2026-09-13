@@ -7,6 +7,7 @@ The app is built around a human-in-the-loop process: AI drafts the learning cont
 ## What it does
 
 - Generates vocabulary and grammar cards with local Ollama or BYOK cloud providers such as Gemini, OpenAI or Claude.
+- Uses the same card-generation model to self-check whether an example contains the exact target or a valid inflected/conjugated/declined form, while local code verifies the declared surface form deterministically.
 - Imports TXT/HTML locally and images/PDFs through explicit OCR/import workflows.
 - Extracts candidate vocabulary, grammar structures and example sentences from learning material; Vocabulary modes preserve explicit lists and continue mining useful vocabulary across the full lesson text.
 - Supports Queue review before adding cards to Anki.
@@ -60,6 +61,7 @@ Starts the command-line interface.
 
 | Area | Purpose |
 |---|---|
+| Profile | Required learner settings: learning language, target level and explanation/feedback language. This profile drives language-aware behavior across the app. |
 | Setup | Choose Fully local, Hybrid / BYOK or API / BYOK, import/create `.env`, reload providers and check local Ollama. |
 | Create Card | Generate and review one Vocabulary or Grammar card in one workspace. |
 | Queue | Fast path for clean structured TXT/CSV/pasted rows. Choose Vocabulary, Grammar, Mixed or Provided examples before loading. |
@@ -80,12 +82,19 @@ Use **Import Material** when the source still needs interpretation or extraction
 Import Material exposes four user-facing extraction choices:
 
 - **Vocabulary & expressions** — scans the whole source for useful words, phrases, idioms, phrasal verbs and collocations; useful source sentences are preserved when available.
-- **Grammar** — uses the smart grammar routing internally for rules, structures, transformations, exercises and sentence examples.
+- **Grammar** — target-first cards: one concise grammar target, a compact pattern, one real usage example, learner-language explanation, contrasts and common mistakes. Smart grammar routing still handles rules, structures, transformations, exercises and sentence examples.
 - **Examples / sentences** — preserves useful target + exact source-sentence pairs.
 - **Auto** — lets AI classify useful items across vocabulary, grammar and source examples.
 
 The older implementation-specific strategy names remain internal for backward compatibility and are no longer shown in the main UI.
 
+
+
+### Global Learning Profile
+
+Language is no longer selected independently in each workflow. The required Learning Profile is the single source of truth for target language, Conversation level, explanation/feedback language, STT language and TTS/Voice Library filtering. Piper voices are filtered to the active profile language and never silently fall back to a different-language local model.
+
+Queue recovery also has a user-facing **Resume latest** path that summarizes the most recent autosave before loading it; manual JSON recovery remains available via **Load file…**.
 
 ## Local, Hybrid and BYOK profiles
 
@@ -95,9 +104,9 @@ The same application supports three user-facing setup profiles:
 - **Hybrid / BYOK** — mix local components with the user's own OpenAI, Gemini, Claude, ElevenLabs or OCR API keys.
 - **API / BYOK** — use the user's own cloud AI/TTS providers; local Whisper remains available for speech input in this release.
 
-The app can start with **no AI provider configured**. First-time users are sent to **Setup** instead of seeing a startup crash. The Setup tab can create a starter `.env`, import supported values from an existing `.env`, reopen the local file, reload providers without restarting the app and check whether Ollama plus the selected local model are reachable.
+The app can start with **no AI provider configured**, but the main interface is gated behind a required local **Learning Profile**. After the profile is created, users without an AI provider are sent to **Setup** instead of seeing a startup crash. The Setup tab can create a starter `.env`, import supported values from an existing `.env`, reopen the local file, reload providers without restarting the app and check whether Ollama plus the selected local model are reachable.
 
-Secrets stay in the local `.env`. Clean ZIP releases do not include `.env`, API keys, logs, caches, generated audio or runtime state.
+Secrets stay in the local `.env`. The learner profile is stored separately in local `user_profile.json`. Clean ZIP releases do not include `.env`, `user_profile.json`, API keys, logs, caches, generated audio or runtime state.
 
 ## Quality and safety workflow
 
@@ -207,7 +216,9 @@ MISTRAL_API_KEY=...
 MISTRAL_OCR_MODEL=...
 ```
 
-### Speech-to-text trial
+### Speech-to-text
+
+Local option:
 
 ```env
 STT_PROVIDER=local_whisper
@@ -215,7 +226,16 @@ WHISPER_MODEL=small
 WHISPER_LANGUAGE=
 ```
 
-Conversation Practice now passes the selected conversation language plus a short dynamic topic/flashcard context to faster-whisper. For higher accuracy on a capable CPU, try `WHISPER_MODEL=medium`; existing `.env` files that explicitly use `base` are not overwritten.
+Cloud option:
+
+```env
+STT_PROVIDER=openai
+OPENAI_API_KEY=...
+OPENAI_STT_MODEL=gpt-4o-mini-transcribe
+WHISPER_LANGUAGE=
+```
+
+Conversation Practice passes the selected conversation language plus a short dynamic topic/flashcard context to the active STT provider. The provider can also be changed directly in **Setup → Speech-to-text**.
 
 ### Conversation audio and export
 

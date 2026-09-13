@@ -82,10 +82,15 @@ class Settings:
     piper_voice_en: str | None
     piper_voice_es: str | None
     piper_voice_pl: str | None
+    piper_voice_de: str | None
+    piper_voice_fr: str | None
+    piper_voice_it: str | None
+    piper_voice_pt: str | None
     ollama_base_url: str
     ollama_model: str | None
     audio_cache_dir: str
     stt_provider: str
+    openai_stt_model: str
     whisper_model: str
     whisper_language: str | None
     langsmith_tracing: bool
@@ -218,10 +223,15 @@ def get_settings() -> Settings:
         piper_voice_en=_clean_env_value(os.getenv("PIPER_VOICE_EN")),
         piper_voice_es=_clean_env_value(os.getenv("PIPER_VOICE_ES")),
         piper_voice_pl=_clean_env_value(os.getenv("PIPER_VOICE_PL")),
+        piper_voice_de=_clean_env_value(os.getenv("PIPER_VOICE_DE")),
+        piper_voice_fr=_clean_env_value(os.getenv("PIPER_VOICE_FR")),
+        piper_voice_it=_clean_env_value(os.getenv("PIPER_VOICE_IT")),
+        piper_voice_pt=_clean_env_value(os.getenv("PIPER_VOICE_PT")),
         ollama_base_url=_clean_env_value(os.getenv("OLLAMA_BASE_URL")) or "http://localhost:11434",
         ollama_model=ollama_model,
         audio_cache_dir=_clean_env_value(os.getenv("AUDIO_CACHE_DIR")) or ".audio_cache",
         stt_provider=_clean_env_value(os.getenv("STT_PROVIDER")) or "local_whisper",
+        openai_stt_model=_clean_env_value(os.getenv("OPENAI_STT_MODEL")) or "gpt-4o-mini-transcribe",
         whisper_model=_clean_env_value(os.getenv("WHISPER_MODEL")) or "small",
         whisper_language=_clean_env_value(os.getenv("WHISPER_LANGUAGE")),
         langsmith_tracing=langsmith_tracing,

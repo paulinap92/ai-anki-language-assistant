@@ -1,3 +1,98 @@
+# Changelog
+
+## v12.4.8 — Multilingual Piper + cloud STT
+
+- Piper Voice Library language filter now expands from the live catalog instead of the original short list.
+- Added explicit Piper paths for German, French, Italian and Portuguese while keeping auto-discovery for any downloaded Piper language.
+- Added OpenAI Cloud STT as a Setup-selectable alternative to local Whisper.
+- Added cloud-only requirements file and STT/Piper regression tests.
+
+## v12.4.7 — Semantic source-role routing
+
+- Fix Smart Vocabulary misclassifying headings/labels such as `A PLANNER or SPONTANEOUS` as provided learner examples.
+- Add semantic `source_role` classification: `usage_example`, `heading_label`, `definition_context`, `list_item`, `fragment`, `exercise`, `unknown`.
+- Allow only `usage_example` to be preserved as a Provided Example.
+- Keep headings, labels, definitions, fragments and exercises as Vocabulary/context and generate a fresh learner example in Queue.
+- Make Queue respect the semantic role instead of treating “contains target” as sufficient evidence that a source fragment is a valid example.
+- Add regression tests for the real `planner` heading failure.
+
+## v12.4.6 — Global duplicate guard
+
+- Align duplicate identity with the actual card front: Vocabulary uses `Word`; target-first Grammar uses `Target`.
+- Scan the whole Anki collection at the final Vocabulary/Grammar write boundary instead of relying on active-deck-only checks.
+- Keep a final exact guard in the Batch fast path so a stale precheck cannot create a duplicate.
+- Treat Vocabulary and Provided Example rows with the same target as one card identity.
+- Deduplicate Import Material and Queue rows by final card identity rather than `target + source sentence`.
+- Precheck reliable Grammar targets before provider generation.
+- Add regression coverage for the real duplicate holes.
+
+## v12.4.5 — Strict Grammar generation contract
+
+- Rewrite only Grammar generation around one small contract: TARGET, STRUCTURE, RULE, EXAMPLE, EXPLANATION.
+- Require `example_demonstrates_structure` and `target_is_structure` self-checks in the same LLM request.
+- Reject a generated Grammar result when either semantic self-check is false or missing.
+- Add regression tests for the real failures where a grammar description became EXAMPLE and a prose rule became TARGET.
+- Keep Vocabulary, Queue, Import, Learning Profile and downstream Anki/UI models unchanged through a compatibility adapter.
+
+## v12.4.4 — Target-first Grammar cards
+
+- Rebuild Grammar generation around a target-first contract instead of using the example/rule sentence as the card title.
+- Add a dedicated short `target` field (for example `Third conditional` or `have as a dynamic verb`) and keep `structure` as a compact formula/pattern.
+- Require one real communicative example sentence; rules, definitions, headings and meta-sentences are explicitly forbidden from the example field.
+- Add provider self-checks for `target_is_valid` and `example_demonstrates_target` in the same generation request.
+- Use the Learning Profile explanation language for grammar meaning, usage, breakdown, contrasts and mistake explanations while keeping target-language forms/examples unchanged.
+- Strengthen Smart Grammar extraction so long textbook rules are normalized to concise targets and preserved as source rules instead of becoming card titles.
+- Stop source-focus repair from forcing long rule text back into the generated target.
+- Redesign the Anki grammar template: concise grammar target first, then pattern, one example with audio, how it works, usage, contrasts and common mistakes.
+- Remove the competing `Natural context` example from the visible card and keep the compatibility `ContextExample` field aligned to the main example.
+- Existing grammar note types are upgraded in place with `Target` and `ExplanationLanguage`; old notes fall back to their existing `Structure` on the front.
+
+## v12.4.3 — Non-blocking first-run profile startup
+
+- Fix a Windows/PyCharm startup hang introduced by mandatory first-run Learning Profile onboarding.
+- Remove the nested `wait_variable` loop that could leave a live Python process with no visible window before the application's real Tk mainloop started.
+- Show Learning Profile as the first normal application screen and build the main UI only after `Save profile & continue`.
+- Add startup milestones to `ai_anki_app.log`: profile required, profile window painted, profile saved, and main UI built.
+- Preserve the v12.4.1 Basic local `target | example` parser and v12.4.2 deferred Anki discovery.
+
+## v12.4.2 - Visible startup and non-blocking Anki discovery
+
+- Paint a real startup window before loading provider configuration so Windows/PyCharm no longer looks completely idle during startup work.
+- Add `logs/startup.log` (and `startup_private.log`) with milestone-level startup diagnostics and a visible startup error dialog if initialization fails.
+- Make the mandatory first-run Learning Profile screen explicitly deiconify/lift itself before waiting for profile completion.
+- Defer the initial AnkiConnect deck lookup until Tk has entered its event loop, so Anki being closed or slow cannot prevent the application window from appearing.
+- Keep the v12.4.1 direct local `target | example` / TSV parser unchanged.
+
+## v12.4.1 - Basic local target/example parsing
+
+- Fix the Basic local finder so clean `target | example` and TSV rows are parsed directly without AI.
+- Preserve both the target and exact example as a Provided Example candidate instead of treating the whole row as an unstructured sentence.
+- Keep duplicate targets when their example sentences differ, while removing exact duplicate rows.
+- Rename the local action to `Examples / sentences` and explain the accepted prepared format directly in Import Material.
+- Fall back to the existing free sentence splitter only when the material does not contain structured target/example pairs.
+
+## v12.4.0 - Mandatory Learning Profile and language-aware local audio
+
+- Add a mandatory first-run Learning Profile gate. The main application is not shown until the user chooses a learning language, target level and explanation/feedback language.
+- Persist the learner profile in local `user_profile.json` and keep provider/API setup separate in `.env` / Setup.
+- Make the Learning Profile the single source of truth for Create Card, Import Material, Queue, Conversation, speech language, Voice Lab samples and feedback/explanation language.
+- Remove duplicate user-facing language selectors from the top bar, Create Card, Queue, Conversation and Speech & Audio. Users edit language/level once in Profile.
+- Add a dedicated Profile tab plus a compact active-profile summary and Edit action in the main header/workflows.
+- Make Piper voice selection strictly language-aware. A Spanish profile no longer silently falls back to an English Piper model when no Spanish model is installed; the app directs the user to Voice Library instead. Multilingual cloud voices remain valid across languages.
+- Improve Queue session recovery: add one-click `Resume latest` with date/progress/language/deck summary, keep manual JSON loading as `Load file…`, and stop old session files from silently changing the active learner profile.
+- Warn when a saved Queue language differs from the active Learning Profile instead of mutating global language settings behind the user's back.
+
+## v12.3.4 - Semantic target validation and clean Import reruns
+
+- Move lexical morphology validation into the same AI card-generation request instead of trying to encode every language's conjugation/declension rules locally.
+- Vocabulary cards now carry `target_usage` (`exact`, `valid_inflection`, `mismatch`, `uncertain`) together with the exact `used_form_in_example` surface form.
+- Local validation now trusts a model-confirmed valid inflection only when the declared surface form literally occurs in the generated example. This correctly accepts cases such as Spanish `adherirse a` → `se adhiere a` without weakening synonym/mismatch checks.
+- Old cards without semantic metadata keep a conservative legacy fallback, but pattern uncertainty is surfaced as review rather than pretending the local matcher understands all morphology.
+- Prevent stale persisted morphology warnings from reappearing when current semantic metadata proves the target usage is valid.
+- Start every deliberate Import Material AI candidate search as a fresh review state, clearing previous-language candidates, filters and pagination before rendering the new run.
+- Add search generation IDs so delayed automatic retries from an older run cannot overwrite a newer candidate search after the user changes language/settings.
+- Freeze language/mode/provider settings across automatic retries and add raw/parsed/merged/deduplicated candidate counts to logs for diagnosing runaway outputs such as impossible 1000+ candidate responses.
+
 ## v12.3.3 - Mixed Queue routing fix
 
 - Fix mixed Import Material transfers so Queue shows `Mixed` whenever imported rows contain more than one preserved card type.

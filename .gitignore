@@ -125,3 +125,6 @@ conversation_exports/
 
 # User-installed TTS voice libraries
 voices/
+
+# Local learner profile
+user_profile.json

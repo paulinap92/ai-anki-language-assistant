@@ -1,0 +1,24 @@
+# Cloud / BYOK profile without local Whisper or Piper model dependencies.
+python-dotenv
+requests
+pydantic
+customtkinter
+
+# Local file handling / microphone capture
+PyMuPDF
+pypdf
+pillow
+pytesseract
+sounddevice
+soundfile
+numpy
+
+# Cloud providers
+google-genai
+openai
+anthropic
+mistralai
+langsmith
+beautifulsoup4
+lxml
+tenacity

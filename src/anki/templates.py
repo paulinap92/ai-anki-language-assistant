@@ -360,8 +360,10 @@ CARD_CSS = """
 GRAMMAR_MODEL_NAME = "AI Grammar Light Card"
 
 GRAMMAR_MODEL_FIELDS = [
+    "Target",
     "Sentence",
     "Language",
+    "ExplanationLanguage",
     "Meaning",
     "Structure",
     "Breakdown",
@@ -376,21 +378,30 @@ GRAMMAR_MODEL_FIELDS = [
 
 GRAMMAR_FRONT_TEMPLATE = """
 <div class="vocab-card front grammar-front">
-  <div class="language-badge">{{Language}} · grammar structure</div>
-  <div class="word grammar-sentence">{{Sentence}}</div>
+  <div class="language-badge">{{Language}} · grammar</div>
+  {{#Target}}<div class="word grammar-target">{{Target}}</div>{{/Target}}
+  {{^Target}}<div class="word grammar-target">{{Structure}}</div>{{/Target}}
   <div class="prompt">Show explanation</div>
 </div>
 """.strip()
 
 GRAMMAR_BACK_TEMPLATE = """
 <div class="vocab-card back">
-  <div class="language-badge">{{Language}} · grammar structure</div>
-  <div class="word small grammar-sentence-small">{{Sentence}}</div>
+  <div class="language-badge">{{Language}} · grammar</div>
+  {{#Target}}<div class="word small grammar-target-small">{{Target}}</div>{{/Target}}
+  {{^Target}}<div class="word small grammar-target-small">{{Structure}}</div>{{/Target}}
   <div class="translation grammar-meaning">{{Meaning}}</div>
 
   <section class="section grammar">
-    <div class="label">Structure</div>
+    <div class="label">Pattern</div>
     <div class="structure-pill">{{Structure}}</div>
+  </section>
+
+  <section class="section example">
+    <div class="label">Example</div>
+    <div class="sentence">{{Sentence}}</div>
+    {{#Audio}}<div class="audio">{{Audio}}</div>{{/Audio}}
+    {{^Audio}}{{#ExampleAudio}}<div class="audio">{{ExampleAudio}}</div>{{/ExampleAudio}}{{/Audio}}
   </section>
 
   <section class="section">
@@ -401,13 +412,6 @@ GRAMMAR_BACK_TEMPLATE = """
   <section class="section">
     <div class="label">When to use it</div>
     <div class="content">{{Usage}}</div>
-  </section>
-
-  <section class="section example">
-    <div class="label">Natural context</div>
-    <div class="sentence">{{ContextExample}}</div>
-    {{#Audio}}<div class="audio">{{Audio}}</div>{{/Audio}}
-    {{^Audio}}{{#ExampleAudio}}<div class="audio">{{ExampleAudio}}</div>{{/ExampleAudio}}{{/Audio}}
   </section>
 
   <section class="section">
@@ -424,12 +428,12 @@ GRAMMAR_BACK_TEMPLATE = """
 
 GRAMMAR_CARD_CSS = CARD_CSS + """
 
-.grammar-sentence {
+.grammar-target {
   max-width: 540px;
   font-size: 38px;
 }
 
-.grammar-sentence-small {
+.grammar-target-small {
   font-size: 30px;
   line-height: 1.25;
 }
