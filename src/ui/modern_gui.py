@@ -1386,7 +1386,7 @@ class ModernVocabularyGui:
             f"Local: {flag('ollama')} Ollama · {flag('whisper')} Whisper STT · {flag('piper')} Piper\n"
             f"Cloud STT: {flag('groq_stt')} Groq Whisper · {flag('openai_stt')} OpenAI transcription\n"
             f"BYOK: {flag('openai')} OpenAI · {flag('gemini')} Gemini · {flag('openrouter')} OpenRouter · "
-            f"{flag('claude')} Claude · {flag('elevenlabs')} ElevenLabs · {flag('mistral')} Mistral OCR\n"
+            f"{flag('groq')} Groq · {flag('claude')} Claude · {flag('elevenlabs')} ElevenLabs · {flag('mistral')} Mistral OCR\n"
             f"Active AI providers in this session: {', '.join(self._ai_clients) if self._ai_clients else 'none'}"
         )
 
