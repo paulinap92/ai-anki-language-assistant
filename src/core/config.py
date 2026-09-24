@@ -96,6 +96,9 @@ class Settings:
     stt_provider: str
     openai_stt_model: str
     groq_api_key: str | None
+    groq_model: str
+    groq_import_model: str
+    groq_review_model: str
     groq_stt_model: str
     whisper_model: str
     whisper_language: str | None
@@ -254,6 +257,18 @@ def get_settings() -> Settings:
         stt_provider=_clean_env_value(os.getenv("STT_PROVIDER")) or "local_whisper",
         openai_stt_model=_clean_env_value(os.getenv("OPENAI_STT_MODEL")) or "gpt-4o-mini-transcribe",
         groq_api_key=groq_api_key,
+        groq_model=_clean_env_value(os.getenv("GROQ_MODEL")) or "openai/gpt-oss-20b",
+        groq_import_model=(
+            _clean_env_value(os.getenv("GROQ_IMPORT_MODEL"))
+            or _clean_env_value(os.getenv("GROQ_MODEL"))
+            or "openai/gpt-oss-20b"
+        ),
+        groq_review_model=(
+            _clean_env_value(os.getenv("GROQ_REVIEW_MODEL"))
+            or _clean_env_value(os.getenv("GROQ_IMPORT_MODEL"))
+            or _clean_env_value(os.getenv("GROQ_MODEL"))
+            or "openai/gpt-oss-20b"
+        ),
         groq_stt_model=_clean_env_value(os.getenv("GROQ_STT_MODEL")) or "whisper-large-v3-turbo",
         whisper_model=_clean_env_value(os.getenv("WHISPER_MODEL")) or "small",
         whisper_language=_clean_env_value(os.getenv("WHISPER_LANGUAGE")),
