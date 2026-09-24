@@ -297,3 +297,63 @@ class OpenAiSttService(RecordedSttService):
             result = client.audio.transcriptions.create(file=audio_file, **kwargs)
         text = str(getattr(result, "text", "") or "").strip()
         return text, request_language
+
+
+class GroqSttService(RecordedSttService):
+    """Transcribe recordings with Groq's OpenAI-compatible cloud endpoint."""
+
+    provider_name = "Groq Cloud STT"
+
+    def __init__(
+        self,
+        api_key: str,
+        model_name: str = "whisper-large-v3-turbo",
+        language: str | None = None,
+        sample_rate: int = 16000,
+        cache_dir: str | Path = ".audio_cache",
+        stop_tail_seconds: float = 0.8,
+    ) -> None:
+        if not api_key.strip():
+            raise ValueError("GROQ_API_KEY is required for Groq Cloud STT.")
+        super().__init__(model_name, language, sample_rate, cache_dir, stop_tail_seconds)
+        self._api_key = api_key.strip()
+        self._client: Any | None = None
+
+    def _load_client(self) -> Any:
+        if self._client is not None:
+            return self._client
+        try:
+            from openai import OpenAI  # type: ignore
+        except ImportError as exc:
+            raise RuntimeError(
+                "openai is not installed. Run: pipenv install openai sounddevice soundfile"
+            ) from exc
+        self._client = OpenAI(
+            api_key=self._api_key,
+            base_url="https://api.groq.com/openai/v1",
+        )
+        return self._client
+
+    def _transcribe_wav(
+        self,
+        wav_path: Path,
+        *,
+        initial_prompt: str | None = None,
+        language: str | None = None,
+    ) -> tuple[str, str | None]:
+        client = self._load_client()
+        prompt = (initial_prompt or "").strip()
+        if len(prompt) > 1200:
+            prompt = prompt[-1200:]
+        request_language = language or self.language
+        kwargs: dict[str, Any] = {
+            "model": self.model_name,
+        }
+        if request_language:
+            kwargs["language"] = request_language
+        if prompt:
+            kwargs["prompt"] = prompt
+        with wav_path.open("rb") as audio_file:
+            result = client.audio.transcriptions.create(file=audio_file, **kwargs)
+        text = str(getattr(result, "text", "") or "").strip()
+        return text, request_language
