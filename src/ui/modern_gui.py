@@ -126,6 +126,8 @@ STT_LANGUAGE_CODES = {
     "French": "fr",
     "Italian": "it",
     "Portuguese": "pt",
+    "Russian": "ru",
+    "Japanese": "ja",
 }
 TTS_SAMPLE_TEXTS = {
     "English": "Hello! This is a quick voice test for your flashcards.",
@@ -135,6 +137,8 @@ TTS_SAMPLE_TEXTS = {
     "French": "Bonjour. Voici un court test de voix pour vos cartes mémoire.",
     "Italian": "Ciao. Questo è un breve test della voce per le tue flashcard.",
     "Portuguese": "Olá. Este é um pequeno teste de voz para os seus cartões.",
+    "Russian": "Здравствуйте. Это короткая проверка голоса для ваших карточек.",
+    "Japanese": "こんにちは。これはフラッシュカード用の短い音声テストです。",
 }
 CREATE_CARD_MODES = ["Vocabulary", "Grammar"]
 BATCH_MODES = ["Vocabulary", "Grammar", "Mixed", "Provided examples"]
