@@ -535,6 +535,10 @@ class LlmOpsTracer:
 
     def _provider_key(self, provider: str) -> str:
         name = str(provider or "").casefold()
+        if "openrouter" in name:
+            return "OPENROUTER"
+        if "groq" in name:
+            return "GROQ"
         if "openai" in name or "chatgpt" in name:
             return "OPENAI"
         if "gemini" in name or "google" in name:
@@ -549,6 +553,8 @@ class LlmOpsTracer:
         key = self._provider_key(provider)
         return {
             "OPENAI": "openai",
+            "OPENROUTER": "openrouter",
+            "GROQ": "groq",
             "GEMINI": "google_genai",
             "CLAUDE": "anthropic",
             "ELEVENLABS": "elevenlabs",
