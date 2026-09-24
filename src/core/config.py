@@ -62,6 +62,10 @@ class Settings:
     openai_multimodal_model: str
     openai_review_model: str
     openai_premium_model: str | None
+    openrouter_api_key: str | None
+    openrouter_model: str
+    openrouter_import_model: str
+    openrouter_review_model: str
     anthropic_api_key: str | None
     claude_model: str
     claude_import_model: str
@@ -91,6 +95,8 @@ class Settings:
     audio_cache_dir: str
     stt_provider: str
     openai_stt_model: str
+    groq_api_key: str | None
+    groq_stt_model: str
     whisper_model: str
     whisper_language: str | None
     langsmith_tracing: bool
@@ -111,6 +117,8 @@ def get_settings() -> Settings:
     """
     gemini_api_key = _clean_env_value(os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY"))
     openai_api_key = _clean_env_value(os.getenv("OPENAI_API_KEY"))
+    openrouter_api_key = _clean_env_value(os.getenv("OPENROUTER_API_KEY"))
+    groq_api_key = _clean_env_value(os.getenv("GROQ_API_KEY"))
     anthropic_api_key = _clean_env_value(os.getenv("ANTHROPIC_API_KEY") or os.getenv("CLAUDE_API_KEY"))
 
     langsmith_api_key = _clean_env_value(os.getenv("LANGSMITH_API_KEY") or os.getenv("LANGCHAIN_API_KEY"))
@@ -139,7 +147,7 @@ def get_settings() -> Settings:
     if requested_mode in aliases:
         setup_mode = aliases[requested_mode]
     else:
-        has_cloud = bool(gemini_api_key or openai_api_key or anthropic_api_key)
+        has_cloud = bool(gemini_api_key or openai_api_key or openrouter_api_key or groq_api_key or anthropic_api_key)
         if ollama_model and has_cloud:
             setup_mode = "hybrid"
         elif ollama_model:
@@ -192,6 +200,19 @@ def get_settings() -> Settings:
             or "gpt-4.1-mini"
         ),
         openai_premium_model=_clean_env_value(os.getenv("OPENAI_PREMIUM_MODEL")),
+        openrouter_api_key=openrouter_api_key,
+        openrouter_model=_clean_env_value(os.getenv("OPENROUTER_MODEL")) or "openrouter/free",
+        openrouter_import_model=(
+            _clean_env_value(os.getenv("OPENROUTER_IMPORT_MODEL"))
+            or _clean_env_value(os.getenv("OPENROUTER_MODEL"))
+            or "openrouter/free"
+        ),
+        openrouter_review_model=(
+            _clean_env_value(os.getenv("OPENROUTER_REVIEW_MODEL"))
+            or _clean_env_value(os.getenv("OPENROUTER_IMPORT_MODEL"))
+            or _clean_env_value(os.getenv("OPENROUTER_MODEL"))
+            or "openrouter/free"
+        ),
         anthropic_api_key=anthropic_api_key,
         claude_model=_clean_env_value(os.getenv("CLAUDE_MODEL") or os.getenv("ANTHROPIC_MODEL")) or "claude-haiku-4-5",
         claude_import_model=(
@@ -232,6 +253,8 @@ def get_settings() -> Settings:
         audio_cache_dir=_clean_env_value(os.getenv("AUDIO_CACHE_DIR")) or ".audio_cache",
         stt_provider=_clean_env_value(os.getenv("STT_PROVIDER")) or "local_whisper",
         openai_stt_model=_clean_env_value(os.getenv("OPENAI_STT_MODEL")) or "gpt-4o-mini-transcribe",
+        groq_api_key=groq_api_key,
+        groq_stt_model=_clean_env_value(os.getenv("GROQ_STT_MODEL")) or "whisper-large-v3-turbo",
         whisper_model=_clean_env_value(os.getenv("WHISPER_MODEL")) or "small",
         whisper_language=_clean_env_value(os.getenv("WHISPER_LANGUAGE")),
         langsmith_tracing=langsmith_tracing,
