@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from src.core.config import Settings
-from src.speech.stt import LocalWhisperSttService, OpenAiSttService, RecordedSttService
+from src.speech.stt import GroqSttService, LocalWhisperSttService, OpenAiSttService, RecordedSttService
 
 
 def build_stt_service(settings: Settings) -> RecordedSttService | None:
@@ -21,6 +21,15 @@ def build_stt_service(settings: Settings) -> RecordedSttService | None:
         return OpenAiSttService(
             api_key=settings.openai_api_key,
             model_name=settings.openai_stt_model,
+            language=settings.whisper_language,
+            cache_dir=settings.audio_cache_dir,
+        )
+    if provider in {"groq", "groq_cloud", "groq_stt", "cloud_groq"}:
+        if not settings.groq_api_key:
+            return None
+        return GroqSttService(
+            api_key=settings.groq_api_key,
+            model_name=settings.groq_stt_model,
             language=settings.whisper_language,
             cache_dir=settings.audio_cache_dir,
         )
