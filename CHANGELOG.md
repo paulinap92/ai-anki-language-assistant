@@ -3,6 +3,7 @@
 ## v12.4.9 — Free cloud provider options
 
 - Added OpenRouter as a selectable LLM provider using the existing OpenAI-compatible client path; the default model is `openrouter/free` and can be overridden per card/import/review workflow.
+- Added Groq as a selectable LLM provider through its OpenAI-compatible Responses API, defaulting to `openai/gpt-oss-20b` for card/import/review workflows.
 - Added Groq Cloud STT as a third speech-to-text option next to Local Whisper and OpenAI Cloud, defaulting to `whisper-large-v3-turbo`.
 - Groq STT receives the same selected language and dynamic conversation/topic/vocabulary prompt as the existing STT providers.
 - Extended Setup/.env status and starter configuration for `OPENROUTER_API_KEY`, `GROQ_API_KEY` and their model settings.
