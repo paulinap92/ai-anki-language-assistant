@@ -37,6 +37,28 @@ def build_ai_clients(settings: Settings) -> dict[str, VocabularyAiClient]:
         )
         clients[client.provider_name] = client
 
+    if allow_cloud and settings.openrouter_api_key:
+        from src.ai.providers.openrouter import OpenRouterVocabularyClient
+
+        client = OpenRouterVocabularyClient(
+            api_key=settings.openrouter_api_key,
+            model=settings.openrouter_model,
+            import_model=settings.openrouter_import_model,
+            review_model=settings.openrouter_review_model,
+        )
+        clients[client.provider_name] = client
+
+    if allow_cloud and settings.groq_api_key:
+        from src.ai.providers.groq import GroqVocabularyClient
+
+        client = GroqVocabularyClient(
+            api_key=settings.groq_api_key,
+            model=settings.groq_model,
+            import_model=settings.groq_import_model,
+            review_model=settings.groq_review_model,
+        )
+        clients[client.provider_name] = client
+
     if allow_cloud and settings.openai_api_key:
         from src.ai.providers.openai_provider import OpenAiVocabularyClient
 

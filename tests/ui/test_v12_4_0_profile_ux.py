@@ -91,3 +91,15 @@ def test_apply_profile_updates_all_language_state(monkeypatch) -> None:
     assert gui._explanation_language_var.get() == "Polish"
     assert gui._feedback_language_var.get() == "Polish"
     assert gui._improvement_level_var.get() == "Strong B2/C1"
+
+
+def test_russian_and_japanese_are_profile_and_stt_languages() -> None:
+    from src.domain.languages import LANGUAGE_TAGS
+    from src.ui.modern_gui import STT_LANGUAGE_CODES, TTS_SAMPLE_TEXTS
+
+    assert "Russian" in LANGUAGE_TAGS
+    assert "Japanese" in LANGUAGE_TAGS
+    assert STT_LANGUAGE_CODES["Russian"] == "ru"
+    assert STT_LANGUAGE_CODES["Japanese"] == "ja"
+    assert TTS_SAMPLE_TEXTS["Russian"]
+    assert TTS_SAMPLE_TEXTS["Japanese"]

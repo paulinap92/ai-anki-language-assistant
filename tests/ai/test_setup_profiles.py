@@ -7,6 +7,8 @@ def _clear_provider_env(monkeypatch) -> None:
         "GEMINI_API_KEY",
         "GOOGLE_API_KEY",
         "OPENAI_API_KEY",
+        "OPENROUTER_API_KEY",
+        "GROQ_API_KEY",
         "ANTHROPIC_API_KEY",
         "CLAUDE_API_KEY",
         "OLLAMA_MODEL",
@@ -44,3 +46,30 @@ def test_api_profile_does_not_activate_ollama(monkeypatch) -> None:
 
     assert settings.setup_mode == "api"
     assert clients == {}
+
+
+def test_api_profile_can_activate_openrouter(monkeypatch) -> None:
+    _clear_provider_env(monkeypatch)
+    monkeypatch.setenv("AI_SETUP_MODE", "api")
+    monkeypatch.setenv("OPENROUTER_API_KEY", "router-secret")
+    monkeypatch.setenv("OPENROUTER_MODEL", "openrouter/free")
+
+    settings = get_settings()
+    clients = build_ai_clients(settings)
+
+    assert settings.setup_mode == "api"
+    assert "OpenRouter" in clients
+
+
+def test_api_profile_can_activate_groq_llm(monkeypatch) -> None:
+    _clear_provider_env(monkeypatch)
+    monkeypatch.setenv("AI_SETUP_MODE", "api")
+    monkeypatch.setenv("GROQ_API_KEY", "groq-secret")
+    monkeypatch.setenv("GROQ_MODEL", "openai/gpt-oss-20b")
+
+    settings = get_settings()
+    clients = build_ai_clients(settings)
+
+    assert settings.setup_mode == "api"
+    assert settings.groq_model == "openai/gpt-oss-20b"
+    assert "Groq" in clients

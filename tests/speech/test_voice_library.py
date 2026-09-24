@@ -223,3 +223,8 @@ def test_piper_catalog_supports_languages_outside_original_shortlist(monkeypatch
     assert voice_library.fetch_piper_language_names() == ["German", "Ukrainian"]
     items = voice_library.fetch_piper_catalog(language_name="Ukrainian")
     assert [item.locale for item in items] == ["uk_UA"]
+
+
+def test_voice_library_language_families_include_russian_and_japanese():
+    assert voice_library.LANGUAGE_FAMILY_BY_NAME["Russian"] == "ru"
+    assert voice_library.LANGUAGE_FAMILY_BY_NAME["Japanese"] == "ja"

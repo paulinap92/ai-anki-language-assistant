@@ -29,6 +29,8 @@ LANGUAGE_FAMILY_BY_NAME = {
     "French": "fr",
     "Italian": "it",
     "Portuguese": "pt",
+    "Russian": "ru",
+    "Japanese": "ja",
 }
 
 

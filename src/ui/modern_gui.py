@@ -114,6 +114,7 @@ CONVERSATION_FLASHCARD_SOURCES = [
 CONVERSATION_FLASHCARD_LIMIT = 30
 STT_PROVIDER_LABELS = {
     "local_whisper": "Local Whisper",
+    "groq": "Groq Cloud",
     "openai": "OpenAI Cloud",
 }
 STT_PROVIDER_KEYS = {label: key for key, label in STT_PROVIDER_LABELS.items()}
@@ -125,6 +126,8 @@ STT_LANGUAGE_CODES = {
     "French": "fr",
     "Italian": "it",
     "Portuguese": "pt",
+    "Russian": "ru",
+    "Japanese": "ja",
 }
 TTS_SAMPLE_TEXTS = {
     "English": "Hello! This is a quick voice test for your flashcards.",
@@ -134,6 +137,8 @@ TTS_SAMPLE_TEXTS = {
     "French": "Bonjour. Voici un court test de voix pour vos cartes mémoire.",
     "Italian": "Ciao. Questo è un breve test della voce per le tue flashcard.",
     "Portuguese": "Olá. Este é um pequeno teste de voz para os seus cartões.",
+    "Russian": "Здравствуйте. Это короткая проверка голоса для ваших карточек.",
+    "Japanese": "こんにちは。これはフラッシュカード用の短い音声テストです。",
 }
 CREATE_CARD_MODES = ["Vocabulary", "Grammar"]
 BATCH_MODES = ["Vocabulary", "Grammar", "Mixed", "Provided examples"]
@@ -258,6 +263,8 @@ class ModernVocabularyGui:
             stt_key = "local_whisper"
         elif stt_key in {"openai_cloud", "openai_stt", "cloud_openai"}:
             stt_key = "openai"
+        elif stt_key in {"groq_cloud", "groq_stt", "cloud_groq"}:
+            stt_key = "groq"
         self._setup_stt_provider_var = ctk.StringVar(value=STT_PROVIDER_LABELS.get(stt_key, "Local Whisper"))
         self._setup_ollama_status_var = ctk.StringVar(value="Ollama status not checked yet.")
         self._setup_env_path = Path(".env")
@@ -1239,8 +1246,8 @@ class ModernVocabularyGui:
         )
         descriptions = [
             ("Fully local", "Ollama for AI, local Whisper for speech-to-text and Piper for TTS. No cloud API keys required."),
-            ("Hybrid / BYOK", "Mix local tools with your own OpenAI, Gemini, Claude, ElevenLabs or OCR API keys; STT can be local or OpenAI Cloud."),
-            ("API / BYOK", "Use your own cloud AI/TTS keys. Speech input can use OpenAI Cloud STT instead of local Whisper."),
+            ("Hybrid / BYOK", "Mix local tools with your own OpenAI, Gemini, OpenRouter, Claude, Groq, ElevenLabs or OCR API keys; STT can be local, Groq Cloud or OpenAI Cloud."),
+            ("API / BYOK", "Use your own cloud AI/TTS keys. Speech input can use Groq Cloud or OpenAI Cloud STT instead of local Whisper."),
         ]
         for index, (label, description) in enumerate(descriptions):
             card = ctk.CTkFrame(modes, corner_radius=12)
@@ -1305,7 +1312,7 @@ class ModernVocabularyGui:
         )
         ctk.CTkLabel(
             speech_card,
-            text="Choose local Whisper or cloud transcription. OpenAI Cloud uses OPENAI_API_KEY and does not load a local Whisper model.",
+            text="Choose local Whisper or cloud transcription. Groq Cloud uses GROQ_API_KEY; OpenAI Cloud uses OPENAI_API_KEY. Neither cloud option loads a local Whisper model.",
             wraplength=900,
             justify="left",
             text_color=("gray35", "gray75"),
@@ -1369,15 +1376,17 @@ class ModernVocabularyGui:
             stt_key = "local_whisper"
         elif stt_key in {"openai_cloud", "openai_stt", "cloud_openai"}:
             stt_key = "openai"
+        elif stt_key in {"groq_cloud", "groq_stt", "cloud_groq"}:
+            stt_key = "groq"
         self._setup_stt_provider_var.set(STT_PROVIDER_LABELS.get(stt_key, "Local Whisper"))
         def flag(name: str) -> str:
             return "✓" if status.get(name) else "—"
         self._setup_status_var.set(
             "Provider mode in .env: " + SETUP_MODE_LABELS.get(file_mode, file_mode) + "\n"
             f"Local: {flag('ollama')} Ollama · {flag('whisper')} Whisper STT · {flag('piper')} Piper\n"
-            f"Cloud STT: {flag('openai_stt')} OpenAI transcription\n"
-            f"BYOK: {flag('openai')} OpenAI · {flag('gemini')} Gemini · {flag('claude')} Claude · "
-            f"{flag('elevenlabs')} ElevenLabs · {flag('mistral')} Mistral OCR\n"
+            f"Cloud STT: {flag('groq_stt')} Groq Whisper · {flag('openai_stt')} OpenAI transcription\n"
+            f"BYOK: {flag('openai')} OpenAI · {flag('gemini')} Gemini · {flag('openrouter')} OpenRouter · "
+            f"{flag('groq')} Groq · {flag('claude')} Claude · {flag('elevenlabs')} ElevenLabs · {flag('mistral')} Mistral OCR\n"
             f"Active AI providers in this session: {', '.join(self._ai_clients) if self._ai_clients else 'none'}"
         )
 
@@ -1391,14 +1400,18 @@ class ModernVocabularyGui:
                 {
                     "STT_PROVIDER": provider,
                     "OPENAI_STT_MODEL": "gpt-4o-mini-transcribe",
+                    "GROQ_STT_MODEL": "whisper-large-v3-turbo",
                 },
             )
         except Exception as exc:
             messagebox.showerror("Speech-to-text", f"Could not save STT provider: {exc}")
             return
         self._reload_provider_configuration()
-        if provider == "openai" and not get_settings().openai_api_key:
+        settings = get_settings()
+        if provider == "openai" and not settings.openai_api_key:
             self._status_var.set("OpenAI Cloud STT selected. Add OPENAI_API_KEY in Setup, then reload configuration.")
+        elif provider == "groq" and not settings.groq_api_key:
+            self._status_var.set("Groq Cloud STT selected. Add GROQ_API_KEY in Setup, then reload configuration.")
         else:
             self._status_var.set(f"Speech-to-text provider saved: {label}.")
 
@@ -1506,6 +1519,8 @@ class ModernVocabularyGui:
             )
         elif (settings.stt_provider or "").strip().casefold() in {"openai", "openai_cloud", "openai_stt", "cloud_openai"}:
             self._stt_status_var.set("Speech input: OpenAI Cloud selected, but OPENAI_API_KEY is missing.")
+        elif (settings.stt_provider or "").strip().casefold() in {"groq", "groq_cloud", "groq_stt", "cloud_groq"}:
+            self._stt_status_var.set("Speech input: Groq Cloud selected, but GROQ_API_KEY is missing.")
         else:
             self._stt_status_var.set("Speech input: not configured.")
 
@@ -12717,7 +12732,7 @@ class ModernVocabularyGui:
         if not self._stt_service:
             messagebox.showerror(
                 "Speech input not configured",
-                "Speech-to-text is not configured. Choose Local Whisper or OpenAI Cloud in Setup.",
+                "Speech-to-text is not configured. Choose Local Whisper, Groq Cloud or OpenAI Cloud in Setup.",
             )
             return
         try:
@@ -12782,7 +12797,7 @@ class ModernVocabularyGui:
     def _stop_conversation_recording(self) -> None:
         """Stop recording and transcribe the audio in a background thread."""
         if not self._stt_service:
-            messagebox.showerror("Speech input not configured", "Choose Local Whisper or OpenAI Cloud in Setup.")
+            messagebox.showerror("Speech input not configured", "Choose Local Whisper, Groq Cloud or OpenAI Cloud in Setup.")
             return
         if not self._stt_service.is_recording:
             messagebox.showinfo("Speech input", "No recording is running.")

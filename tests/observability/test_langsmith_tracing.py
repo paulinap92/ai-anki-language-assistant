@@ -142,3 +142,13 @@ def test_wrapper_forwards_grammar_explanation_language():
     )
     assert card.target == "dummy grammar target"
     assert card.explanation_language == "Polish"
+
+
+def test_llmops_recognizes_groq_and_openrouter_providers():
+    configure_llmops(enabled=False, project_name="test-project", api_key=None, redact_inputs=True)
+    tracer = get_llmops_tracer()
+
+    assert tracer._provider_key("Groq") == "GROQ"
+    assert tracer._provider_key("OpenRouter") == "OPENROUTER"
+    assert tracer._langsmith_provider_name("Groq") == "groq"
+    assert tracer._langsmith_provider_name("OpenRouter") == "openrouter"
