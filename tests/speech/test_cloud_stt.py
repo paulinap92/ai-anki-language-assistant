@@ -2,7 +2,7 @@ from pathlib import Path
 from types import SimpleNamespace
 
 from src.speech.factory import build_stt_service
-from src.speech.stt import LocalWhisperSttService, OpenAiSttService
+from src.speech.stt import GroqSttService, LocalWhisperSttService, OpenAiSttService
 
 
 class _FakeTranscriptions:
@@ -27,6 +27,8 @@ def _settings(**overrides):
         audio_cache_dir=".audio_cache",
         openai_api_key=None,
         openai_stt_model="gpt-4o-mini-transcribe",
+        groq_api_key=None,
+        groq_stt_model="whisper-large-v3-turbo",
     )
     values.update(overrides)
     return SimpleNamespace(**values)
@@ -67,3 +69,36 @@ def test_stt_factory_builds_local_or_cloud_provider():
 
 def test_openai_stt_without_key_is_not_configured():
     assert build_stt_service(_settings(stt_provider="openai", openai_api_key=None)) is None
+
+
+def test_groq_cloud_stt_sends_language_and_context_prompt(tmp_path: Path):
+    service = GroqSttService("secret", model_name="whisper-large-v3-turbo")
+    fake = _FakeClient()
+    service._client = fake
+    wav = tmp_path / "sample.wav"
+    wav.write_bytes(b"RIFF fake")
+
+    text, language = service._transcribe_wav(
+        wav,
+        language="pt",
+        initial_prompt="Viagens, Lisboa, vocabulário de hotel.",
+    )
+
+    assert text == "Buenos días, ¿qué tal?"
+    assert language == "pt"
+    call = fake.audio.transcriptions.calls[0]
+    assert call["model"] == "whisper-large-v3-turbo"
+    assert call["language"] == "pt"
+    assert "Lisboa" in call["prompt"]
+
+
+def test_stt_factory_builds_groq_provider():
+    cloud = build_stt_service(
+        _settings(stt_provider="groq", groq_api_key="secret")
+    )
+    assert isinstance(cloud, GroqSttService)
+    assert cloud.model_name == "whisper-large-v3-turbo"
+
+
+def test_groq_stt_without_key_is_not_configured():
+    assert build_stt_service(_settings(stt_provider="groq", groq_api_key=None)) is None
