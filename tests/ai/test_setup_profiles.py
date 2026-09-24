@@ -59,3 +59,17 @@ def test_api_profile_can_activate_openrouter(monkeypatch) -> None:
 
     assert settings.setup_mode == "api"
     assert "OpenRouter" in clients
+
+
+def test_api_profile_can_activate_groq_llm(monkeypatch) -> None:
+    _clear_provider_env(monkeypatch)
+    monkeypatch.setenv("AI_SETUP_MODE", "api")
+    monkeypatch.setenv("GROQ_API_KEY", "groq-secret")
+    monkeypatch.setenv("GROQ_MODEL", "openai/gpt-oss-20b")
+
+    settings = get_settings()
+    clients = build_ai_clients(settings)
+
+    assert settings.setup_mode == "api"
+    assert settings.groq_model == "openai/gpt-oss-20b"
+    assert "Groq" in clients
