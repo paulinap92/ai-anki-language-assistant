@@ -70,6 +70,9 @@ def test_starter_env_includes_free_cloud_provider_slots(tmp_path: Path) -> None:
     assert values["OPENROUTER_API_KEY"] == ""
     assert values["OPENROUTER_MODEL"] == "openrouter/free"
     assert values["GROQ_API_KEY"] == ""
+    assert values["GROQ_MODEL"] == "openai/gpt-oss-20b"
+    assert values["GROQ_IMPORT_MODEL"] == "openai/gpt-oss-20b"
+    assert values["GROQ_REVIEW_MODEL"] == "openai/gpt-oss-20b"
     assert values["GROQ_STT_MODEL"] == "whisper-large-v3-turbo"
 
 
