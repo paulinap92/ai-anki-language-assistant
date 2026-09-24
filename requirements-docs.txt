@@ -1,0 +1,2 @@
+# Documentation toolchain. Keep the current Material major version to avoid silent breaking changes.
+mkdocs-material==9.*

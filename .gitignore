@@ -36,6 +36,7 @@ test-results/
 
 build/
 dist/
+site/
 *.egg-info/
 *.egg
 *.spec

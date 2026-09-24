@@ -1,0 +1,78 @@
+# yaml-language-server: $schema=https://squidfunk.github.io/mkdocs-material/schema.json
+site_name: AI Anki Language Assistant
+site_description: Official user and developer documentation for AI Anki Language Assistant.
+repo_url: https://github.com/paulinap92/ai-anki-language-assistant
+repo_name: paulinap92/ai-anki-language-assistant
+
+theme:
+  name: material
+  language: en
+  features:
+    - navigation.sections
+    - navigation.indexes
+    - navigation.top
+    - navigation.footer
+    - search.suggest
+    - search.highlight
+    - content.code.copy
+  palette:
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      toggle:
+        icon: material/brightness-7
+        name: Switch to dark mode
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      toggle:
+        icon: material/brightness-4
+        name: Switch to light mode
+
+plugins:
+  - search
+
+markdown_extensions:
+  - admonition
+  - attr_list
+  - md_in_html
+  - tables
+  - toc:
+      permalink: true
+  - pymdownx.details
+  - pymdownx.highlight:
+      anchor_linenums: true
+      line_spans: __span
+      pygments_lang_class: true
+  - pymdownx.inlinehilite
+  - pymdownx.superfences:
+      custom_fences:
+        - name: mermaid
+          class: mermaid
+          format: !!python/name:pymdownx.superfences.fence_code_format
+  - pymdownx.tabbed:
+      alternate_style: true
+
+nav:
+  - Home: index.md
+  - Getting Started: getting-started.md
+  - User Guide:
+      - Profile: user-guide/profile.md
+      - Create Card: user-guide/create-card.md
+      - Grammar: user-guide/grammar.md
+      - Queue: user-guide/queue.md
+      - Import Material: user-guide/import-material.md
+      - Conversation: user-guide/conversation.md
+      - Speech & Audio: user-guide/speech-audio.md
+      - Fix Cards: user-guide/fix-cards.md
+      - Practice: user-guide/practice.md
+  - Configuration:
+      - Environment: configuration/env.md
+      - AI Providers: configuration/ai-providers.md
+      - Speech-to-Text: configuration/stt.md
+      - Text-to-Speech: configuration/tts.md
+      - Simple Mode: configuration/simple-mode.md
+  - Developer Guide:
+      - Architecture: developer-guide/architecture.md
+      - Adding an AI Provider: developer-guide/adding-provider.md
+      - Testing: developer-guide/testing.md
+      - Releases: developer-guide/releases.md
+  - Troubleshooting: troubleshooting/index.md
