@@ -8,6 +8,7 @@
 - Extended Setup/.env status and starter configuration for `OPENROUTER_API_KEY`, `GROQ_API_KEY` and their model settings.
 - Reused the already-installed `openai` SDK for both OpenRouter and Groq compatibility endpoints, so no new runtime dependency is required.
 - Added regression tests for provider construction, workflow model routing, language/context forwarding and Setup configuration.
+- Added Russian and Japanese as selectable learning languages, including STT language codes and voice-library filtering; Japanese remains cloud-TTS-first when no matching local Piper voice is installed.
 
 ## v12.4.8 — Multilingual Piper + cloud STT
 
