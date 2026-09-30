@@ -427,6 +427,8 @@ class ModernVocabularyGui:
         self._batch_auto_model_name = ""
         self._batch_auto_target_language = ""
         self._batch_auto_explanation_language = ""
+        self._batch_auto_mode = ""
+        self._batch_auto_topic_context = ""
         self._batch_add_all_running = False
         self._batch_add_all_paused = False
         self._batch_add_all_stop_requested = False
@@ -6826,7 +6828,7 @@ class ModernVocabularyGui:
         item["target_language"] = self._language_var.get().strip()
         item["explanation_language"] = self._explanation_language_var.get().strip()
         if not bool(item.get("mode_locked")):
-            item["batch_mode"] = self._batch_mode_var.get().strip() or "Vocabulary"
+            item["batch_mode"] = self._batch_auto_mode or "Vocabulary"
         item["edited"] = True
 
         if new_word != old_word:
@@ -8965,6 +8967,8 @@ class ModernVocabularyGui:
         self._batch_auto_model_name = self._current_ai_model_name(provider_name)
         self._batch_auto_target_language = self._language_var.get().strip()
         self._batch_auto_explanation_language = self._explanation_language_var.get().strip()
+        self._batch_auto_mode = self._batch_mode_var.get().strip() or "Vocabulary"
+        self._batch_auto_topic_context = self._batch_topic_var.get().strip()
 
         self._batch_auto_generate_running = True
         self._batch_auto_generate_paused = False
@@ -9007,7 +9011,7 @@ class ModernVocabularyGui:
 
         item = self._batch_items[next_index]
         word = str(item.get("word", "")).strip()
-        topic_context = str(item.get("topic") or self._batch_topic_var.get()).strip()
+        topic_context = str(item.get("topic") or self._batch_auto_topic_context).strip()
         target_language = self._batch_auto_target_language or self._language_var.get().strip()
         explanation_language = (
             self._batch_auto_explanation_language or self._explanation_language_var.get().strip()
@@ -9196,6 +9200,8 @@ class ModernVocabularyGui:
             if not isinstance(grammar_card, GrammarAnalysis):
                 item["status"] = "error"
                 item["error"] = "Provider returned an unexpected grammar result."
+                self._batch_status_var.set(f"Grammar generation error: {word}. Unexpected provider result.")
+                self._autosave_batch_session(f"grammar generation error: {word}")
             else:
                 grammar_card, focus_warnings = self._grammar_card_with_source_focus_guard(item, grammar_card)
                 if focus_warnings:
@@ -9219,6 +9225,8 @@ class ModernVocabularyGui:
             if not isinstance(card, VocabularyCard):
                 item["status"] = "error"
                 item["error"] = "Provider returned an unexpected vocabulary result."
+                self._batch_status_var.set(f"Generation error: {word}. Unexpected provider result.")
+                self._autosave_batch_session(f"generation error: {word}")
             elif not card.is_valid:
                 item["status"] = "invalid"
                 detail = card.validation_error or "Invalid word or phrase."
@@ -9231,7 +9239,7 @@ class ModernVocabularyGui:
                 self._batch_status_var.set(f"Invalid: {word}")
                 self._autosave_batch_session(f"invalid item: {word}")
             else:
-                expected_input = provided_target or word
+                expected_input = self._quality_expected_input_for_item(item, card)
                 quality_warnings = validate_vocabulary_card(
                     card,
                     expected_input=expected_input,
