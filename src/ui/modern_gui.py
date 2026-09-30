@@ -12,6 +12,7 @@ import html
 import json
 import logging
 import os
+import queue
 import re
 import subprocess
 import sys
@@ -419,6 +420,13 @@ class ModernVocabularyGui:
         self._batch_auto_generate_running = False
         self._batch_auto_generate_paused = False
         self._batch_auto_generate_stop_requested = False
+        self._batch_generation_in_flight = False
+        self._batch_processing_index: int | None = None
+        self._batch_worker_results: queue.Queue[dict[str, object]] = queue.Queue()
+        self._batch_auto_provider_name = ""
+        self._batch_auto_model_name = ""
+        self._batch_auto_target_language = ""
+        self._batch_auto_explanation_language = ""
         self._batch_add_all_running = False
         self._batch_add_all_paused = False
         self._batch_add_all_stop_requested = False
@@ -8047,6 +8055,12 @@ class ModernVocabularyGui:
 
     def _remove_current_batch_item(self) -> None:
         """Remove only the current Queue row without rebuilding expensive views."""
+        if self._batch_generation_in_flight:
+            messagebox.showinfo(
+                "Queue busy",
+                "One AI request is still running. Wait for it to finish, then remove the item.",
+            )
+            return
         if not self._batch_items:
             return
         index = max(0, min(self._batch_index, len(self._batch_items) - 1))
@@ -8079,6 +8093,12 @@ class ModernVocabularyGui:
             self._show_current_batch_item(generate=False)
 
     def _clear_batch(self) -> None:
+        if self._batch_generation_in_flight:
+            messagebox.showinfo(
+                "Queue busy",
+                "One AI request is still running. Use Stop, wait for the current request to finish, then clear the Queue.",
+            )
+            return
         self._batch_items.clear()
         self._batch_index = 0
         self._batch_generated_card = None
@@ -8088,6 +8108,8 @@ class ModernVocabularyGui:
         self._batch_auto_generate_running = False
         self._batch_auto_generate_paused = False
         self._batch_auto_generate_stop_requested = False
+        self._batch_generation_in_flight = False
+        self._batch_processing_index = None
         self._batch_add_all_running = False
         self._batch_add_all_paused = False
         self._batch_add_all_stop_requested = False
@@ -8903,8 +8925,8 @@ class ModernVocabularyGui:
         )
 
     def _auto_generate_pending_batch_cards(self) -> None:
-        """Generate pending Queue cards one by one using Tk after()."""
-        if self._batch_auto_generate_running:
+        """Generate pending Queue cards sequentially without blocking Tk's UI thread."""
+        if self._batch_auto_generate_running or self._batch_generation_in_flight:
             self._batch_status_var.set("Auto-generation is already running.")
             return
         if not self._batch_items:
@@ -8919,12 +8941,30 @@ class ModernVocabularyGui:
         if precheck_result < 0:
             self._autosave_batch_session("auto-generation cancelled: duplicate precheck failed")
             return
-        if not any(str(item.get("status", "pending")) == "pending" and not item.get("card") and not item.get("grammar_card") for item in self._batch_items):
+        if not any(
+            str(item.get("status", "pending")) == "pending"
+            and not item.get("card")
+            and not item.get("grammar_card")
+            for item in self._batch_items
+        ):
             message = "Auto-generation skipped: all pending items already exist in Anki or are not ready for generation."
             self._batch_status_var.set(message)
             self._status_var.set(message)
             self._autosave_batch_session("auto-generation skipped duplicates")
             return
+
+        provider_name = self._provider_var.get().strip()
+        if provider_name not in self._ai_clients:
+            messagebox.showerror("AI provider", "Select a configured AI provider before starting Queue generation.")
+            return
+
+        # Lock generation settings for this run. The user can navigate the UI while
+        # the Queue works, but changing the visible selectors must not silently
+        # change provider/language halfway through the same Queue run.
+        self._batch_auto_provider_name = provider_name
+        self._batch_auto_model_name = self._current_ai_model_name(provider_name)
+        self._batch_auto_target_language = self._language_var.get().strip()
+        self._batch_auto_explanation_language = self._explanation_language_var.get().strip()
 
         self._batch_auto_generate_running = True
         self._batch_auto_generate_paused = False
@@ -8934,7 +8974,9 @@ class ModernVocabularyGui:
         self._root.after(50, self._auto_generate_next_pending_batch_card)
 
     def _auto_generate_next_pending_batch_card(self) -> None:
-        """Generate the next pending Queue card and schedule the following one."""
+        """Start one background provider call for the next pending Queue item."""
+        if self._batch_generation_in_flight:
+            return
         if self._batch_auto_generate_stop_requested:
             self._batch_auto_generate_running = False
             self._batch_auto_generate_stop_requested = False
@@ -8946,6 +8988,7 @@ class ModernVocabularyGui:
             return
         if self._batch_auto_generate_paused or not self._batch_auto_generate_running:
             return
+
         next_index = None
         for index, item in enumerate(self._batch_items):
             if str(item.get("status", "pending")) == "pending":
@@ -8962,51 +9005,283 @@ class ModernVocabularyGui:
             self._record_activity("Auto-generation finished")
             return
 
-        self._batch_index = next_index
-        word = str(self._batch_items[next_index].get("word", "")).strip()
-        self._batch_word_var.set(word)
-        self._batch_status_var.set(f"Auto-generating {next_index + 1}/{len(self._batch_items)}: {word}")
+        item = self._batch_items[next_index]
+        word = str(item.get("word", "")).strip()
+        topic_context = str(item.get("topic") or self._batch_topic_var.get()).strip()
+        target_language = self._batch_auto_target_language or self._language_var.get().strip()
+        explanation_language = (
+            self._batch_auto_explanation_language or self._explanation_language_var.get().strip()
+        )
+        provider_name = self._batch_auto_provider_name or self._provider_var.get().strip()
+        model_name = self._batch_auto_model_name or self._current_ai_model_name(provider_name)
+
+        item["word"] = word
+        item["topic"] = topic_context
+        item["target_language"] = target_language
+        item["explanation_language"] = explanation_language
+        if not bool(item.get("mode_locked")):
+            item["batch_mode"] = self._batch_mode_var.get().strip() or "Vocabulary"
+        resolved_mode = self._batch_mode_for_item(item, word)
+        item["resolved_mode"] = resolved_mode
+
+        preserve_vocab_source = (
+            resolved_mode == "Vocabulary"
+            and str(item.get("generation_strategy") or "") == "preserve_source_sentence"
+            and bool(str(item.get("source_sentence") or "").strip())
+        )
+        provided_target = ""
+        provided_sentence = ""
+        sentence_request_word = word
+        grammar_topic_context = ""
+
+        if resolved_mode == "Provided examples" or preserve_vocab_source:
+            if preserve_vocab_source:
+                provided_target = str(item.get("provided_target") or word).strip()
+                provided_sentence = str(item.get("source_sentence") or "").strip()
+                sentence_request_word = f"{provided_target} | {provided_sentence}"
+            else:
+                provided_target, provided_sentence = self._parse_provided_example_item(word)
+            if not provided_sentence:
+                item["status"] = "invalid"
+                item["error"] = "Provided examples mode needs a sentence. Use: target | sentence, or paste a sentence."
+                self._batch_status_var.set("Invalid provided example: missing sentence.")
+                self._set_batch_status_card("INVALID PROVIDED EXAMPLE", word, "invalid", str(item["error"]))
+                self._update_batch_progress()
+                self._autosave_batch_session(f"invalid provided example: {word}")
+                self._root.after(120, self._auto_generate_next_pending_batch_card)
+                return
+            item["provided_target"] = provided_target
+            item["provided_sentence"] = provided_sentence
+        elif resolved_mode == "Grammar":
+            grammar_topic_context = self._grammar_topic_context_for_item(item, topic_context)
+
+        client = self._ai_clients[provider_name]
+        item_ref = item
+        self._batch_processing_index = next_index
+        self._batch_generation_in_flight = True
+        self._batch_status_var.set(
+            f"Generating {resolved_mode.lower()} card {next_index + 1}/{len(self._batch_items)}: {word}..."
+        )
         self._status_var.set(self._batch_status_var.get())
-        self._show_current_batch_item(generate=False)
-        self._root.update_idletasks()
 
+        job = {
+            "index": next_index,
+            "item_ref": item_ref,
+            "word": word,
+            "resolved_mode": resolved_mode,
+            "provider_name": provider_name,
+            "model_name": model_name,
+            "topic_context": topic_context,
+            "target_language": target_language,
+            "explanation_language": explanation_language,
+            "preserve_vocab_source": preserve_vocab_source,
+            "provided_target": provided_target,
+            "sentence_request_word": sentence_request_word,
+            "grammar_topic_context": grammar_topic_context,
+        }
+
+        def worker() -> None:
+            result: object | None = None
+            error: Exception | None = None
+            try:
+                if resolved_mode == "Provided examples" or preserve_vocab_source:
+                    result = client.generate_sentence_card(
+                        sentence_request_word,
+                        target_language,
+                        explanation_language,
+                        topic_context,
+                    )
+                elif resolved_mode == "Grammar":
+                    result = client.generate_grammar_card(
+                        word,
+                        target_language,
+                        grammar_topic_context,
+                        explanation_language=explanation_language,
+                    )
+                else:
+                    result = client.generate_card(
+                        word,
+                        target_language,
+                        explanation_language,
+                        topic_context,
+                    )
+            except Exception as exc:
+                error = exc
+                LOGGER.exception(
+                    "Background Queue provider call failed: index=%s word=%s provider=%s",
+                    next_index,
+                    word,
+                    provider_name,
+                )
+            self._batch_worker_results.put({**job, "result": result, "error": error})
+
+        threading.Thread(
+            target=worker,
+            name=f"queue-ai-{next_index}",
+            daemon=True,
+        ).start()
+        self._root.after(50, self._poll_background_batch_generation)
+
+    def _poll_background_batch_generation(self) -> None:
+        """Poll worker results from Tk's main thread; workers never touch Tk."""
         try:
-            self._generate_current_batch_card("auto_generate_pending")
-        except Exception as exc:
-            LOGGER.exception("Auto-generation failed for %s", word)
-            item = self._batch_items[next_index]
-            item["status"] = "error"
-            item["error"] = str(exc)
-            self._autosave_batch_session(f"auto-generation exception: {word}")
+            payload = self._batch_worker_results.get_nowait()
+        except queue.Empty:
+            if self._batch_generation_in_flight:
+                self._root.after(50, self._poll_background_batch_generation)
+            return
+        self._finish_background_batch_generation(payload)
 
-            if self._is_provider_rate_limit_detail(str(exc)):
+    def _finish_background_batch_generation(self, payload: dict[str, object]) -> None:
+        """Apply one worker result on Tk's main thread, then continue the Queue."""
+        self._batch_generation_in_flight = False
+        self._batch_processing_index = None
+
+        index = int(payload["index"])
+        item_ref = payload["item_ref"]
+        if index >= len(self._batch_items) or self._batch_items[index] is not item_ref:
+            LOGGER.warning("Discarding Queue result because the Queue changed while the request was running.")
+            if self._batch_auto_generate_running and not self._batch_auto_generate_paused:
+                self._root.after(120, self._auto_generate_next_pending_batch_card)
+            return
+
+        item = self._batch_items[index]
+        word = str(payload["word"])
+        resolved_mode = str(payload["resolved_mode"])
+        provider_name = str(payload["provider_name"])
+        model_name = str(payload["model_name"])
+        topic_context = str(payload["topic_context"])
+        target_language = str(payload["target_language"])
+        explanation_language = str(payload["explanation_language"])
+        preserve_vocab_source = bool(payload["preserve_vocab_source"])
+        provided_target = str(payload["provided_target"])
+        error = payload.get("error")
+
+        if isinstance(error, Exception):
+            detail = str(error)
+            item["status"] = "error"
+            item["error"] = detail
+            if self._is_provider_rate_limit_detail(detail):
                 item["status"] = "rate_limited"
-                self._stop_batch_on_rate_limit(word, str(exc))
+                self._batch_status_var.set(f"Rate limit while generating: {word}. Session autosaved.")
+                self._update_batch_progress()
+                self._stop_batch_on_provider_error(word, detail, provider_name, model_name)
+                return
+            if self._is_fatal_long_generation_detail(detail):
+                item["status"] = "provider_failed"
+                self._batch_status_var.set(f"Provider stopped while generating: {word}. Session autosaved.")
+                self._update_batch_progress()
+                self._stop_batch_on_provider_error(word, detail, provider_name, model_name)
                 return
 
-        current_item = self._batch_items[next_index]
-        current_status = str(current_item.get("status"))
-        if current_status == "rate_limited":
-            self._stop_batch_on_provider_error(
-                word,
-                str(current_item.get("error", "Provider rate limit.")),
-                self._provider_var.get(),
-                self._current_ai_model_name(),
-            )
+            self._batch_status_var.set(f"Generation error: {word}. Raw details saved in logs/autosave.")
+            if self._batch_index == index:
+                self._batch_generated_card = None
+                self._batch_generated_grammar = None
+                self._set_batch_status_card(
+                    "GENERATION ERROR",
+                    word,
+                    "error",
+                    self._friendly_generation_error_detail(detail, provider_name, model_name),
+                )
+            self._update_batch_progress()
+            self._autosave_batch_session(f"generation error: {word}")
+            if self._batch_auto_generate_running and not self._batch_auto_generate_paused:
+                self._root.after(120, self._auto_generate_next_pending_batch_card)
             return
-        if current_status == "provider_failed":
-            self._stop_batch_on_provider_error(
-                word,
-                str(current_item.get("error", "Provider error.")),
-                self._provider_var.get(),
-                self._current_ai_model_name(),
-            )
-            return
-        if current_status == "error":
-            # A failed item must not be retried immediately. It remains for manual review.
-            LOGGER.info("Skipping failed queue item after one attempt: %s", word)
 
-        self._root.after(1600, self._auto_generate_next_pending_batch_card)
+        result = payload.get("result")
+        if resolved_mode == "Grammar":
+            grammar_card = result
+            if not isinstance(grammar_card, GrammarAnalysis):
+                item["status"] = "error"
+                item["error"] = "Provider returned an unexpected grammar result."
+            else:
+                grammar_card, focus_warnings = self._grammar_card_with_source_focus_guard(item, grammar_card)
+                if focus_warnings:
+                    item["source_focus_warning"] = ", ".join(focus_warnings)
+                else:
+                    item.pop("source_focus_warning", None)
+                item["status"] = "ready"
+                item["grammar_card"] = self._grammar_to_batch_payload(grammar_card)
+                item.pop("card", None)
+                item["provider_name"] = provider_name
+                item.pop("error", None)
+                if self._batch_index == index:
+                    self._batch_generated_card = None
+                    self._batch_generated_grammar = grammar_card
+                    self._batch_generated_provider_name = provider_name
+                    self._set_batch_preview(self._format_batch_grammar_preview(item, grammar_card))
+                self._batch_status_var.set(f"Grammar card ready to review: {word}")
+                self._autosave_batch_session(f"generated grammar: {word}")
+        else:
+            card = result
+            if not isinstance(card, VocabularyCard):
+                item["status"] = "error"
+                item["error"] = "Provider returned an unexpected vocabulary result."
+            elif not card.is_valid:
+                item["status"] = "invalid"
+                detail = card.validation_error or "Invalid word or phrase."
+                if card.suggested_correction:
+                    detail += f" Suggested correction: {card.suggested_correction}"
+                item["error"] = detail
+                if self._batch_index == index:
+                    self._batch_generated_card = None
+                    self._set_batch_status_card("VALIDATION ERROR", word, "invalid", detail)
+                self._batch_status_var.set(f"Invalid: {word}")
+                self._autosave_batch_session(f"invalid item: {word}")
+            else:
+                expected_input = provided_target or word
+                quality_warnings = validate_vocabulary_card(
+                    card,
+                    expected_input=expected_input,
+                    expected_target_language=target_language,
+                    expected_explanation_language=explanation_language,
+                    topic_context=topic_context,
+                )
+                card.quality_warnings = list(
+                    dict.fromkeys([*card.quality_warnings, *quality_warnings])
+                )
+                item["status"] = "ready"
+                item["card"] = self._card_to_batch_payload(card)
+                item.pop("grammar_card", None)
+                item["provider_name"] = provider_name
+                item.pop("error", None)
+                item["topic_status"] = card.topic_fit or (
+                    "topic_ok" if topic_context and not quality_warnings else ""
+                )
+                if quality_warnings:
+                    item["quality_warnings"] = quality_warnings
+                else:
+                    item.pop("quality_warnings", None)
+
+                if self._batch_index == index:
+                    self._batch_generated_card = card
+                    self._batch_generated_grammar = None
+                    self._batch_generated_provider_name = provider_name
+                    self._set_batch_preview(self._format_batch_card_preview(item, card))
+
+                if resolved_mode == "Provided examples":
+                    self._batch_status_var.set(f"Provided-example card ready to review: {card.word_or_phrase}")
+                    autosave_label = "generated provided example"
+                elif preserve_vocab_source:
+                    item["resolved_mode"] = "Vocabulary"
+                    self._batch_status_var.set(
+                        f"Vocabulary card ready with preserved source example: {card.word_or_phrase}"
+                    )
+                    autosave_label = "generated vocabulary with source example"
+                elif quality_warnings:
+                    self._batch_status_var.set(f"Ready with quality warning(s): {word}")
+                    autosave_label = "generated"
+                else:
+                    self._batch_status_var.set(f"Ready to review: {word}")
+                    autosave_label = "generated"
+                self._autosave_batch_session(f"{autosave_label}: {card.word_or_phrase}")
+
+        self._status_var.set(self._batch_status_var.get())
+        self._update_batch_progress()
+        if self._batch_auto_generate_running and not self._batch_auto_generate_paused:
+            self._root.after(120, self._auto_generate_next_pending_batch_card)
 
     def _pause_batch_process(self) -> None:
         """Pause the currently running Queue operation without clearing results."""
