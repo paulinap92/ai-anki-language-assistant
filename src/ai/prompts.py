@@ -245,6 +245,97 @@ Return this exact JSON structure:
 """
 
 
+def build_vocabulary_batch_prompt(
+    words_or_phrases: list[str],
+    target_language: str,
+    explanation_language: str,
+    topic_context: str = "",
+) -> str:
+    """Build one request that returns several independent vocabulary cards."""
+    items = [str(item).strip() for item in words_or_phrases if str(item).strip()]
+    if not items:
+        raise ValueError("At least one vocabulary item is required.")
+    explanation_language = explanation_language.strip()
+    if not explanation_language:
+        raise ValueError("Explanation language must be selected explicitly.")
+    effective_explanation_language = (
+        target_language if explanation_language == "Same as target" else explanation_language
+    )
+    no_translation = explanation_language == "No translation"
+    explanation_rules = _language_quality_rules(effective_explanation_language, target_language)
+    topic_rules = _topic_rules(topic_context)
+    numbered_items = "\n".join(
+        f'{index + 1}. "{item}"' for index, item in enumerate(items)
+    )
+
+    return f"""
+You are a professional {target_language} language teacher and flashcard quality reviewer.
+
+Create EXACTLY {len(items)} independent vocabulary flashcards, one for each input below.
+
+INPUTS — preserve this order:
+{numbered_items}
+
+Target language: {target_language}
+Explanation language: {effective_explanation_language}
+
+Critical batch rules:
+- Return exactly one card per input, in exactly the same order as INPUTS.
+- For every valid card, word_or_phrase MUST exactly equal its corresponding input.
+- Never merge, skip, reorder, or replace inputs.
+- Treat each complete input as one learning item before analysing individual words.
+- Accept useful words, phrases, collocations, sentence fragments, idioms, grammar patterns, and lesson/context expressions.
+- Set is_valid=false only for true garbage, wrong-language text, malformed/nonexistent wording, or an unusable obvious typo.
+- For invalid input, keep word_or_phrase equal to the original input and leave flashcard content empty.
+- Definition is short, clear, and written in {target_language}.
+{explanation_rules}
+{topic_rules}
+Example and quality rules for EVERY card:
+- Use the target itself or a correct inflected/conjugated form of the SAME lexical target.
+- Do not substitute a synonym or visually similar word.
+- Prefer natural, common, realistic usage and established collocations.
+- used_form_in_example must be the exact surface form copied from example.
+- example_uses_target is true only when the example really uses the target or its valid inflection.
+- target_usage is exactly: exact, valid_inflection, mismatch, or uncertain.
+- collocation_naturalness and translation_naturalness are exactly: ok, weak, or bad.
+- topic_fit is exactly: ok, weak, mismatch, or not_applicable.
+- Put any uncertainty or quality problem into quality_warnings instead of hiding it.
+- Run the same quality self-check independently for every item.
+
+Return ONLY valid JSON. No markdown and no comments.
+Return this exact top-level structure:
+
+{{
+  "cards": [
+    {{
+      "is_valid": true,
+      "validation_error": "",
+      "suggested_correction": "",
+      "explanation_language": "{effective_explanation_language}",
+      "word_or_phrase": "EXACT corresponding input",
+      "target_language": "{target_language}",
+      "part_of_speech": "string",
+      "definition": "string",
+      "translation": "{'' if no_translation else 'string'}",
+      "example": "string",
+      "example_translation": "{'' if no_translation else 'string'}",
+      "synonyms": ["string"],
+      "collocations": ["string"],
+      "grammar_note": "string",
+      "topic_fit": "ok",
+      "topic_warning": "",
+      "quality_warnings": [],
+      "used_form_in_example": "string",
+      "example_uses_target": true,
+      "target_usage": "exact",
+      "collocation_naturalness": "ok",
+      "translation_naturalness": "ok"
+    }}
+  ]
+}}
+"""
+
+
 def _split_target_and_sentence(raw_item: str) -> tuple[str, str]:
     """Split an optional `target | sentence` Batch input."""
     value = raw_item.strip()
