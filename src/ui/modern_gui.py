@@ -498,6 +498,7 @@ class ModernVocabularyGui:
         self._speech_audio_pause_requested = threading.Event()
         self._speech_audio_stop_requested = threading.Event()
         self._speech_audio_autosave_path: Path | None = None
+        self._speech_audio_write_mode = ""
 
         # Practice and printable-test state.
         self._practice_scope_var = ctk.StringVar(value="All supported cards")
@@ -12630,7 +12631,7 @@ class ModernVocabularyGui:
                     "language": note.get("language", ""),
                     "audio_field": note.get("_target_audio_field") or note.get("audio_field", "Audio"),
                     "source_text": note.get("_source_text") or note.get("example", ""),
-                    "write_mode": note.get("_write_mode") or self._speech_write_mode_var.get(),
+                    "write_mode": note.get("_write_mode") or self._speech_audio_write_mode,
                     "status": self._speech_audio_status_by_note_id.get(note_id, "pending_audio"),
                     "audio_path": self._speech_audio_path_by_note_id.get(note_id, ""),
                     "error": self._speech_audio_error_by_note_id.get(note_id, ""),
@@ -12741,6 +12742,7 @@ class ModernVocabularyGui:
         model_name = self._tts_model_var.get()
         voice_label = self._tts_voice_var.get()
         voice_value = self._selected_tts_voice()
+        self._speech_audio_write_mode = self._speech_write_mode_var.get()
         if not self._test_tts_provider(preflight=True):
             message = "Audio queue not started because audio provider diagnostics failed. Fix the provider/key/voice or switch provider."
             self._speech_progress_var.set(message)
@@ -12949,6 +12951,7 @@ class ModernVocabularyGui:
                         source_text,
                         voice_label,
                     )
+                    known_fields = note.get("fields") if isinstance(note.get("fields"), dict) else {}
                     anki_update_started_at = time.perf_counter()
                     try:
                         if write_mode == "Append [sound] to existing field":
@@ -12957,6 +12960,7 @@ class ModernVocabularyGui:
                                 media_name,
                                 audio_field,
                                 audio_metadata=audio_metadata,
+                                existing_fields=known_fields,
                             )
                         else:
                             self._anki_client.attach_audio_to_note(
@@ -12964,11 +12968,12 @@ class ModernVocabularyGui:
                                 media_name,
                                 audio_field,
                                 audio_metadata=audio_metadata,
+                                existing_field_names=set(known_fields),
                             )
                     finally:
                         anki_update_s = max(0.0, time.perf_counter() - anki_update_started_at)
                     self._speech_audio_status_by_note_id[note_id] = "updated_in_anki"
-                    fields = note.get("fields") if isinstance(note.get("fields"), dict) else {}
+                    fields = known_fields
                     if write_mode == "Append [sound] to existing field" and audio_field in fields:
                         fields[audio_field] = f"{fields.get(audio_field, '')}<br>[sound:{media_name}]" if fields.get(audio_field) else f"[sound:{media_name}]"
                     elif audio_field in fields:
