@@ -9338,12 +9338,20 @@ class ModernVocabularyGui:
             if len(jobs) > 1:
                 batch_started_at = time.perf_counter()
                 try:
-                    batch_results = client.generate_cards_batch(
-                        [str(batch_job["word"]) for batch_job in jobs],
-                        target_language,
-                        explanation_language,
-                        topic_context,
-                    )
+                    if resolved_mode == "Provided examples":
+                        batch_results = client.generate_sentence_cards_batch(
+                            [str(batch_job["sentence_request_word"]) for batch_job in jobs],
+                            target_language,
+                            explanation_language,
+                            topic_context,
+                        )
+                    else:
+                        batch_results = client.generate_cards_batch(
+                            [str(batch_job["word"]) for batch_job in jobs],
+                            target_language,
+                            explanation_language,
+                            topic_context,
+                        )
                     if len(batch_results) != len(jobs):
                         raise ValueError(
                             f"Provider returned {len(batch_results)} cards for "
