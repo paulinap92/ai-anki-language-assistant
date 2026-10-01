@@ -2,7 +2,10 @@ import json
 
 import pytest
 
-from src.ai.prompts import build_vocabulary_batch_prompt
+from src.ai.prompts import (
+    build_sentence_based_cards_batch_prompt,
+    build_vocabulary_batch_prompt,
+)
 from src.ai.providers.openai_provider import OpenAiVocabularyClient
 
 
@@ -97,6 +100,87 @@ def test_openai_compatible_batch_rejects_reordered_or_replaced_target() -> None:
     with pytest.raises(ValueError, match="invalid batch flashcard data"):
         client.generate_cards_batch(
             ["fault tolerance", "load balancer"],
+            "English",
+            "Polish",
+        )
+
+
+def test_provided_examples_batch_prompt_preserves_target_sentence_pairs() -> None:
+    prompt = build_sentence_based_cards_batch_prompt(
+        [
+            "covering letter | I sent in my CV and a covering letter.",
+            "career path | Insurance is the career path I intend to pursue.",
+        ],
+        "English",
+        "Polish",
+    )
+
+    assert "EXACTLY 2" in prompt
+    assert 'target="covering letter" | sentence="I sent in my CV and a covering letter."' in prompt
+    assert 'target="career path" | sentence="Insurance is the career path I intend to pursue."' in prompt
+    assert "NEVER mix a target with another input's sentence" in prompt
+
+
+def test_openai_compatible_provided_examples_batch_uses_one_generation_call() -> None:
+    client = OpenAiVocabularyClient.__new__(OpenAiVocabularyClient)
+    calls = []
+    payload = {
+        "cards": [
+            _raw_card(
+                "covering letter",
+                "I sent in my CV and a covering letter.",
+            ),
+            _raw_card(
+                "career path",
+                "Insurance is the career path I intend to pursue.",
+            ),
+        ]
+    }
+
+    def fake_generate_text(prompt: str, workflow: str = "card") -> str:
+        calls.append((prompt, workflow))
+        return json.dumps(payload)
+
+    client._generate_text = fake_generate_text  # type: ignore[method-assign]
+
+    cards = client.generate_sentence_cards_batch(
+        [
+            "covering letter | I sent in my CV and a covering letter.",
+            "career path | Insurance is the career path I intend to pursue.",
+        ],
+        "English",
+        "Polish",
+    )
+
+    assert len(calls) == 1
+    assert [card.word_or_phrase for card in cards] == [
+        "covering letter",
+        "career path",
+    ]
+
+
+def test_openai_compatible_provided_examples_batch_rejects_target_mixup() -> None:
+    client = OpenAiVocabularyClient.__new__(OpenAiVocabularyClient)
+    payload = {
+        "cards": [
+            _raw_card(
+                "career path",
+                "I sent in my CV and a covering letter.",
+            ),
+            _raw_card(
+                "covering letter",
+                "Insurance is the career path I intend to pursue.",
+            ),
+        ]
+    }
+    client._generate_text = lambda prompt, workflow="card": json.dumps(payload)  # type: ignore[method-assign]
+
+    with pytest.raises(ValueError, match="invalid Provided-example batch data"):
+        client.generate_sentence_cards_batch(
+            [
+                "covering letter | I sent in my CV and a covering letter.",
+                "career path | Insurance is the career path I intend to pursue.",
+            ],
             "English",
             "Polish",
         )
