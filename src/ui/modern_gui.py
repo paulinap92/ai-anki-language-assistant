@@ -309,6 +309,7 @@ class ModernVocabularyGui:
         self._tts_voice_var = ctk.StringVar(value="")
         self._speech_notes: list[dict[str, object]] = []
         self._speech_note_vars: list[ctk.BooleanVar] = []
+        self._speech_scan_loaded = False
         self._speech_search_var = ctk.StringVar(value="")
         self._speech_source_field_var = ctk.StringVar(value="Auto: Example/ContextExample/Back/Word")
         self._speech_target_field_var = ctk.StringVar(value="Audio")
@@ -12491,6 +12492,7 @@ class ModernVocabularyGui:
         self._speech_audio_status_by_note_id = {}
         self._speech_audio_error_by_note_id = {}
         self._speech_audio_path_by_note_id = {}
+        self._speech_scan_loaded = False
         self._speech_summary_var.set("No audio scan loaded yet.")
         self._render_speech_notes("Audio results cleared. Click Find missing audio to scan again.")
 
@@ -12500,7 +12502,8 @@ class ModernVocabularyGui:
             var.set(can_generate)
         self._render_speech_notes("Selected only cards that are ready for audio generation.")
 
-    def _speech_scan_summary(self) -> str:
+    def _speech_scan_summary(self, notes: list[dict[str, object]] | None = None) -> str:
+        scan_notes = self._speech_notes if notes is None else notes
         counts = {
             "ready_for_audio": 0,
             "has_audio": 0,
@@ -12511,15 +12514,21 @@ class ModernVocabularyGui:
             "audio_error": 0,
             "provider_failed": 0,
         }
-        for note in self._speech_notes:
+        for note in scan_notes:
             can_generate, status, *_ = self._speech_note_readiness(note)
             key = "ready_for_audio" if can_generate else status
             counts[key] = counts.get(key, 0) + 1
+
+        total = len(scan_notes)
+        with_audio = counts.get("has_audio", 0)
+        missing = max(0, total - with_audio)
+        coverage = (100.0 * with_audio / total) if total else 100.0
+        blocked_target = counts.get("needs_audio_field", 0) + counts.get("needs_append_target_field", 0)
         return (
-            "Scan completed: "
-            f"{counts.get('ready_for_audio', 0)} ready for audio, "
-            f"{counts.get('has_audio', 0)} already have audio, "
-            f"{counts.get('needs_audio_field', 0) + counts.get('needs_append_target_field', 0)} need a target audio field, "
+            f"Audio coverage: {with_audio}/{total} ({coverage:.1f}%) have audio · "
+            f"{missing} need attention: "
+            f"{counts.get('ready_for_audio', 0)} ready to generate, "
+            f"{blocked_target} need a target audio field, "
             f"{counts.get('needs_source_text', 0)} need source text, "
             f"{counts.get('malformed_audio', 0)} malformed."
         )
@@ -12534,9 +12543,9 @@ class ModernVocabularyGui:
                 self._anki_client.ensure_grammar_model_exists()
             except Exception:
                 LOGGER.info("Grammar model audio-field refresh skipped during audio scan", exc_info=True)
-            self._speech_notes = self._anki_client.list_existing_notes(
+            all_notes = self._anki_client.list_existing_notes(
                 search_query=self._speech_search_var.get().strip(),
-                missing_audio_only=True,
+                missing_audio_only=False,
             )
         except Exception as exc:
             LOGGER.exception("Speech/audio missing-audio scan failed")
@@ -12545,12 +12554,23 @@ class ModernVocabularyGui:
         self._speech_audio_status_by_note_id = {}
         self._speech_audio_error_by_note_id = {}
         self._speech_audio_path_by_note_id = {}
-        for note in self._speech_notes:
+        for note in all_notes:
             note_id = int(note["note_id"])
             self._speech_audio_status_by_note_id[note_id] = str(note.get("audio_status") or "missing_audio")
+
+        scan_summary = self._speech_scan_summary(all_notes)
+        # Keep the work list focused: coverage counts all supported notes, while
+        # the rows below show only notes that still need audio-related attention.
+        self._speech_notes = []
+        for note in all_notes:
+            _can_generate, status, *_ = self._speech_note_readiness(note)
+            if status != "has_audio":
+                self._speech_notes.append(note)
+
+        self._speech_scan_loaded = True
         extra = self._speech_search_var.get().strip()
         suffix = f" · filter: {extra}" if extra else ""
-        scan_summary = f"{self._speech_scan_summary()}{suffix}"
+        scan_summary = f"{scan_summary}{suffix}"
         self._speech_summary_var.set(scan_summary)
         self._render_speech_notes(scan_summary)
 
@@ -12560,9 +12580,14 @@ class ModernVocabularyGui:
             widget.destroy()
         self._speech_note_vars = []
         if not self._speech_notes:
+            empty_text = (
+                "✓ All supported cards in this scan have audio."
+                if self._speech_scan_loaded
+                else "No audio scan results. Click Find missing audio to load cards from the selected deck."
+            )
             ctk.CTkLabel(
                 self._speech_scroll,
-                text="No audio scan results. Click Find missing audio to load cards from the selected deck.",
+                text=empty_text,
                 text_color=("gray35", "gray75"),
             ).grid(row=0, column=0, sticky="w", padx=12, pady=12)
         for index, note in enumerate(self._speech_notes):
