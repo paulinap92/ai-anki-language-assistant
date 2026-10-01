@@ -1,5 +1,7 @@
 """OpenAI client for vocabulary flashcards and conversation practice."""
 
+import json
+
 from openai import OpenAI
 
 from src.ai.base import VocabularyAiClient
@@ -11,6 +13,7 @@ from src.ai.prompts import (
     build_grammar_analysis_prompt,
     build_batch_grammar_prompt,
     build_sentence_based_card_prompt,
+    build_vocabulary_batch_prompt,
     build_vocabulary_prompt,
 )
 
@@ -94,6 +97,68 @@ class OpenAiVocabularyClient(VocabularyAiClient):
                 f"{card.word_or_phrase!r} instead of {word_or_phrase!r}."
             )
         return card
+
+    def generate_cards_batch(
+        self,
+        words_or_phrases: list[str],
+        target_language: str,
+        explanation_language: str,
+        topic_context: str = "",
+    ) -> list[VocabularyCard]:
+        """Generate several vocabulary cards in one provider request."""
+        requested = [str(item).strip() for item in words_or_phrases if str(item).strip()]
+        if not requested:
+            return []
+
+        raw_text = self._generate_text(
+            build_vocabulary_batch_prompt(
+                requested,
+                target_language,
+                explanation_language,
+                topic_context,
+            ),
+            workflow="card",
+        )
+        cleaned = raw_text.replace("```json", "").replace("```", "").strip()
+        try:
+            payload = json.loads(cleaned)
+            raw_cards = payload.get("cards") if isinstance(payload, dict) else None
+            if not isinstance(raw_cards, list) or len(raw_cards) != len(requested):
+                raise ValueError(
+                    f"Expected {len(requested)} cards, got "
+                    f"{len(raw_cards) if isinstance(raw_cards, list) else 'invalid payload'}."
+                )
+
+            cards: list[VocabularyCard] = []
+            for expected_input, raw_card in zip(requested, raw_cards):
+                card = VocabularyCard(**raw_card)
+                warnings = validate_vocabulary_card(
+                    card,
+                    expected_input=expected_input,
+                    expected_target_language=target_language,
+                    expected_explanation_language=explanation_language,
+                    topic_context=topic_context,
+                )
+                if warnings:
+                    card.quality_warnings = list(
+                        dict.fromkeys([*card.quality_warnings, *warnings])
+                    )
+                if (
+                    card.is_valid
+                    and normalize_lexical_value(card.word_or_phrase)
+                    != normalize_lexical_value(expected_input)
+                ):
+                    raise ValueError(
+                        f"{self.provider_name} batch returned a different word or phrase: "
+                        f"{card.word_or_phrase!r} instead of {expected_input!r}."
+                    )
+                cards.append(card)
+            return cards
+        except Exception as exc:
+            raise ValueError(
+                f"{self.provider_name} returned invalid batch flashcard data.\n"
+                f"Raw response:\n{raw_text}"
+            ) from exc
 
     def start_conversation(
         self,
