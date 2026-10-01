@@ -9359,7 +9359,8 @@ class ModernVocabularyGui:
                         )
                     batch_ai_s = max(0.0, time.perf_counter() - batch_started_at)
                     LOGGER.info(
-                        "PERF queue_ai_batch provider=%s model=%s size=%s seconds=%.3f",
+                        "PERF queue_ai_batch mode=%s provider=%s model=%s size=%s seconds=%.3f",
+                        resolved_mode,
                         provider_name,
                         model_name,
                         len(jobs),
@@ -9387,8 +9388,9 @@ class ModernVocabularyGui:
                     # Retry only the first item through the proven single-card
                     # contract; the remaining items stay pending for the next pass.
                     LOGGER.exception(
-                        "Queue vocabulary batch failed; falling back to one-card generation: "
+                        "Queue %s batch failed; falling back to one-card generation: "
                         "start_index=%s size=%s provider=%s",
+                        resolved_mode,
                         next_index,
                         len(jobs),
                         provider_name,
