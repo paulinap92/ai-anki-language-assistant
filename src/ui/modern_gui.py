@@ -9188,8 +9188,13 @@ class ModernVocabularyGui:
         # Safe first batching step: combine only consecutive plain Vocabulary
         # items with the same topic/settings. Grammar and provided-example cards
         # keep their stricter one-item contracts for now.
+        provider_batch_method = getattr(
+            type(client),
+            "generate_cards_batch",
+            VocabularyAiClient.generate_cards_batch,
+        )
         provider_supports_true_batch = (
-            type(client).generate_cards_batch is not VocabularyAiClient.generate_cards_batch
+            provider_batch_method is not VocabularyAiClient.generate_cards_batch
         )
         if (
             resolved_mode == "Vocabulary"
