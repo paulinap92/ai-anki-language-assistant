@@ -32,6 +32,28 @@ class VocabularyAiClient(ABC):
     ) -> VocabularyCard:
         """Generate one validated vocabulary flashcard."""
 
+    def generate_cards_batch(
+        self,
+        words_or_phrases: list[str],
+        target_language: str,
+        explanation_language: str,
+        topic_context: str = "",
+    ) -> list[VocabularyCard]:
+        """Generate several vocabulary cards.
+
+        Providers may override this to use one API request. The default keeps
+        compatibility by falling back to one request per item.
+        """
+        return [
+            self.generate_card(
+                word_or_phrase,
+                target_language,
+                explanation_language,
+                topic_context,
+            )
+            for word_or_phrase in words_or_phrases
+        ]
+
     @abstractmethod
     def start_conversation(
         self,
