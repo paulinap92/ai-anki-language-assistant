@@ -9188,7 +9188,14 @@ class ModernVocabularyGui:
         # Safe first batching step: combine only consecutive plain Vocabulary
         # items with the same topic/settings. Grammar and provided-example cards
         # keep their stricter one-item contracts for now.
-        if resolved_mode == "Vocabulary" and not preserve_vocab_source:
+        provider_supports_true_batch = (
+            type(client).generate_cards_batch is not VocabularyAiClient.generate_cards_batch
+        )
+        if (
+            resolved_mode == "Vocabulary"
+            and not preserve_vocab_source
+            and provider_supports_true_batch
+        ):
             for candidate_index in range(next_index + 1, len(self._batch_items)):
                 if len(jobs) >= QUEUE_AI_BATCH_SIZE:
                     break
