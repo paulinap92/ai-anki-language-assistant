@@ -54,6 +54,28 @@ class VocabularyAiClient(ABC):
             for word_or_phrase in words_or_phrases
         ]
 
+    def generate_sentence_cards_batch(
+        self,
+        raw_items: list[str],
+        target_language: str,
+        explanation_language: str,
+        topic_context: str = "",
+    ) -> list[VocabularyCard]:
+        """Generate several sentence-based cards.
+
+        Providers may override this to use one API request. The default preserves
+        compatibility by falling back to one request per item.
+        """
+        return [
+            self.generate_sentence_card(
+                raw_item,
+                target_language,
+                explanation_language,
+                topic_context,
+            )
+            for raw_item in raw_items
+        ]
+
     @abstractmethod
     def start_conversation(
         self,
