@@ -9185,21 +9185,27 @@ class ModernVocabularyGui:
         }
 
         jobs = [job]
-        # Safe first batching step: combine only consecutive plain Vocabulary
-        # items with the same topic/settings. Grammar and provided-example cards
-        # keep their stricter one-item contracts for now.
-        provider_batch_method = getattr(
+        provider_vocab_batch_method = getattr(
             type(client),
             "generate_cards_batch",
             VocabularyAiClient.generate_cards_batch,
         )
-        provider_supports_true_batch = (
-            provider_batch_method is not VocabularyAiClient.generate_cards_batch
+        provider_sentence_batch_method = getattr(
+            type(client),
+            "generate_sentence_cards_batch",
+            VocabularyAiClient.generate_sentence_cards_batch,
+        )
+        provider_supports_vocab_batch = (
+            provider_vocab_batch_method is not VocabularyAiClient.generate_cards_batch
+        )
+        provider_supports_sentence_batch = (
+            provider_sentence_batch_method
+            is not VocabularyAiClient.generate_sentence_cards_batch
         )
         if (
             resolved_mode == "Vocabulary"
             and not preserve_vocab_source
-            and provider_supports_true_batch
+            and provider_supports_vocab_batch
         ):
             for candidate_index in range(next_index + 1, len(self._batch_items)):
                 if len(jobs) >= QUEUE_AI_BATCH_SIZE:
