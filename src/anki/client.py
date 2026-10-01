@@ -4,8 +4,10 @@ from __future__ import annotations
 
 from html import unescape
 import base64
+import logging
 from pathlib import Path
 import re
+import time
 from typing import Any
 
 import requests
@@ -33,6 +35,9 @@ from src.anki.templates import (
 )
 from src.domain.languages import get_language_tag
 from src.domain.models import GrammarAnalysis, VocabularyCard
+
+
+LOGGER = logging.getLogger(__name__)
 
 
 class DuplicateNoteError(ValueError):
@@ -477,11 +482,15 @@ class AnkiClient:
         extra_tags: list[str] | None = None,
         audio_metadata: dict[str, str] | None = None,
     ) -> None:
-        """Add one batch vocabulary card with a final collection-wide safety guard.
+        """Add one batch vocabulary card after Queue already scanned duplicates.
 
-        Batch already performs one broad duplicate scan for performance.  This
-        method keeps that fast path, but it must never bypass the final exact
-        current-model check because the collection can change after the precheck.
+        Add all ready builds one collection-wide duplicate snapshot before it
+        starts and updates that in-memory map after every successful add. Do not
+        rescan the whole current note model for every card here: that turned a
+        98-card export into repeated findNotes + notesInfo full-model reads.
+        Anki's native allowDuplicate=False remains the final write-time guard for
+        the current model while the Queue snapshot protects this app's broader
+        cross-model/cross-deck identity rules.
         """
         self.ensure_vocabulary_model_exists()
         language_tag = get_language_tag(card.target_language)
@@ -498,18 +507,12 @@ class AnkiClient:
                 *(extra_tags or []),
             ],
         }
-        existing_note_id = self.find_existing_vocabulary_note_id(card.word_or_phrase)
-        if existing_note_id is not None:
-            raise DuplicateNoteError(
-                f"A vocabulary card for '{card.word_or_phrase}' already exists in the Anki collection.",
-                existing_note_id,
-                model_name=MODEL_NAME,
-                duplicate_count=1,
-                update_safe=True,
-            )
         result = self._invoke(action="addNote", params={"note": note})
         if result is None:
-            raise ValueError(f"Could not add card: {card.word_or_phrase}")
+            raise ValueError(
+                f"Could not add card: {card.word_or_phrase}. "
+                "Anki may have rejected it as a duplicate or invalid note."
+            )
 
     def update_card_by_note_id(
         self,
@@ -956,24 +959,34 @@ class AnkiClient:
         )
 
     def _invoke(self, action: str, params: dict[str, Any] | None = None) -> Any:
-        """Call AnkiConnect and return the ``result`` field.
-
-        Raises:
-            ConnectionError: If Anki or AnkiConnect is not reachable.
-            RuntimeError: If AnkiConnect returns an application-level error.
-            requests.HTTPError: If the HTTP request fails.
-        """
+        """Call AnkiConnect and return the result field."""
+        started_at = time.perf_counter()
         payload = {"action": action, "version": 6, "params": params or {}}
         try:
-            response = requests.post(self._url, json=payload, timeout=10)
-        except requests.exceptions.ConnectionError as exc:
-            raise ConnectionError(
-                "Could not connect to Anki. Make sure Anki is open "
-                "and AnkiConnect is installed."
-            ) from exc
+            try:
+                response = requests.post(self._url, json=payload, timeout=10)
+            except requests.exceptions.ConnectionError as exc:
+                raise ConnectionError(
+                    "Could not connect to Anki. Make sure Anki is open "
+                    "and AnkiConnect is installed."
+                ) from exc
 
-        response.raise_for_status()
-        data = response.json()
-        if data.get("error") is not None:
-            raise RuntimeError(f"AnkiConnect error: {data['error']}")
-        return data.get("result")
+            response.raise_for_status()
+            data = response.json()
+            if data.get("error") is not None:
+                raise RuntimeError(f"AnkiConnect error: {data['error']}")
+            result = data.get("result")
+        except Exception:
+            LOGGER.info(
+                "PERF anki action=%s status=error seconds=%.3f",
+                action,
+                max(0.0, time.perf_counter() - started_at),
+            )
+            raise
+
+        LOGGER.info(
+            "PERF anki action=%s status=ok seconds=%.3f",
+            action,
+            max(0.0, time.perf_counter() - started_at),
+        )
+        return result
