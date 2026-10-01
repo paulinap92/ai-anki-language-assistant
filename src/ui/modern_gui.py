@@ -8206,7 +8206,7 @@ class ModernVocabularyGui:
         apply_s = max(0.0, time.perf_counter() - apply_started_at)
         total_s = max(0.0, time.perf_counter() - item_started_at)
 
-        if self._batch_perf_active:
+        if getattr(self, "_batch_perf_active", False):
             self._batch_perf_ai_s += ai_s
             self._batch_perf_apply_s += apply_s
             self._batch_perf_items += 1
@@ -8227,7 +8227,7 @@ class ModernVocabularyGui:
 
     def _log_batch_perf_summary(self, outcome: str) -> None:
         """Write one Queue-run performance summary to the log and reset counters."""
-        if not self._batch_perf_active:
+        if not getattr(self, "_batch_perf_active", False):
             return
         started_at = self._batch_perf_started_at
         total_s = max(0.0, time.perf_counter() - started_at) if started_at is not None else 0.0
@@ -8265,7 +8265,7 @@ class ModernVocabularyGui:
             return
         finally:
             elapsed = max(0.0, time.perf_counter() - started_at)
-            if self._batch_perf_active:
+            if getattr(self, "_batch_perf_active", False):
                 self._batch_perf_autosave_s += elapsed
             LOGGER.info(
                 "PERF queue_autosave reason=%r seconds=%.3f items=%s",
