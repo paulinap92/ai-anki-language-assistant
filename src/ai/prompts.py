@@ -443,6 +443,107 @@ Return ONLY valid JSON. Do not use markdown or comments outside JSON.
 """
 
 
+def build_sentence_based_cards_batch_prompt(
+    raw_items: list[str],
+    target_language: str,
+    explanation_language: str,
+    topic_context: str = "",
+) -> str:
+    """Build one request for several target + provided-sentence cards."""
+    items = [str(item).strip() for item in raw_items if str(item).strip()]
+    if not items:
+        raise ValueError("At least one provided-example item is required.")
+
+    parsed: list[tuple[str, str]] = []
+    for raw_item in items:
+        target_item, provided_sentence = _split_target_and_sentence(raw_item)
+        if not target_item or not provided_sentence:
+            raise ValueError(
+                "Batched Provided examples require explicit 'target | sentence' rows."
+            )
+        parsed.append((target_item, provided_sentence))
+
+    explanation_language = explanation_language.strip()
+    if not explanation_language:
+        raise ValueError("Explanation language must be selected explicitly.")
+    effective_explanation_language = (
+        target_language if explanation_language == "Same as target" else explanation_language
+    )
+    no_translation = explanation_language == "No translation"
+    explanation_rules = _language_quality_rules(effective_explanation_language, target_language)
+    topic_rules = _topic_rules(topic_context)
+
+    numbered_items = "\n".join(
+        f'{index + 1}. target="{target}" | sentence="{sentence}"'
+        for index, (target, sentence) in enumerate(parsed)
+    )
+
+    return f"""
+You are a professional {target_language} language teacher and flashcard quality reviewer.
+
+Create EXACTLY {len(parsed)} independent sentence-based flashcards.
+
+INPUTS — preserve this order and pairing:
+{numbered_items}
+
+Target language: {target_language}
+Explanation language: {effective_explanation_language}
+
+Critical batch rules:
+- Return exactly one card per input and keep the same order.
+- NEVER mix a target with another input's sentence.
+- word_or_phrase MUST exactly equal the corresponding target.
+- example MUST preserve the corresponding provided sentence.
+- Do not invent a replacement example.
+- Do not change the sentence meaning.
+- Only a tiny obvious typo correction is allowed; if you make one, add a quality warning.
+- Treat each target + sentence pair independently.
+- Definition must explain that target in {target_language}.
+{explanation_rules}
+{topic_rules}
+Quality rules for EVERY card:
+- example_uses_target is true only when the example contains the target or a valid inflected form of the SAME lexical target.
+- used_form_in_example must be copied literally from the example.
+- target_usage is exactly: exact, valid_inflection, mismatch, or uncertain.
+- collocation_naturalness and translation_naturalness are exactly: ok, weak, or bad.
+- topic_fit is exactly: ok, weak, mismatch, or not_applicable.
+- Put uncertainty, a typo correction, awkward usage, or any mismatch into quality_warnings.
+- If the sentence is not in {target_language}, set is_valid=false rather than inventing content.
+
+Return ONLY valid JSON. No markdown and no comments.
+Return this exact top-level structure:
+
+{{
+  "cards": [
+    {{
+      "is_valid": true,
+      "validation_error": "",
+      "suggested_correction": "",
+      "explanation_language": "{effective_explanation_language}",
+      "word_or_phrase": "EXACT corresponding target",
+      "target_language": "{target_language}",
+      "part_of_speech": "string",
+      "definition": "string",
+      "translation": "{'' if no_translation else 'string'}",
+      "example": "EXACT corresponding provided sentence",
+      "example_translation": "{'' if no_translation else 'string'}",
+      "synonyms": ["string"],
+      "collocations": ["string"],
+      "grammar_note": "string",
+      "topic_fit": "ok",
+      "topic_warning": "",
+      "quality_warnings": [],
+      "used_form_in_example": "string",
+      "example_uses_target": true,
+      "target_usage": "exact",
+      "collocation_naturalness": "ok",
+      "translation_naturalness": "ok"
+    }}
+  ]
+}}
+"""
+
+
 def build_batch_grammar_prompt(
     grammar_item: str,
     target_language: str,
