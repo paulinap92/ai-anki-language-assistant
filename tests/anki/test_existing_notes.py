@@ -143,6 +143,70 @@ def test_append_audio_to_note_appends_sound_to_existing_field() -> None:
     assert client.updated_fields == {"Back": "translation<br>[sound:outlast.mp3]"}
 
 
+
+def test_attach_audio_to_note_reuses_known_fields_without_notes_info() -> None:
+    class FakeAnkiClient(AnkiClient):
+        def __init__(self) -> None:
+            super().__init__("http://localhost:8765", "Deck")
+            self.calls = []
+
+        def _invoke(self, action, params=None):  # type: ignore[override]
+            self.calls.append((action, params))
+            if action == "notesInfo":
+                raise AssertionError("known fields must avoid notesInfo")
+            return None
+
+    client = FakeAnkiClient()
+
+    client.attach_audio_to_note(
+        123,
+        "short_fuse.mp3",
+        "Audio",
+        audio_metadata={"AudioProvider": "OpenAI", "AudioModel": "gpt-4o-mini-tts"},
+        existing_field_names={"Audio", "AudioProvider"},
+    )
+
+    assert [action for action, _ in client.calls] == ["updateNoteFields"]
+    assert client.calls[0][1]["note"]["fields"] == {
+        "Audio": "[sound:short_fuse.mp3]",
+        "AudioProvider": "OpenAI",
+    }
+
+
+def test_append_audio_to_note_reuses_loaded_fields_without_notes_info() -> None:
+    class FakeAnkiClient(AnkiClient):
+        def __init__(self) -> None:
+            super().__init__("http://localhost:8765", "Deck")
+            self.calls = []
+
+        def _invoke(self, action, params=None):  # type: ignore[override]
+            self.calls.append((action, params))
+            if action == "notesInfo":
+                raise AssertionError("loaded fields must avoid notesInfo")
+            return None
+
+    client = FakeAnkiClient()
+
+    client.append_audio_to_note(
+        123,
+        "outlast.mp3",
+        "Back",
+        existing_fields={"Front": "outlast", "Back": "translation"},
+    )
+
+    assert [action for action, _ in client.calls] == ["updateNoteFields"]
+    assert client.calls[0][1]["note"]["fields"] == {
+        "Back": "translation<br>[sound:outlast.mp3]"
+    }
+
+
+def test_local_anki_url_uses_ipv4_loopback_and_ignores_proxy_environment() -> None:
+    client = AnkiClient("http://localhost:8765", "Deck")
+
+    assert client._url == "http://127.0.0.1:8765"
+    assert client._session.trust_env is False
+
+
 def test_existing_note_map_broad_can_scan_all_decks() -> None:
     class FakeAnkiClient(AnkiClient):
         def __init__(self) -> None:
