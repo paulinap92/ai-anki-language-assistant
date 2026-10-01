@@ -143,6 +143,7 @@ TTS_SAMPLE_TEXTS = {
 }
 CREATE_CARD_MODES = ["Vocabulary", "Grammar"]
 BATCH_MODES = ["Vocabulary", "Grammar", "Mixed", "Provided examples"]
+QUEUE_AI_BATCH_SIZE = 4
 OCR_EXTRACTION_MODES = [
     "Provided examples",
     "Vocabulary",
@@ -9183,7 +9184,125 @@ class ModernVocabularyGui:
             "grammar_topic_context": grammar_topic_context,
         }
 
+        jobs = [job]
+        # Safe first batching step: combine only consecutive plain Vocabulary
+        # items with the same topic/settings. Grammar and provided-example cards
+        # keep their stricter one-item contracts for now.
+        if resolved_mode == "Vocabulary" and not preserve_vocab_source:
+            for candidate_index in range(next_index + 1, len(self._batch_items)):
+                if len(jobs) >= QUEUE_AI_BATCH_SIZE:
+                    break
+                candidate = self._batch_items[candidate_index]
+                if (
+                    str(candidate.get("status", "pending")) != "pending"
+                    or candidate.get("card")
+                    or candidate.get("grammar_card")
+                ):
+                    break
+
+                candidate_word = str(candidate.get("word", "")).strip()
+                candidate_topic = str(
+                    candidate.get("topic") or self._batch_auto_topic_context
+                ).strip()
+                if not bool(candidate.get("mode_locked")):
+                    candidate["batch_mode"] = self._batch_auto_mode or "Vocabulary"
+                candidate_mode = self._batch_mode_for_item(candidate, candidate_word)
+                candidate_preserve = (
+                    candidate_mode == "Vocabulary"
+                    and str(candidate.get("generation_strategy") or "")
+                    == "preserve_source_sentence"
+                    and bool(str(candidate.get("source_sentence") or "").strip())
+                )
+                if (
+                    candidate_mode != "Vocabulary"
+                    or candidate_preserve
+                    or candidate_topic != topic_context
+                ):
+                    break
+
+                candidate["word"] = candidate_word
+                candidate["topic"] = candidate_topic
+                candidate["target_language"] = target_language
+                candidate["explanation_language"] = explanation_language
+                candidate["resolved_mode"] = "Vocabulary"
+                jobs.append(
+                    {
+                        "index": candidate_index,
+                        "perf_item_started_at": time.perf_counter(),
+                        "item_ref": candidate,
+                        "word": candidate_word,
+                        "resolved_mode": "Vocabulary",
+                        "provider_name": provider_name,
+                        "model_name": model_name,
+                        "topic_context": candidate_topic,
+                        "target_language": target_language,
+                        "explanation_language": explanation_language,
+                        "preserve_vocab_source": False,
+                        "provided_target": "",
+                        "sentence_request_word": candidate_word,
+                        "grammar_topic_context": "",
+                    }
+                )
+
+        if len(jobs) > 1:
+            self._batch_status_var.set(
+                f"Generating vocabulary batch of {len(jobs)} cards "
+                f"starting at {next_index + 1}/{len(self._batch_items)}..."
+            )
+            self._status_var.set(self._batch_status_var.get())
+
         def worker() -> None:
+            if len(jobs) > 1:
+                batch_started_at = time.perf_counter()
+                try:
+                    batch_results = client.generate_cards_batch(
+                        [str(batch_job["word"]) for batch_job in jobs],
+                        target_language,
+                        explanation_language,
+                        topic_context,
+                    )
+                    if len(batch_results) != len(jobs):
+                        raise ValueError(
+                            f"Provider returned {len(batch_results)} cards for "
+                            f"{len(jobs)} Queue items."
+                        )
+                    batch_ai_s = max(0.0, time.perf_counter() - batch_started_at)
+                    LOGGER.info(
+                        "PERF queue_ai_batch provider=%s model=%s size=%s seconds=%.3f",
+                        provider_name,
+                        model_name,
+                        len(jobs),
+                        batch_ai_s,
+                    )
+                    per_item_ai_s = batch_ai_s / len(jobs)
+                    batch_size = len(jobs)
+                    for position, (batch_job, batch_result) in enumerate(
+                        zip(jobs, batch_results),
+                        start=1,
+                    ):
+                        self._batch_worker_results.put(
+                            {
+                                **batch_job,
+                                "result": batch_result,
+                                "error": None,
+                                "perf_ai_s": per_item_ai_s,
+                                "batch_position": position,
+                                "batch_size": batch_size,
+                            }
+                        )
+                    return
+                except Exception:
+                    # A malformed multi-card response must not poison the Queue.
+                    # Retry only the first item through the proven single-card
+                    # contract; the remaining items stay pending for the next pass.
+                    LOGGER.exception(
+                        "Queue vocabulary batch failed; falling back to one-card generation: "
+                        "start_index=%s size=%s provider=%s",
+                        next_index,
+                        len(jobs),
+                        provider_name,
+                    )
+
             result: object | None = None
             error: Exception | None = None
             request_started_at = time.perf_counter()
@@ -9219,7 +9338,14 @@ class ModernVocabularyGui:
                 )
             ai_s = max(0.0, time.perf_counter() - request_started_at)
             self._batch_worker_results.put(
-                {**job, "result": result, "error": error, "perf_ai_s": ai_s}
+                {
+                    **job,
+                    "result": result,
+                    "error": error,
+                    "perf_ai_s": ai_s,
+                    "batch_position": 1,
+                    "batch_size": 1,
+                }
             )
 
         threading.Thread(
@@ -9242,8 +9368,12 @@ class ModernVocabularyGui:
     def _finish_background_batch_generation(self, payload: dict[str, object]) -> None:
         """Apply one worker result on Tk's main thread, then continue the Queue."""
         apply_started_at = time.perf_counter()
-        self._batch_generation_in_flight = False
-        self._batch_processing_index = None
+        batch_position = int(payload.get("batch_position") or 1)
+        batch_size = int(payload.get("batch_size") or 1)
+        batch_has_more = batch_position < batch_size
+        self._batch_generation_in_flight = batch_has_more
+        if not batch_has_more:
+            self._batch_processing_index = None
 
         index = int(payload["index"])
         item_ref = payload["item_ref"]
@@ -9254,7 +9384,9 @@ class ModernVocabularyGui:
                 status="discarded_queue_changed",
                 apply_started_at=apply_started_at,
             )
-            if self._batch_auto_generate_running and not self._batch_auto_generate_paused:
+            if batch_has_more:
+                self._root.after(0, self._poll_background_batch_generation)
+            elif self._batch_auto_generate_running and not self._batch_auto_generate_paused:
                 self._root.after(120, self._auto_generate_next_pending_batch_card)
             return
 
@@ -9419,7 +9551,9 @@ class ModernVocabularyGui:
             status=str(item.get("status") or "unknown"),
             apply_started_at=apply_started_at,
         )
-        if self._batch_auto_generate_running and not self._batch_auto_generate_paused:
+        if batch_has_more:
+            self._root.after(0, self._poll_background_batch_generation)
+        elif self._batch_auto_generate_running and not self._batch_auto_generate_paused:
             self._root.after(120, self._auto_generate_next_pending_batch_card)
 
     def _pause_batch_process(self) -> None:
