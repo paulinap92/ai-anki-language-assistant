@@ -429,6 +429,13 @@ class ModernVocabularyGui:
         self._batch_auto_explanation_language = ""
         self._batch_auto_mode = ""
         self._batch_auto_topic_context = ""
+        self._batch_perf_active = False
+        self._batch_perf_started_at: float | None = None
+        self._batch_perf_precheck_s = 0.0
+        self._batch_perf_ai_s = 0.0
+        self._batch_perf_apply_s = 0.0
+        self._batch_perf_autosave_s = 0.0
+        self._batch_perf_items = 0
         self._batch_add_all_running = False
         self._batch_add_all_paused = False
         self._batch_add_all_stop_requested = False
@@ -8176,10 +8183,75 @@ class ModernVocabularyGui:
             self._batch_autosave_after_id = None
             self._autosave_batch_session(reason)
 
+    def _reset_batch_perf(self) -> None:
+        """Reset Queue timing counters. Timing data is written only to the app log."""
+        self._batch_perf_active = True
+        self._batch_perf_started_at = time.perf_counter()
+        self._batch_perf_precheck_s = 0.0
+        self._batch_perf_ai_s = 0.0
+        self._batch_perf_apply_s = 0.0
+        self._batch_perf_autosave_s = 0.0
+        self._batch_perf_items = 0
+
+    def _record_batch_item_perf(
+        self,
+        payload: dict[str, object],
+        *,
+        status: str,
+        apply_started_at: float,
+    ) -> None:
+        """Record one Queue item's timings without exposing them in the card/UI."""
+        ai_s = float(payload.get("perf_ai_s") or 0.0)
+        item_started_at = float(payload.get("perf_item_started_at") or apply_started_at)
+        apply_s = max(0.0, time.perf_counter() - apply_started_at)
+        total_s = max(0.0, time.perf_counter() - item_started_at)
+
+        if self._batch_perf_active:
+            self._batch_perf_ai_s += ai_s
+            self._batch_perf_apply_s += apply_s
+            self._batch_perf_items += 1
+
+        LOGGER.info(
+            "PERF queue_item index=%s mode=%s provider=%s model=%s status=%s "
+            "ai_s=%.3f apply_s=%.3f total_s=%.3f word=%r",
+            payload.get("index"),
+            payload.get("resolved_mode"),
+            payload.get("provider_name"),
+            payload.get("model_name"),
+            status,
+            ai_s,
+            apply_s,
+            total_s,
+            payload.get("word"),
+        )
+
+    def _log_batch_perf_summary(self, outcome: str) -> None:
+        """Write one Queue-run performance summary to the log and reset counters."""
+        if not self._batch_perf_active:
+            return
+        started_at = self._batch_perf_started_at
+        total_s = max(0.0, time.perf_counter() - started_at) if started_at is not None else 0.0
+        avg_s = total_s / self._batch_perf_items if self._batch_perf_items else 0.0
+        LOGGER.info(
+            "PERF queue_summary outcome=%s items=%s total_s=%.3f avg_s=%.3f "
+            "precheck_s=%.3f ai_s=%.3f apply_s=%.3f autosave_s=%.3f",
+            outcome,
+            self._batch_perf_items,
+            total_s,
+            avg_s,
+            self._batch_perf_precheck_s,
+            self._batch_perf_ai_s,
+            self._batch_perf_apply_s,
+            self._batch_perf_autosave_s,
+        )
+        self._batch_perf_active = False
+        self._batch_perf_started_at = None
+
     def _autosave_batch_session(self, reason: str) -> None:
         """Save the current Queue session automatically."""
         if not self._batch_items:
             return
+        started_at = time.perf_counter()
         path = self._ensure_batch_autosave_path()
         try:
             path.write_text(
@@ -8191,6 +8263,16 @@ class ModernVocabularyGui:
             LOGGER.exception("Queue autosave failed: reason=%s", reason)
             self._record_activity(f"Autosave failed: {exc}")
             return
+        finally:
+            elapsed = max(0.0, time.perf_counter() - started_at)
+            if self._batch_perf_active:
+                self._batch_perf_autosave_s += elapsed
+            LOGGER.info(
+                "PERF queue_autosave reason=%r seconds=%.3f items=%s",
+                reason,
+                elapsed,
+                len(self._batch_items),
+            )
 
     def _card_from_batch_payload(self, payload: object) -> VocabularyCard | None:
         """Rebuild a vocabulary card stored inside a Queue item."""
@@ -8936,11 +9018,21 @@ class ModernVocabularyGui:
             return
 
         resume = self._batch_auto_generate_paused
+        self._reset_batch_perf()
+        precheck_started_at = time.perf_counter()
         # Always precheck remaining pending items before Auto Queue calls a provider.
         # This also covers paused/resumed sessions and old autosaves created before
         # duplicate precheck metadata existed.
         precheck_result = self._mark_pending_duplicates_before_auto_generation()
+        self._batch_perf_precheck_s = max(0.0, time.perf_counter() - precheck_started_at)
+        LOGGER.info(
+            "PERF queue_precheck seconds=%.3f duplicates=%s items=%s",
+            self._batch_perf_precheck_s,
+            precheck_result,
+            len(self._batch_items),
+        )
         if precheck_result < 0:
+            self._log_batch_perf_summary("precheck_failed")
             self._autosave_batch_session("auto-generation cancelled: duplicate precheck failed")
             return
         if not any(
@@ -8953,6 +9045,7 @@ class ModernVocabularyGui:
             self._batch_status_var.set(message)
             self._status_var.set(message)
             self._autosave_batch_session("auto-generation skipped duplicates")
+            self._log_batch_perf_summary("nothing_to_generate")
             return
 
         provider_name = self._provider_var.get().strip()
@@ -8985,6 +9078,8 @@ class ModernVocabularyGui:
             self._batch_auto_generate_running = False
             self._batch_auto_generate_stop_requested = False
             self._autosave_batch_session("auto-generation stopped")
+            if not self._batch_generation_in_flight:
+                self._log_batch_perf_summary("stopped")
             message = f"Auto-generation stopped. Progress saved: {self._batch_autosave_path}"
             self._batch_status_var.set(message)
             self._status_var.set(message)
@@ -9007,6 +9102,7 @@ class ModernVocabularyGui:
             self._batch_status_var.set("Auto-generation finished. Autosaved.")
             self._status_var.set(self._batch_status_var.get())
             self._record_activity("Auto-generation finished")
+            self._log_batch_perf_summary("finished")
             return
 
         item = self._batch_items[next_index]
@@ -9070,6 +9166,7 @@ class ModernVocabularyGui:
 
         job = {
             "index": next_index,
+            "perf_item_started_at": time.perf_counter(),
             "item_ref": item_ref,
             "word": word,
             "resolved_mode": resolved_mode,
@@ -9087,6 +9184,7 @@ class ModernVocabularyGui:
         def worker() -> None:
             result: object | None = None
             error: Exception | None = None
+            request_started_at = time.perf_counter()
             try:
                 if resolved_mode == "Provided examples" or preserve_vocab_source:
                     result = client.generate_sentence_card(
@@ -9117,7 +9215,10 @@ class ModernVocabularyGui:
                     word,
                     provider_name,
                 )
-            self._batch_worker_results.put({**job, "result": result, "error": error})
+            ai_s = max(0.0, time.perf_counter() - request_started_at)
+            self._batch_worker_results.put(
+                {**job, "result": result, "error": error, "perf_ai_s": ai_s}
+            )
 
         threading.Thread(
             target=worker,
@@ -9138,6 +9239,7 @@ class ModernVocabularyGui:
 
     def _finish_background_batch_generation(self, payload: dict[str, object]) -> None:
         """Apply one worker result on Tk's main thread, then continue the Queue."""
+        apply_started_at = time.perf_counter()
         self._batch_generation_in_flight = False
         self._batch_processing_index = None
 
@@ -9145,6 +9247,11 @@ class ModernVocabularyGui:
         item_ref = payload["item_ref"]
         if index >= len(self._batch_items) or self._batch_items[index] is not item_ref:
             LOGGER.warning("Discarding Queue result because the Queue changed while the request was running.")
+            self._record_batch_item_perf(
+                payload,
+                status="discarded_queue_changed",
+                apply_started_at=apply_started_at,
+            )
             if self._batch_auto_generate_running and not self._batch_auto_generate_paused:
                 self._root.after(120, self._auto_generate_next_pending_batch_card)
             return
@@ -9169,13 +9276,25 @@ class ModernVocabularyGui:
                 item["status"] = "rate_limited"
                 self._batch_status_var.set(f"Rate limit while generating: {word}. Session autosaved.")
                 self._update_batch_progress()
+                self._record_batch_item_perf(
+                    payload,
+                    status="rate_limited",
+                    apply_started_at=apply_started_at,
+                )
                 self._stop_batch_on_provider_error(word, detail, provider_name, model_name)
+                self._log_batch_perf_summary("rate_limited")
                 return
             if self._is_fatal_long_generation_detail(detail):
                 item["status"] = "provider_failed"
                 self._batch_status_var.set(f"Provider stopped while generating: {word}. Session autosaved.")
                 self._update_batch_progress()
+                self._record_batch_item_perf(
+                    payload,
+                    status="provider_failed",
+                    apply_started_at=apply_started_at,
+                )
                 self._stop_batch_on_provider_error(word, detail, provider_name, model_name)
+                self._log_batch_perf_summary("provider_failed")
                 return
 
             self._batch_status_var.set(f"Generation error: {word}. Raw details saved in logs/autosave.")
@@ -9190,6 +9309,11 @@ class ModernVocabularyGui:
                 )
             self._update_batch_progress()
             self._autosave_batch_session(f"generation error: {word}")
+            self._record_batch_item_perf(
+                payload,
+                status="error",
+                apply_started_at=apply_started_at,
+            )
             if self._batch_auto_generate_running and not self._batch_auto_generate_paused:
                 self._root.after(120, self._auto_generate_next_pending_batch_card)
             return
@@ -9288,6 +9412,11 @@ class ModernVocabularyGui:
 
         self._status_var.set(self._batch_status_var.get())
         self._update_batch_progress()
+        self._record_batch_item_perf(
+            payload,
+            status=str(item.get("status") or "unknown"),
+            apply_started_at=apply_started_at,
+        )
         if self._batch_auto_generate_running and not self._batch_auto_generate_paused:
             self._root.after(120, self._auto_generate_next_pending_batch_card)
 
@@ -9297,6 +9426,7 @@ class ModernVocabularyGui:
             self._batch_auto_generate_paused = True
             self._batch_auto_generate_running = False
             self._autosave_batch_session("auto-generation paused")
+            self._log_batch_perf_summary("paused")
             message = f"Auto-generation paused. Progress saved: {self._batch_autosave_path}"
         elif self._batch_add_all_running:
             self._batch_add_all_paused = True
