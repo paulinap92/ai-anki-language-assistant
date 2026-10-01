@@ -80,7 +80,15 @@ class AnkiClient:
                 ``http://localhost:8765``.
             deck_name: Default deck used when adding notes.
         """
-        self._url = anki_connect_url
+        raw_url = anki_connect_url.strip()
+        if raw_url.rstrip("/") == "http://localhost:8765":
+            raw_url = "http://127.0.0.1:8765"
+        self._url = raw_url
+        self._session = requests.Session()
+        if self._url.startswith(("http://127.0.0.1", "http://localhost", "http://[::1]")):
+            # AnkiConnect is local. Do not route loopback traffic through system
+            # proxy settings, and reuse the HTTP connection across calls.
+            self._session.trust_env = False
         self._deck_name = deck_name
         self._model_ready = False
         self._grammar_model_ready = False
@@ -631,18 +639,24 @@ class AnkiClient:
             if value:
                 fields[field_name] = value
 
-    def _filter_existing_note_fields(self, note_id: int, fields: dict[str, str]) -> dict[str, str]:
+    def _filter_existing_note_fields(
+        self,
+        note_id: int,
+        fields: dict[str, str],
+        existing_field_names: set[str] | None = None,
+    ) -> dict[str, str]:
         """Keep only fields exposed by a specific note type.
 
-        Existing-card audio repair can target arbitrary legacy/user note types.
-        Those notes usually do not have our hidden AudioProvider/AudioModel fields,
-        so metadata is written only when the note type supports it.
+        Existing-card audio workflows usually already loaded the note and therefore
+        know its field names. Reuse that snapshot instead of doing another
+        AnkiConnect notesInfo call for every audio item.
         """
-        notes = self._invoke(action="notesInfo", params={"notes": [note_id]}) or []
-        if not notes:
-            return fields
-        existing_names = set((notes[0].get("fields") or {}).keys())
-        return {name: value for name, value in fields.items() if name in existing_names}
+        if existing_field_names is None:
+            notes = self._invoke(action="notesInfo", params={"notes": [note_id]}) or []
+            if not notes:
+                return fields
+            existing_field_names = set((notes[0].get("fields") or {}).keys())
+        return {name: value for name, value in fields.items() if name in existing_field_names}
 
     def store_media_file(self, file_path: Path) -> str:
         """Copy a local audio file into Anki media and return its media filename."""
@@ -730,12 +744,17 @@ class AnkiClient:
         media_filename: str,
         field_name: str = "Audio",
         audio_metadata: dict[str, str] | None = None,
+        existing_field_names: set[str] | None = None,
     ) -> None:
         """Set an Anki sound reference and hidden TTS metadata on an existing note."""
         target_field = field_name or "Audio"
         fields = {target_field: f"[sound:{media_filename}]"}
         fields.update(VocabularyFieldBuilder.audio_metadata_fields(audio_metadata))
-        fields = self._filter_existing_note_fields(note_id, fields)
+        fields = self._filter_existing_note_fields(
+            note_id,
+            fields,
+            existing_field_names=existing_field_names,
+        )
         if target_field not in fields:
             raise ValueError(f"Field '{target_field}' does not exist on note {note_id}.")
         self._invoke(
@@ -749,6 +768,7 @@ class AnkiClient:
         media_filename: str,
         field_name: str,
         audio_metadata: dict[str, str] | None = None,
+        existing_fields: dict[str, str] | None = None,
     ) -> None:
         """Append an Anki sound reference to an existing text field.
 
@@ -757,13 +777,20 @@ class AnkiClient:
         """
         if not field_name:
             raise ValueError("Choose a target field for appended audio.")
-        notes = self._invoke(action="notesInfo", params={"notes": [note_id]}) or []
-        if not notes:
-            raise ValueError(f"Could not read note {note_id} before appending audio.")
-        fields = notes[0].get("fields") or {}
+        if existing_fields is None:
+            notes = self._invoke(action="notesInfo", params={"notes": [note_id]}) or []
+            if not notes:
+                raise ValueError(f"Could not read note {note_id} before appending audio.")
+            raw_fields = notes[0].get("fields") or {}
+            fields = {
+                name: (payload or {}).get("value", "")
+                for name, payload in raw_fields.items()
+            }
+        else:
+            fields = existing_fields
         if field_name not in fields:
             raise ValueError(f"Field '{field_name}' does not exist on note {note_id}.")
-        current_value = (fields.get(field_name) or {}).get("value", "")
+        current_value = fields.get(field_name, "")
         sound = f"[sound:{media_filename}]"
         if "[sound:" in str(current_value).casefold():
             updated_value = str(current_value)
@@ -773,7 +800,11 @@ class AnkiClient:
             updated_value = sound
         update_fields = {field_name: updated_value}
         update_fields.update(VocabularyFieldBuilder.audio_metadata_fields(audio_metadata))
-        update_fields = self._filter_existing_note_fields(note_id, update_fields)
+        update_fields = self._filter_existing_note_fields(
+            note_id,
+            update_fields,
+            existing_field_names=set(fields),
+        )
         self._invoke(
             action="updateNoteFields",
             params={"note": {"id": note_id, "fields": update_fields}},
@@ -964,7 +995,7 @@ class AnkiClient:
         payload = {"action": action, "version": 6, "params": params or {}}
         try:
             try:
-                response = requests.post(self._url, json=payload, timeout=10)
+                response = self._session.post(self._url, json=payload, timeout=10)
             except requests.exceptions.ConnectionError as exc:
                 raise ConnectionError(
                     "Could not connect to Anki. Make sure Anki is open "
