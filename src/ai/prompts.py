@@ -625,6 +625,74 @@ Return ONLY valid JSON with EXACTLY these keys:
 }}
 """
 
+def build_batch_grammar_cards_prompt(
+    grammar_items: list[str],
+    target_language: str,
+    topic_contexts: list[str] | None = None,
+    explanation_language: str = "Same as target",
+) -> str:
+    """Generate several Grammar cards in one request with per-item context."""
+    requested = [str(item).strip() for item in grammar_items]
+    contexts = topic_contexts or [""] * len(requested)
+    if len(contexts) != len(requested):
+        raise ValueError("Grammar batch contexts must match grammar item count.")
+    effective_explanation_language = (
+        target_language
+        if not explanation_language.strip() or explanation_language == "Same as target"
+        else explanation_language
+    )
+    entries = []
+    for index, (grammar_item, context) in enumerate(zip(requested, contexts), start=1):
+        context_text = str(context or "").strip()
+        context_block = (
+            f"\nSOURCE CONTEXT (use only to understand this grammar item):\n{context_text}"
+            if context_text
+            else ""
+        )
+        entries.append(f"ITEM {index}\nINPUT:\n{grammar_item}{context_block}")
+    items_block = "\n\n".join(entries)
+    return f"""
+You are a professional {target_language} grammar teacher.
+Create exactly {len(requested)} grammar learning items, one for each input below, IN THE SAME ORDER.
+
+Target language: {target_language}
+Explanation language: {effective_explanation_language}
+
+{items_block}
+
+For EACH item use exactly this learner-facing contract:
+- target: a short name of the grammar construction itself, never a rule/explanation/example sentence
+- structure: a compact grammatical pattern/formula
+- rule: what the construction does and/or when it is used
+- example: exactly one natural sentence that actually USES the construction
+- explanation: a concise learner-friendly explanation in {effective_explanation_language}
+- example_demonstrates_structure: true only after semantic self-check
+- target_is_structure: true only after semantic self-check
+
+Important:
+- Keep output order identical to input order.
+- Do not merge, skip, duplicate, or reorder items.
+- Each item's SOURCE CONTEXT belongs only to that item.
+- A sentence describing a grammar rule is not a valid example.
+- If either semantic check would be false, fix that item's learner-facing fields before returning JSON.
+
+Return ONLY valid JSON, no markdown:
+{{
+  "cards": [
+    {{
+      "target": "short grammar construction",
+      "structure": "compact grammar pattern",
+      "rule": "what it does / when to use it",
+      "example": "one real sentence using the construction",
+      "explanation": "explanation in {effective_explanation_language}",
+      "example_demonstrates_structure": true,
+      "target_is_structure": true
+    }}
+  ]
+}}
+"""
+
+
 def _conversation_flashcard_instructions(flashcard_context: str) -> str:
     """Return strict teaching rules for flashcard-based conversation mode."""
     context = (flashcard_context or "").strip()
