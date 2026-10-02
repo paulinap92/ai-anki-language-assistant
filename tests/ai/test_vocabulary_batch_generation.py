@@ -3,6 +3,7 @@ import json
 import pytest
 
 from src.ai.prompts import (
+    build_batch_grammar_cards_prompt,
     build_sentence_based_cards_batch_prompt,
     build_vocabulary_batch_prompt,
 )
@@ -183,4 +184,82 @@ def test_openai_compatible_provided_examples_batch_rejects_target_mixup() -> Non
             ],
             "English",
             "Polish",
+        )
+
+
+def _raw_grammar(target: str, example: str) -> dict[str, object]:
+    return {
+        "target": target,
+        "structure": f"{target} + clause",
+        "rule": f"Use {target} in the requested grammar construction.",
+        "example": example,
+        "explanation": f"Learner explanation for {target}.",
+        "example_demonstrates_structure": True,
+        "target_is_structure": True,
+    }
+
+
+def test_grammar_batch_prompt_preserves_order_and_per_item_context() -> None:
+    prompt = build_batch_grammar_cards_prompt(
+        ["though", "used to"],
+        "English",
+        ["contrast/concession source", "past-habit source"],
+        "Polish",
+    )
+
+    assert "exactly 2 grammar learning items" in prompt
+    assert "ITEM 1" in prompt
+    assert "though" in prompt
+    assert "contrast/concession source" in prompt
+    assert "ITEM 2" in prompt
+    assert "used to" in prompt
+    assert "past-habit source" in prompt
+    assert '"cards"' in prompt
+
+
+def test_openai_compatible_grammar_batch_uses_one_generation_call() -> None:
+    client = OpenAiVocabularyClient.__new__(OpenAiVocabularyClient)
+    calls = []
+    payload = {
+        "cards": [
+            _raw_grammar("though", "Though it was raining, we went out."),
+            _raw_grammar("used to", "I used to live near the sea."),
+        ]
+    }
+
+    def fake_generate_text(prompt: str, workflow: str = "card") -> str:
+        calls.append((prompt, workflow))
+        return json.dumps(payload)
+
+    client._generate_text = fake_generate_text  # type: ignore[method-assign]
+
+    cards = client.generate_grammar_cards_batch(
+        ["though", "used to"],
+        "English",
+        ["source: concession", "source: past habit"],
+        explanation_language="Polish",
+    )
+
+    assert len(calls) == 1
+    assert calls[0][1] == "import"
+    assert [card.target for card in cards] == ["though", "used to"]
+    assert cards[0].sentence == "Though it was raining, we went out."
+    assert cards[1].sentence == "I used to live near the sea."
+
+
+def test_openai_compatible_grammar_batch_rejects_wrong_card_count() -> None:
+    client = OpenAiVocabularyClient.__new__(OpenAiVocabularyClient)
+    payload = {
+        "cards": [
+            _raw_grammar("though", "Though it was raining, we went out."),
+        ]
+    }
+    client._generate_text = lambda prompt, workflow="card": json.dumps(payload)  # type: ignore[method-assign]
+
+    with pytest.raises(ValueError, match="invalid grammar batch data"):
+        client.generate_grammar_cards_batch(
+            ["though", "used to"],
+            "English",
+            ["", ""],
+            explanation_language="Polish",
         )
