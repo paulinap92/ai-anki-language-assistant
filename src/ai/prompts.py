@@ -1250,26 +1250,27 @@ ALLOWED OUTPUT TYPES
 
 {mode_contract}
 
-Your job is controlled recall, not runaway word mining:
+Your job is HIGH-RECALL candidate extraction, not ranking:
 - Candidate count must be driven by the source content, never by a fixed quota or target number.
-- A short/simple source may contain only a few useful candidates; a dense glossary or advanced lesson may legitimately contain 100+ useful candidates.
-- Return every candidate that genuinely meets the quality criteria, and do not add weak items just to increase the count.
-- Do NOT choose only an arbitrary top-N subset from explicit lesson vocabulary lists.
+- First identify candidates exhaustively across the ENTIRE source. Ranking happens later in the UI.
+- Do NOT pre-filter the list down to only the "best", "strongest", "most central", or "highest-value" items.
+- Review metadata such as learning_value, topic_relevance, reusability, advancedness and document_specificity are labels only. They must NEVER be used as a reason to omit an otherwise learnable candidate.
+- A short/simple source may contain only a few candidates; a dense reading passage or advanced lesson may legitimately contain dozens or 100+.
+- Do NOT choose an arbitrary top-N subset.
 - Extract every explicit vocabulary item from clearly marked lesson vocabulary lists when it is a real learnable target.
 - Extract every explicit idiom/expression from clearly marked expression sections when it is a real learnable target.
-- Do NOT extract every possible word from continuous prose.
-- Do NOT create one candidate for every noun, verb, adjective, symptom, body part, or repeated word in ordinary paragraphs.
-- If the source contains explicit vocabulary/expression sections, process those sections first, then still scan the surrounding reading text systematically for additional strong reusable language.
-- If the source is mostly continuous prose, do a sentence-by-sentence lexical scan. Extract every clearly learnable non-basic item that would be useful for an intermediate/advanced learner: phrasal verbs, idioms, collocations, fixed/semi-fixed phrases, useful academic or descriptive vocabulary, specialist terms, and transferable single words with meaningful learning value.
-- Do not treat "quality over quantity" as "pick only a tiny top subset". A dense reading passage can easily contain dozens of valid vocabulary candidates. Omit only items that are genuinely basic, one-off/proper-name material, OCR garbage, or not useful for active learning.
-- Never aim for 20, 60, 80, 100, or any other fixed number of candidates. Stop because the useful material is exhausted, not because a quota was reached.
+- For continuous prose, scan sentence by sentence from the beginning to the end of the source.
+- Include every non-basic, potentially learnable item appropriate for an intermediate/advanced learner: transferable single words, phrasal verbs, idioms, collocations, fixed/semi-fixed phrases, useful academic/descriptive vocabulary, specialist terms and notable lexical chunks.
+- A candidate may still be returned even if it is only Useful or Optional; the UI will rank it later.
+- Omit only obvious basic/function vocabulary, proper names with no language-learning value, OCR garbage, duplicate items, page furniture and material that is not a lexical learning target.
+- Never stop early because enough candidates have already been found. Continue scanning until the END of the source.
 
 Priority order:
 1. Extract every explicit bullet/list item under headings such as Vocabulario, Vocabulary, Léxico, Lexique, Wortschatz, Expresiones, Expresiones coloquiales, Idioms, Expressions when it is suitable for learning.
 2. Extract every numbered idiom/expression heading from expression sections.
-3. Scan reading text sentence by sentence and extract strong reusable vocabulary, including useful single words as well as collocations and expressions. Do not restrict reading-text extraction to only a handful of standout items.
-4. Skip exercises, questions, tasks, page footers, emails, websites, image filenames, copyright/footer text, tutor IDs, and page numbers unless they themselves contain a clearly reusable language target.
-5. When in doubt, prefer useful learner vocabulary over artificial scarcity: omit weak/basic/one-off items, but never drop a valid candidate merely because many candidates were already found.
+3. Scan reading text sentence by sentence from start to finish and extract all plausible intermediate/advanced lexical candidates, including useful single words as well as collocations and expressions.
+4. Skip exercises, questions, tasks, page footers, emails, websites, image filenames, copyright/footer text, tutor IDs, and page numbers unless they themselves contain a genuine lexical target.
+5. When uncertain whether a non-basic item is worth learning, INCLUDE it and mark its review metadata accordingly. The UI, not this extraction step, decides whether it is Recommended, Useful or Optional.
 
 Slash and parenthesis rules:
 - If a slash-separated item is a list of separate words, split it into separate vocabulary candidates.
