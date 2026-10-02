@@ -952,6 +952,49 @@ class ModernVocabularyGui:
         output = (result.stdout or "").strip()
         return output or "pagefile: unavailable"
 
+    def _process_memory_summary(self) -> str:
+        """Return current process working-set memory without extra dependencies."""
+        if os.name == "nt":
+            command = (
+                "$p=Get-Process -Id "
+                + str(os.getpid())
+                + "; if($p){[math]::Round($p.WorkingSet64/1MB,1)}"
+            )
+            try:
+                result = subprocess.run(
+                    ["powershell", "-NoProfile", "-Command", command],
+                    capture_output=True,
+                    text=True,
+                    timeout=4,
+                    check=False,
+                )
+                value = (result.stdout or "").strip()
+                if value:
+                    return f"App RAM: {value} MB"
+            except Exception:
+                pass
+        try:
+            import resource
+            usage = float(resource.getrusage(resource.RUSAGE_SELF).ru_maxrss)
+            if sys.platform == "darwin":
+                usage /= 1024 * 1024
+            else:
+                usage /= 1024
+            return f"App RAM: {usage:.1f} MB"
+        except Exception:
+            return "App RAM: unavailable"
+
+    def _runtime_collection_summary(self) -> str:
+        """Show sizes of the main in-memory collections that can grow during a session."""
+        return (
+            f"Queue: {len(getattr(self, '_batch_items', []))} item(s)\n"
+            f"Import candidates: {len(getattr(self, '_ocr_candidate_items', []))}\n"
+            f"Audio scan: {len(getattr(self, '_speech_notes', []))} note(s)\n"
+            f"Existing cards: {len(getattr(self, '_existing_cards', []))}\n"
+            f"Practice items: {len(getattr(self, '_practice_items', []))}\n"
+            f"Conversation rows: {len(getattr(self, '_conversation_flashcard_rows', []))}"
+        )
+
     def _clear_current_import_cache_files(self) -> int:
         """Delete only app-created import-cache files referenced by current OCR sources."""
         cache_root = Path(".import_cache").resolve()
@@ -980,7 +1023,11 @@ class ModernVocabularyGui:
         import_mb = self._folder_size_mb(Path(".import_cache"))
         audio_mb = self._folder_size_mb(Path(".audio_cache"))
         pagefile = self._windows_pagefile_summary()
+        process_memory = self._process_memory_summary()
+        collections = self._runtime_collection_summary()
         return (
+            f"{process_memory}\n"
+            f"{collections}\n\n"
             f"C: free approx: {free_gb:.2f} GB\n"
             f"TEMP: {temp_mb:.2f} MB\n"
             f".import_cache: {import_mb:.2f} MB\n"
