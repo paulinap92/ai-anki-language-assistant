@@ -5626,6 +5626,17 @@ class ModernVocabularyGui:
             result.append(item)
         return result
 
+    @staticmethod
+    def _smart_vocab_needs_coverage_retry(mode: str, source_text: str, candidate_count: int) -> bool:
+        """Detect suspicious Smart Vocabulary under-extraction on substantial prose."""
+        if str(mode or "").strip().casefold() != "smart vocabulary":
+            return False
+        word_count = len(str(source_text or "").split())
+        if word_count < 250:
+            return False
+        expected_floor = max(10, min(24, word_count // 40))
+        return int(candidate_count) < expected_floor
+
     @classmethod
     def _limit_merged_import_candidates(
         cls,
@@ -5831,6 +5842,61 @@ class ModernVocabularyGui:
                 if len(part_items) > per_request_hard_limit:
                     self._reject_runaway_ai_candidates(len(part_items), per_request_hard_limit, mode, f"{source} part {part_index}")
                     return
+
+                if self._smart_vocab_needs_coverage_retry(mode, chunk, len(part_items)):
+                    existing_targets = [
+                        str(item.get("target") or "").strip()
+                        for item in part_items
+                        if str(item.get("target") or "").strip()
+                    ]
+                    coverage_prompt = (
+                        prompt
+                        + "\n\nCOVERAGE RECOVERY PASS\n"
+                        + "The first pass under-extracted this reading text. Perform a second sentence-by-sentence scan "
+                        + "and return ADDITIONAL useful vocabulary candidates that were missed. "
+                        + "Do not repeat any of these already-found targets:\n- "
+                        + "\n- ".join(existing_targets[:80])
+                        + "\nFocus on reusable B1+/B2/C1 words, phrasal verbs, collocations, fixed expressions, "
+                        + "descriptive/academic vocabulary and transferable single words. "
+                        + "Do not add basic function words, proper names, page labels, exercise instructions or OCR garbage. "
+                        + "Return the same JSON structure as requested above, containing only additional candidates."
+                    )
+                    self._ocr_candidate_status_var.set(
+                        f"Smart Vocabulary coverage pass for part {part_index}/{len(chunks)} · "
+                        f"first pass found only {len(part_items)} candidate(s)..."
+                    )
+                    self._root.update_idletasks()
+                    try:
+                        try:
+                            coverage_raw = generate_text(coverage_prompt, workflow="import")
+                        except TypeError:
+                            coverage_raw = generate_text(coverage_prompt)
+                        coverage_items = self._ocr_candidate_items_from_ai_response(
+                            coverage_raw,
+                            default_mode=mode,
+                            source=f"{source} · coverage part {part_index}/{len(chunks)}",
+                        )
+                        if len(coverage_items) <= per_request_hard_limit:
+                            LOGGER.info(
+                                "Import Smart Vocabulary coverage: run_id=%s part=%s/%s first=%s additional=%s",
+                                run_id,
+                                part_index,
+                                len(chunks),
+                                len(part_items),
+                                len(coverage_items),
+                            )
+                            part_items = self._dedupe_import_candidate_items([*part_items, *coverage_items])
+                        else:
+                            LOGGER.warning(
+                                "Ignoring Smart Vocabulary coverage result above hard limit: %s > %s",
+                                len(coverage_items),
+                                per_request_hard_limit,
+                            )
+                    except Exception:
+                        LOGGER.exception(
+                            "Smart Vocabulary coverage pass failed; keeping first-pass candidates"
+                        )
+
                 for item in part_items:
                     item.setdefault("source_part", f"{part_index}/{len(chunks)}")
                 merged_items.extend(part_items)
