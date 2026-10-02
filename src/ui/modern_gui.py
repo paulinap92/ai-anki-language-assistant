@@ -489,7 +489,7 @@ class ModernVocabularyGui:
         self._existing_search_var = ctk.StringVar(value="")
         self._existing_scope_var = ctk.StringVar(value="Selected deck only")
         self._existing_tag_var = ctk.StringVar(value="")
-        self._existing_flag_var = ctk.StringVar(value="Any flag")
+        self._existing_flag_var = ctk.StringVar(value="No flag filter")
         self._existing_leech_var = ctk.BooleanVar(value=False)
         self._existing_topic_var = ctk.StringVar(value="character / personality traits")
         self._existing_progress_var = ctk.StringVar(value="Load flagged/leech/tagged cards, then fix or tag selected notes.")
@@ -10489,6 +10489,7 @@ class ModernVocabularyGui:
             left,
             variable=self._existing_flag_var,
             values=[
+                "No flag filter",
                 "Any flag",
                 "Red flag (flag:1)",
                 "Orange flag (flag:2)",
@@ -10605,8 +10606,8 @@ class ModernVocabularyGui:
         self._load_existing_cards()
 
     def _load_flagged_existing_cards(self) -> None:
-        if self._existing_flag_var.get() == "Any flag":
-            self._existing_flag_var.set("Red flag (flag:1)")
+        if self._existing_flag_var.get() == "No flag filter":
+            self._existing_flag_var.set("Any flag")
         self._load_existing_cards()
 
     def _load_leech_existing_cards(self) -> None:
@@ -10627,7 +10628,12 @@ class ModernVocabularyGui:
         self._load_existing_cards(words=clean_words)
 
     def _existing_flag_query(self) -> str:
-        value = self._existing_flag_var.get()
+        value = self._existing_flag_var.get().strip()
+        if value == "Any flag":
+            # Anki flag:0 means unflagged; its negation means any non-zero flag.
+            return "-flag:0"
+        if value == "No flag filter":
+            return ""
         match = re.search(r"flag:(\d)", value)
         return f"flag:{match.group(1)}" if match else ""
 
