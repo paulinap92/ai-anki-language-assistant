@@ -9195,12 +9195,21 @@ class ModernVocabularyGui:
             "generate_sentence_cards_batch",
             VocabularyAiClient.generate_sentence_cards_batch,
         )
+        provider_grammar_batch_method = getattr(
+            type(client),
+            "generate_grammar_cards_batch",
+            VocabularyAiClient.generate_grammar_cards_batch,
+        )
         provider_supports_vocab_batch = (
             provider_vocab_batch_method is not VocabularyAiClient.generate_cards_batch
         )
         provider_supports_sentence_batch = (
             provider_sentence_batch_method
             is not VocabularyAiClient.generate_sentence_cards_batch
+        )
+        provider_supports_grammar_batch = (
+            provider_grammar_batch_method
+            is not VocabularyAiClient.generate_grammar_cards_batch
         )
         if (
             resolved_mode == "Vocabulary"
@@ -9216,7 +9225,7 @@ class ModernVocabularyGui:
                     or candidate.get("card")
                     or candidate.get("grammar_card")
                 ):
-                    break
+                    continue
 
                 candidate_word = str(candidate.get("word", "")).strip()
                 candidate_topic = str(
@@ -9236,7 +9245,7 @@ class ModernVocabularyGui:
                     or candidate_preserve
                     or candidate_topic != topic_context
                 ):
-                    break
+                    continue
 
                 candidate["word"] = candidate_word
                 candidate["topic"] = candidate_topic
@@ -9259,6 +9268,54 @@ class ModernVocabularyGui:
                         "provided_target": "",
                         "sentence_request_word": candidate_word,
                         "grammar_topic_context": "",
+                    }
+                )
+        elif resolved_mode == "Grammar" and provider_supports_grammar_batch:
+            for candidate_index in range(next_index + 1, len(self._batch_items)):
+                if len(jobs) >= QUEUE_AI_BATCH_SIZE:
+                    break
+                candidate = self._batch_items[candidate_index]
+                if (
+                    str(candidate.get("status", "pending")) != "pending"
+                    or candidate.get("card")
+                    or candidate.get("grammar_card")
+                ):
+                    continue
+
+                candidate_word = str(candidate.get("word", "")).strip()
+                if not bool(candidate.get("mode_locked")):
+                    candidate["batch_mode"] = self._batch_auto_mode or "Grammar"
+                candidate_mode = self._batch_mode_for_item(candidate, candidate_word)
+                if candidate_mode != "Grammar":
+                    continue
+
+                candidate_topic = str(
+                    candidate.get("topic") or self._batch_auto_topic_context
+                ).strip()
+                candidate_grammar_context = self._grammar_topic_context_for_item(
+                    candidate, candidate_topic
+                )
+                candidate["word"] = candidate_word
+                candidate["topic"] = candidate_topic
+                candidate["target_language"] = target_language
+                candidate["explanation_language"] = explanation_language
+                candidate["resolved_mode"] = "Grammar"
+                jobs.append(
+                    {
+                        "index": candidate_index,
+                        "perf_item_started_at": time.perf_counter(),
+                        "item_ref": candidate,
+                        "word": candidate_word,
+                        "resolved_mode": "Grammar",
+                        "provider_name": provider_name,
+                        "model_name": model_name,
+                        "topic_context": candidate_topic,
+                        "target_language": target_language,
+                        "explanation_language": explanation_language,
+                        "preserve_vocab_source": False,
+                        "provided_target": "",
+                        "sentence_request_word": candidate_word,
+                        "grammar_topic_context": candidate_grammar_context,
                     }
                 )
         elif (
@@ -9294,7 +9351,7 @@ class ModernVocabularyGui:
                     or not candidate_sentence
                     or candidate_topic != topic_context
                 ):
-                    break
+                    continue
 
                 candidate["word"] = candidate_word
                 candidate["topic"] = candidate_topic
@@ -9323,11 +9380,10 @@ class ModernVocabularyGui:
                 )
 
         if len(jobs) > 1:
-            batch_label = (
-                "provided examples"
-                if resolved_mode == "Provided examples"
-                else "vocabulary"
-            )
+            batch_label = {
+                "Provided examples": "provided examples",
+                "Grammar": "grammar",
+            }.get(resolved_mode, "vocabulary")
             self._batch_status_var.set(
                 f"Generating {batch_label} batch of {len(jobs)} cards "
                 f"starting at {next_index + 1}/{len(self._batch_items)}..."
@@ -9344,6 +9400,13 @@ class ModernVocabularyGui:
                             target_language,
                             explanation_language,
                             topic_context,
+                        )
+                    elif resolved_mode == "Grammar":
+                        batch_results = client.generate_grammar_cards_batch(
+                            [str(batch_job["word"]) for batch_job in jobs],
+                            target_language,
+                            [str(batch_job["grammar_topic_context"]) for batch_job in jobs],
+                            explanation_language=explanation_language,
                         )
                     else:
                         batch_results = client.generate_cards_batch(
