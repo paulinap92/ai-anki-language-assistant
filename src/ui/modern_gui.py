@@ -144,6 +144,7 @@ TTS_SAMPLE_TEXTS = {
 CREATE_CARD_MODES = ["Vocabulary", "Grammar"]
 BATCH_MODES = ["Vocabulary", "Grammar", "Mixed", "Provided examples"]
 QUEUE_AI_BATCH_SIZE = 4
+AUDIO_ANKI_BATCH_SIZE = 4
 OCR_EXTRACTION_MODES = [
     "Provided examples",
     "Vocabulary",
@@ -13161,24 +13162,132 @@ class ModernVocabularyGui:
         perf_items = 0
 
         def publish_progress(message: str) -> None:
-            # Keep rapid audio progress inside Speech & Audio. The global activity
-            # footer is reserved for final summaries so Queue and Audio logs do not
-            # blur into one unreadable line.
             self._root.after(0, self._render_speech_notes, message)
 
         stopped = False
         stop_message = ""
         failed_index = None
         stop_status = ""
+        pending_writes: list[dict[str, object]] = []
+
+        def apply_success(entry: dict[str, object], media_name: str) -> None:
+            nonlocal completed
+            note = entry["note"]
+            assert isinstance(note, dict)
+            note_id = int(entry["note_id"])
+            audio_field = str(entry["audio_field"])
+            write_mode = str(entry["write_mode"])
+            known_fields = entry["known_fields"]
+            assert isinstance(known_fields, dict)
+
+            self._speech_audio_status_by_note_id[note_id] = "updated_in_anki"
+            fields = known_fields
+            if write_mode == "Append [sound] to existing field" and audio_field in fields:
+                fields[audio_field] = (
+                    f"{fields.get(audio_field, '')}<br>[sound:{media_name}]"
+                    if fields.get(audio_field)
+                    else f"[sound:{media_name}]"
+                )
+            elif audio_field in fields:
+                fields[audio_field] = f"[sound:{media_name}]"
+            note["fields"] = fields
+            note["audio_field"] = audio_field
+            note["audio_status"] = "has_audio"
+            completed += 1
+
+        def flush_pending() -> None:
+            nonlocal errors, perf_media_s, perf_anki_update_s
+            if not pending_writes:
+                return
+
+            batch = list(pending_writes)
+            pending_writes.clear()
+            anki_started_at = time.perf_counter()
+            try:
+                media_names = self._anki_client.store_and_attach_audio_batch(
+                    [
+                        {
+                            "path": entry["path"],
+                            "note_id": entry["note_id"],
+                            "field_name": entry["audio_field"],
+                            "audio_metadata": entry["audio_metadata"],
+                            "existing_fields": entry["known_fields"],
+                            "append": entry["write_mode"] == "Append [sound] to existing field",
+                        }
+                        for entry in batch
+                    ]
+                )
+                anki_s = max(0.0, time.perf_counter() - anki_started_at)
+                perf_anki_update_s += anki_s
+                LOGGER.info(
+                    "PERF audio_anki_batch size=%s seconds=%.3f mode=multi",
+                    len(batch),
+                    anki_s,
+                )
+                for entry, media_name in zip(batch, media_names):
+                    apply_success(entry, media_name)
+            except Exception:
+                # One malformed legacy note must not poison the whole audio run.
+                # Fall back only for this batch; normal batches keep the two-call
+                # AnkiConnect multi fast path.
+                LOGGER.exception(
+                    "Audio Anki multi batch failed; falling back to per-note writes: size=%s",
+                    len(batch),
+                )
+                for entry in batch:
+                    note_id = int(entry["note_id"])
+                    try:
+                        media_started_at = time.perf_counter()
+                        media_name = self._anki_client.store_media_file(Path(str(entry["path"])))
+                        perf_media_s += max(0.0, time.perf_counter() - media_started_at)
+
+                        update_started_at = time.perf_counter()
+                        if entry["write_mode"] == "Append [sound] to existing field":
+                            self._anki_client.append_audio_to_note(
+                                note_id,
+                                media_name,
+                                str(entry["audio_field"]),
+                                audio_metadata=entry["audio_metadata"],
+                                existing_fields=entry["known_fields"],
+                            )
+                        else:
+                            self._anki_client.attach_audio_to_note(
+                                note_id,
+                                media_name,
+                                str(entry["audio_field"]),
+                                audio_metadata=entry["audio_metadata"],
+                                existing_field_names=set(entry["known_fields"]),
+                            )
+                        perf_anki_update_s += max(0.0, time.perf_counter() - update_started_at)
+                        apply_success(entry, media_name)
+                    except Exception as exc:
+                        errors += 1
+                        self._speech_audio_status_by_note_id[note_id] = "audio_error"
+                        self._speech_audio_error_by_note_id[note_id] = str(exc)
+                        LOGGER.exception(
+                            "Audio Anki fallback write failed: note_id=%s",
+                            note_id,
+                        )
+
+            self._autosave_audio_progress(
+                f"audio batch flushed ({len(batch)})",
+                provider_name,
+                model_name,
+                voice_label,
+                voice_value,
+            )
 
         try:
             for index, note in enumerate(notes, start=1):
                 if self._speech_audio_stop_requested.is_set():
+                    flush_pending()
                     stopped = True
                     failed_index = index
                     stop_message = "User stopped audio queue."
                     break
 
+                if self._speech_audio_pause_requested.is_set():
+                    flush_pending()
                 while self._speech_audio_pause_requested.is_set():
                     self._autosave_audio_progress(
                         "audio paused",
@@ -13206,7 +13315,8 @@ class ModernVocabularyGui:
                 audio_field = str(note.get("_target_audio_field") or note.get("audio_field") or "").strip()
                 source_text = str(note.get("_source_text") or note.get("example") or note.get("word") or "").strip()
                 write_mode = str(note.get("_write_mode") or "Use dedicated audio field")
-                if current_status in {"audio_ready", "updated_in_anki", "has_audio"}:
+
+                if current_status in {"updated_in_anki", "has_audio"}:
                     skipped_done += 1
                     publish_progress(
                         f"Skipping already generated {index}/{len(notes)} · Updated {completed} · Skipped {skipped_done} · Failed {errors}"
@@ -13218,23 +13328,11 @@ class ModernVocabularyGui:
                     self._speech_audio_error_by_note_id[note_id] = (
                         "Missing target audio field." if not audio_field else "Missing source text for TTS."
                     )
-                    publish_progress(
-                        f"Skipping not-ready note {index}/{len(notes)} · Updated {completed} · Skipped {skipped_done} · Failed {errors}"
-                    )
                     continue
 
                 self._speech_audio_status_by_note_id[note_id] = "pending_audio"
-                self._autosave_audio_progress(
-                    f"before audio item {index}",
-                    provider_name,
-                    model_name,
-                    voice_label,
-                    voice_value,
-                )
                 item_started_at = time.perf_counter()
                 tts_s = 0.0
-                media_s = 0.0
-                anki_update_s = 0.0
                 cached: bool | None = None
                 try:
                     tts_started_at = time.perf_counter()
@@ -13248,61 +13346,38 @@ class ModernVocabularyGui:
                         )
                     finally:
                         tts_s = max(0.0, time.perf_counter() - tts_started_at)
+
                     cached = result.cached
                     self._speech_audio_status_by_note_id[note_id] = "audio_ready"
                     self._speech_audio_path_by_note_id[note_id] = str(result.path)
+                    known_fields = note.get("fields") if isinstance(note.get("fields"), dict) else {}
+                    pending_writes.append(
+                        {
+                            "index": index,
+                            "note": note,
+                            "note_id": note_id,
+                            "path": result.path,
+                            "audio_field": audio_field,
+                            "write_mode": write_mode,
+                            "known_fields": known_fields,
+                            "audio_metadata": self._audio_metadata_from_tts_result(
+                                result,
+                                source_text,
+                                voice_label,
+                            ),
+                        }
+                    )
                     LOGGER.info(
-                        "Existing-card TTS ready: note_id=%s word=%s path=%s cached=%s provider=%s model=%s voice_label=%s voice_value=%s",
-                        note.get("note_id"),
+                        "Existing-card TTS ready: note_id=%s word=%s path=%s cached=%s provider=%s model=%s",
+                        note_id,
                         note.get("word"),
                         result.path,
                         result.cached,
                         provider_name,
                         model_name,
-                        voice_label,
-                        voice_value,
                     )
-                    media_started_at = time.perf_counter()
-                    try:
-                        media_name = self._anki_client.store_media_file(result.path)
-                    finally:
-                        media_s = max(0.0, time.perf_counter() - media_started_at)
-                    audio_metadata = self._audio_metadata_from_tts_result(
-                        result,
-                        source_text,
-                        voice_label,
-                    )
-                    known_fields = note.get("fields") if isinstance(note.get("fields"), dict) else {}
-                    anki_update_started_at = time.perf_counter()
-                    try:
-                        if write_mode == "Append [sound] to existing field":
-                            self._anki_client.append_audio_to_note(
-                                note_id,
-                                media_name,
-                                audio_field,
-                                audio_metadata=audio_metadata,
-                                existing_fields=known_fields,
-                            )
-                        else:
-                            self._anki_client.attach_audio_to_note(
-                                note_id,
-                                media_name,
-                                audio_field,
-                                audio_metadata=audio_metadata,
-                                existing_field_names=set(known_fields),
-                            )
-                    finally:
-                        anki_update_s = max(0.0, time.perf_counter() - anki_update_started_at)
-                    self._speech_audio_status_by_note_id[note_id] = "updated_in_anki"
-                    fields = known_fields
-                    if write_mode == "Append [sound] to existing field" and audio_field in fields:
-                        fields[audio_field] = f"{fields.get(audio_field, '')}<br>[sound:{media_name}]" if fields.get(audio_field) else f"[sound:{media_name}]"
-                    elif audio_field in fields:
-                        fields[audio_field] = f"[sound:{media_name}]"
-                    note["fields"] = fields
-                    note["audio_field"] = audio_field
-                    note["audio_status"] = "has_audio"
-                    completed += 1
+                    if len(pending_writes) >= AUDIO_ANKI_BATCH_SIZE:
+                        flush_pending()
                 except Exception as exc:
                     errors += 1
                     failed_index = index
@@ -13322,51 +13397,38 @@ class ModernVocabularyGui:
                         voice_value,
                     )
                     LOGGER.exception(
-                        "Existing-card audio generation/update failed: note_id=%s word=%s example=%s fatal=%s error=%s",
-                        note.get("note_id"),
+                        "Existing-card audio generation failed: note_id=%s word=%s fatal=%s error=%s",
+                        note_id,
                         note.get("word"),
-                        note.get("example"),
                         self._is_fatal_tts_error(exc),
                         exc,
                     )
                     if self._is_fatal_tts_error(exc):
+                        flush_pending()
                         stopped = True
-                        LOGGER.warning(
-                            "Stopping existing-card TTS queue after fatal provider error: provider=%s model=%s voice_label=%s voice_value=%s status=%s failed_index=%s note_id=%s",
-                            provider_name,
-                            model_name,
-                            voice_label,
-                            voice_value,
-                            http_status,
-                            index,
-                            note_id,
-                        )
                         break
                 finally:
                     perf_items += 1
                     perf_tts_s += tts_s
-                    perf_media_s += media_s
-                    perf_anki_update_s += anki_update_s
                     LOGGER.info(
                         "PERF audio_item index=%s/%s note_id=%s status=%s cached=%s "
-                        "tts_s=%.3f media_s=%.3f anki_update_s=%.3f total_s=%.3f chars=%s word=%r",
+                        "tts_s=%.3f total_s=%.3f chars=%s word=%r",
                         index,
                         len(notes),
                         note_id,
                         self._speech_audio_status_by_note_id.get(note_id, "unknown"),
                         cached,
                         tts_s,
-                        media_s,
-                        anki_update_s,
                         max(0.0, time.perf_counter() - item_started_at),
                         len(source_text),
                         note.get("word"),
                     )
 
                 publish_progress(
-                    f"Generating {index}/{len(notes)} · Updated {completed} · Skipped {skipped_done} · Failed {errors}"
+                    f"Generating {index}/{len(notes)} · Updated {completed} · Buffered {len(pending_writes)} · Skipped {skipped_done} · Failed {errors}"
                 )
 
+            flush_pending()
             self._autosave_audio_progress(
                 "audio queue finished" if not stopped else "audio queue stopped",
                 provider_name,
