@@ -11595,6 +11595,11 @@ class ModernVocabularyGui:
         actions = ctk.CTkFrame(frame, corner_radius=18)
         actions.grid(row=3, column=0, sticky="ew", pady=(0, 10))
         ctk.CTkButton(actions, text="Find missing audio", command=self._load_speech_notes).pack(side="left", padx=16, pady=14)
+        ctk.CTkButton(
+            actions,
+            text="Find missing audio — all decks",
+            command=lambda: self._load_speech_notes(include_all_decks=True),
+        ).pack(side="left", padx=(0, 8), pady=14)
         ctk.CTkButton(actions, text="Select ready", command=self._select_ready_speech_notes).pack(side="left", padx=(0, 8), pady=14)
         ctk.CTkButton(actions, text="Deselect all", command=self._deselect_speech_notes).pack(side="left", padx=(0, 8), pady=14)
         ctk.CTkButton(actions, text="Clear results", command=self._clear_speech_results).pack(side="left", padx=(0, 8), pady=14)
@@ -12928,10 +12933,11 @@ class ModernVocabularyGui:
             f"{counts.get('malformed_audio', 0)} malformed."
         )
 
-    def _load_speech_notes(self) -> None:
-        """Load missing/malformed audio from all supported note types in the deck."""
+    def _load_speech_notes(self, include_all_decks: bool = False) -> None:
+        """Load missing/malformed audio from one deck or the whole Anki collection."""
         try:
-            self._set_speech_selected_deck()
+            if not include_all_decks:
+                self._set_speech_selected_deck()
             # Make sure grammar note types created by Queue Grammar expose Audio/ExampleAudio
             # before the broad missing-audio scan runs. This is idempotent.
             try:
@@ -12941,6 +12947,7 @@ class ModernVocabularyGui:
             all_notes = self._anki_client.list_existing_notes(
                 search_query=self._speech_search_var.get().strip(),
                 missing_audio_only=False,
+                include_all_decks=include_all_decks,
             )
         except Exception as exc:
             LOGGER.exception("Speech/audio missing-audio scan failed")
@@ -12964,8 +12971,9 @@ class ModernVocabularyGui:
 
         self._speech_scan_loaded = True
         extra = self._speech_search_var.get().strip()
+        scope = " · scope: all decks" if include_all_decks else f" · deck: {self._speech_deck_var.get().strip()}"
         suffix = f" · filter: {extra}" if extra else ""
-        scan_summary = f"{scan_summary}{suffix}"
+        scan_summary = f"{scan_summary}{scope}{suffix}"
         self._speech_summary_var.set(scan_summary)
         self._render_speech_notes(scan_summary)
 
