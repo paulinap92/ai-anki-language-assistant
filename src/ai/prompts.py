@@ -1259,16 +1259,17 @@ Your job is controlled recall, not runaway word mining:
 - Extract every explicit idiom/expression from clearly marked expression sections when it is a real learnable target.
 - Do NOT extract every possible word from continuous prose.
 - Do NOT create one candidate for every noun, verb, adjective, symptom, body part, or repeated word in ordinary paragraphs.
-- If the source contains explicit vocabulary/expression sections, process those sections first and keep reading-text mining minimal and selective.
-- If the source is mostly continuous prose, return only genuinely useful reusable items: idioms, collocations, specialist terms, and lesson-relevant phrases.
+- If the source contains explicit vocabulary/expression sections, process those sections first, then still scan the surrounding reading text systematically for additional strong reusable language.
+- If the source is mostly continuous prose, do a sentence-by-sentence lexical scan. Extract every clearly learnable non-basic item that would be useful for an intermediate/advanced learner: phrasal verbs, idioms, collocations, fixed/semi-fixed phrases, useful academic or descriptive vocabulary, specialist terms, and transferable single words with meaningful learning value.
+- Do not treat "quality over quantity" as "pick only a tiny top subset". A dense reading passage can easily contain dozens of valid vocabulary candidates. Omit only items that are genuinely basic, one-off/proper-name material, OCR garbage, or not useful for active learning.
 - Never aim for 20, 60, 80, 100, or any other fixed number of candidates. Stop because the useful material is exhausted, not because a quota was reached.
 
 Priority order:
 1. Extract every explicit bullet/list item under headings such as Vocabulario, Vocabulary, Léxico, Lexique, Wortschatz, Expresiones, Expresiones coloquiales, Idioms, Expressions when it is suitable for learning.
 2. Extract every numbered idiom/expression heading from expression sections.
-3. Extract useful reusable collocations and expressions from reading text after explicit lists and expression headings are complete.
+3. Scan reading text sentence by sentence and extract strong reusable vocabulary, including useful single words as well as collocations and expressions. Do not restrict reading-text extraction to only a handful of standout items.
 4. Skip exercises, questions, tasks, page footers, emails, websites, image filenames, copyright/footer text, tutor IDs, and page numbers unless they themselves contain a clearly reusable language target.
-5. When in doubt, prefer quality over quantity: omit weak one-off words, but never drop a strong candidate merely because many candidates were already found.
+5. When in doubt, prefer useful learner vocabulary over artificial scarcity: omit weak/basic/one-off items, but never drop a valid candidate merely because many candidates were already found.
 
 Slash and parenthesis rules:
 - If a slash-separated item is a list of separate words, split it into separate vocabulary candidates.
