@@ -23,7 +23,7 @@ class _Var:
 
 def test_any_flag_means_any_nonzero_anki_flag() -> None:
     gui = ModernVocabularyGui.__new__(ModernVocabularyGui)
-    gui._existing_flag_var = _Var("Any flag")
+    gui._existing_flag_var = _Var("Any flag (flagged only)")
 
     assert gui._existing_flag_query() == "-flag:0"
 
@@ -52,5 +52,5 @@ def test_load_flagged_switches_no_filter_to_any_flag() -> None:
 
     gui._load_flagged_existing_cards()
 
-    assert gui._existing_flag_var.get() == "Any flag"
+    assert gui._existing_flag_var.get() == "Any flag (flagged only)"
     assert called == [True]
