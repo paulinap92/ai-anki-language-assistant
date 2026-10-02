@@ -11597,7 +11597,7 @@ class ModernVocabularyGui:
         ctk.CTkButton(actions, text="Find missing audio", command=self._load_speech_notes).pack(side="left", padx=16, pady=14)
         ctk.CTkButton(
             actions,
-            text="Find missing audio — all decks",
+            text="Find missing audio — all decks / current language",
             command=lambda: self._load_speech_notes(include_all_decks=True),
         ).pack(side="left", padx=(0, 8), pady=14)
         ctk.CTkButton(actions, text="Select ready", command=self._select_ready_speech_notes).pack(side="left", padx=(0, 8), pady=14)
@@ -12933,6 +12933,19 @@ class ModernVocabularyGui:
             f"{counts.get('malformed_audio', 0)} malformed."
         )
 
+    @classmethod
+    def _speech_note_language_matches(cls, note_language: object, requested_language: str) -> bool:
+        """Match explicit Anki note language to the active learning language.
+
+        Global all-deck scans intentionally exclude notes with no Language value
+        so TTS never guesses across mixed-language collections.
+        """
+        candidate = str(note_language or "").strip()
+        requested = str(requested_language or "").strip()
+        if not candidate or not requested:
+            return False
+        return cls._voice_language_matches(candidate, requested)
+
     def _load_speech_notes(self, include_all_decks: bool = False) -> None:
         """Load missing/malformed audio from one deck or the whole Anki collection."""
         try:
@@ -12949,6 +12962,13 @@ class ModernVocabularyGui:
                 missing_audio_only=False,
                 include_all_decks=include_all_decks,
             )
+            requested_language = self._current_speech_language()
+            if include_all_decks:
+                all_notes = [
+                    note
+                    for note in all_notes
+                    if self._speech_note_language_matches(note.get("language"), requested_language)
+                ]
         except Exception as exc:
             LOGGER.exception("Speech/audio missing-audio scan failed")
             messagebox.showerror("Anki error", str(exc))
@@ -12971,7 +12991,11 @@ class ModernVocabularyGui:
 
         self._speech_scan_loaded = True
         extra = self._speech_search_var.get().strip()
-        scope = " · scope: all decks" if include_all_decks else f" · deck: {self._speech_deck_var.get().strip()}"
+        scope = (
+            f" · scope: all decks · language: {self._current_speech_language()}"
+            if include_all_decks
+            else f" · deck: {self._speech_deck_var.get().strip()}"
+        )
         suffix = f" · filter: {extra}" if extra else ""
         scan_summary = f"{scan_summary}{scope}{suffix}"
         self._speech_summary_var.set(scan_summary)
