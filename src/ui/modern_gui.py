@@ -9271,6 +9271,70 @@ class ModernVocabularyGui:
                         "grammar_topic_context": "",
                     }
                 )
+        elif (
+            resolved_mode == "Vocabulary"
+            and preserve_vocab_source
+            and provider_supports_sentence_batch
+        ):
+            for candidate_index in range(next_index + 1, len(self._batch_items)):
+                if len(jobs) >= QUEUE_AI_BATCH_SIZE:
+                    break
+                candidate = self._batch_items[candidate_index]
+                if (
+                    str(candidate.get("status", "pending")) != "pending"
+                    or candidate.get("card")
+                    or candidate.get("grammar_card")
+                ):
+                    continue
+
+                candidate_word = str(candidate.get("word", "")).strip()
+                candidate_topic = str(
+                    candidate.get("topic") or self._batch_auto_topic_context
+                ).strip()
+                if not bool(candidate.get("mode_locked")):
+                    candidate["batch_mode"] = self._batch_auto_mode or "Vocabulary"
+                candidate_mode = self._batch_mode_for_item(candidate, candidate_word)
+                candidate_source_sentence = str(candidate.get("source_sentence") or "").strip()
+                candidate_preserve = (
+                    candidate_mode == "Vocabulary"
+                    and str(candidate.get("generation_strategy") or "")
+                    == "preserve_source_sentence"
+                    and bool(candidate_source_sentence)
+                )
+                if (
+                    not candidate_preserve
+                    or candidate_topic != topic_context
+                ):
+                    continue
+
+                candidate_target = str(
+                    candidate.get("provided_target") or candidate_word
+                ).strip()
+                candidate["word"] = candidate_word
+                candidate["topic"] = candidate_topic
+                candidate["target_language"] = target_language
+                candidate["explanation_language"] = explanation_language
+                candidate["resolved_mode"] = "Vocabulary"
+                candidate["provided_target"] = candidate_target
+                candidate["provided_sentence"] = candidate_source_sentence
+                jobs.append(
+                    {
+                        "index": candidate_index,
+                        "perf_item_started_at": time.perf_counter(),
+                        "item_ref": candidate,
+                        "word": candidate_word,
+                        "resolved_mode": "Vocabulary",
+                        "provider_name": provider_name,
+                        "model_name": model_name,
+                        "topic_context": candidate_topic,
+                        "target_language": target_language,
+                        "explanation_language": explanation_language,
+                        "preserve_vocab_source": True,
+                        "provided_target": candidate_target,
+                        "sentence_request_word": f"{candidate_target} | {candidate_source_sentence}",
+                        "grammar_topic_context": "",
+                    }
+                )
         elif resolved_mode == "Grammar" and provider_supports_grammar_batch:
             for candidate_index in range(next_index + 1, len(self._batch_items)):
                 if len(jobs) >= QUEUE_AI_BATCH_SIZE:
@@ -9395,7 +9459,7 @@ class ModernVocabularyGui:
             if len(jobs) > 1:
                 batch_started_at = time.perf_counter()
                 try:
-                    if resolved_mode == "Provided examples":
+                    if resolved_mode == "Provided examples" or preserve_vocab_source:
                         batch_results = client.generate_sentence_cards_batch(
                             [str(batch_job["sentence_request_word"]) for batch_job in jobs],
                             target_language,
