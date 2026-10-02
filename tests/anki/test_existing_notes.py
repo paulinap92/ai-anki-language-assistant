@@ -396,3 +396,68 @@ def test_summarise_note_exposes_audio_metadata_for_preview() -> None:
     assert summary["audio_voice"] == "coral"
     assert summary["audio_voice_label"] == "Coral"
     assert summary["audio_generated_at"] == "2026-08-03T10:48:00"
+
+
+def test_store_and_attach_audio_batch_uses_two_multi_calls(tmp_path) -> None:
+    class FakeAnkiClient(AnkiClient):
+        def __init__(self) -> None:
+            super().__init__("http://localhost:8765", "Deck")
+            self.calls = []
+
+        def _invoke(self, action, params=None):  # type: ignore[override]
+            self.calls.append((action, params))
+            if action == "multi":
+                actions = params["actions"]
+                if actions and actions[0]["action"] == "storeMediaFile":
+                    return [item["params"]["filename"] for item in actions]
+                return [None for _ in actions]
+            raise AssertionError(f"unexpected action: {action}")
+
+    audio1 = tmp_path / "one.mp3"
+    audio2 = tmp_path / "two.mp3"
+    audio1.write_bytes(b"one")
+    audio2.write_bytes(b"two")
+
+    client = FakeAnkiClient()
+    media_names = client.store_and_attach_audio_batch(
+        [
+            {
+                "path": audio1,
+                "note_id": 1,
+                "field_name": "Audio",
+                "audio_metadata": {"AudioProvider": "OpenAI"},
+                "existing_fields": {"Audio": "", "AudioProvider": ""},
+                "append": False,
+            },
+            {
+                "path": audio2,
+                "note_id": 2,
+                "field_name": "Back",
+                "audio_metadata": {},
+                "existing_fields": {"Back": "translation"},
+                "append": True,
+            },
+        ]
+    )
+
+    assert media_names == ["one.mp3", "two.mp3"]
+    assert [action for action, _ in client.calls] == ["multi", "multi"]
+
+    media_actions = client.calls[0][1]["actions"]
+    assert [action["action"] for action in media_actions] == [
+        "storeMediaFile",
+        "storeMediaFile",
+    ]
+
+    update_actions = client.calls[1][1]["actions"]
+    assert [action["action"] for action in update_actions] == [
+        "updateNoteFields",
+        "updateNoteFields",
+    ]
+    assert update_actions[0]["params"]["note"]["fields"] == {
+        "Audio": "[sound:one.mp3]",
+        "AudioProvider": "OpenAI",
+    }
+    assert update_actions[1]["params"]["note"]["fields"] == {
+        "Back": "translation<br>[sound:two.mp3]"
+    }
