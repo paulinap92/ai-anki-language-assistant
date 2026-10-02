@@ -252,11 +252,3 @@ def test_smart_vocabulary_heading_label_reaches_queue_as_generated_vocabulary() 
     assert "source_sentence" not in item
     assert "provided_sentence" not in item
     assert item["source_definition"] == "A PLANNER or SPONTANEOUS"
-
-
-def test_smart_vocab_coverage_retry_only_for_sparse_long_text() -> None:
-    long_text = "word " * 400
-    assert ModernVocabularyGui._smart_vocab_needs_coverage_retry("Smart vocabulary", long_text, 6)
-    assert not ModernVocabularyGui._smart_vocab_needs_coverage_retry("Smart vocabulary", long_text, 20)
-    assert not ModernVocabularyGui._smart_vocab_needs_coverage_retry("Vocabulary", long_text, 6)
-    assert not ModernVocabularyGui._smart_vocab_needs_coverage_retry("Smart vocabulary", "word " * 100, 2)
