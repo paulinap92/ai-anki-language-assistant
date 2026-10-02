@@ -9186,18 +9186,22 @@ class ModernVocabularyGui:
         }
 
         jobs = [job]
+        # Capability must be checked on the real provider, not only on a
+        # tracing/decorator wrapper. A wrapper may expose batch methods while its
+        # inner client still inherits the base fallback that loops one-by-one.
+        capability_client = getattr(client, "_inner", client)
         provider_vocab_batch_method = getattr(
-            type(client),
+            type(capability_client),
             "generate_cards_batch",
             VocabularyAiClient.generate_cards_batch,
         )
         provider_sentence_batch_method = getattr(
-            type(client),
+            type(capability_client),
             "generate_sentence_cards_batch",
             VocabularyAiClient.generate_sentence_cards_batch,
         )
         provider_grammar_batch_method = getattr(
-            type(client),
+            type(capability_client),
             "generate_grammar_cards_batch",
             VocabularyAiClient.generate_grammar_cards_batch,
         )
@@ -9211,6 +9215,16 @@ class ModernVocabularyGui:
         provider_supports_grammar_batch = (
             provider_grammar_batch_method
             is not VocabularyAiClient.generate_grammar_cards_batch
+        )
+        LOGGER.info(
+            "PERF queue_batch_capability provider=%s runtime=%s inner=%s "
+            "vocab=%s sentence=%s grammar=%s",
+            provider_name,
+            type(client).__name__,
+            type(capability_client).__name__,
+            provider_supports_vocab_batch,
+            provider_supports_sentence_batch,
+            provider_supports_grammar_batch,
         )
         if (
             resolved_mode == "Vocabulary"
@@ -9443,6 +9457,16 @@ class ModernVocabularyGui:
                         "grammar_topic_context": "",
                     }
                 )
+
+        LOGGER.info(
+            "PERF queue_batch_plan mode=%s provider=%s jobs=%s indexes=%s "
+            "preserve_source=%s",
+            resolved_mode,
+            provider_name,
+            len(jobs),
+            [int(batch_job["index"]) for batch_job in jobs],
+            preserve_vocab_source,
+        )
 
         if len(jobs) > 1:
             batch_label = {
