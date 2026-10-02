@@ -10490,7 +10490,7 @@ class ModernVocabularyGui:
             variable=self._existing_flag_var,
             values=[
                 "No flag filter",
-                "Any flag",
+                "Any flag (flagged only)",
                 "Red flag (flag:1)",
                 "Orange flag (flag:2)",
                 "Green flag (flag:3)",
@@ -10607,7 +10607,7 @@ class ModernVocabularyGui:
 
     def _load_flagged_existing_cards(self) -> None:
         if self._existing_flag_var.get() == "No flag filter":
-            self._existing_flag_var.set("Any flag")
+            self._existing_flag_var.set("Any flag (flagged only)")
         self._load_existing_cards()
 
     def _load_leech_existing_cards(self) -> None:
@@ -10629,7 +10629,7 @@ class ModernVocabularyGui:
 
     def _existing_flag_query(self) -> str:
         value = self._existing_flag_var.get().strip()
-        if value == "Any flag":
+        if value.startswith("Any flag"):
             # Anki flag:0 means unflagged; its negation means any non-zero flag.
             return "-flag:0"
         if value == "No flag filter":
