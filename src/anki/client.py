@@ -669,6 +669,93 @@ class AnkiClient:
             raise ValueError(f"Could not store Anki media file: {file_path.name}")
         return str(result)
 
+    def store_and_attach_audio_batch(
+        self,
+        items: list[dict[str, Any]],
+    ) -> list[str]:
+        """Store several audio files and update their notes using two AnkiConnect multi calls.
+
+        Each item must provide: path, note_id, field_name, audio_metadata,
+        existing_fields, and append (bool). Existing fields are supplied by the
+        caller so this fast path never performs per-note notesInfo reads.
+        """
+        if not items:
+            return []
+
+        media_actions = []
+        for item in items:
+            path = Path(item["path"])
+            data = base64.b64encode(path.read_bytes()).decode("ascii")
+            media_actions.append(
+                {
+                    "action": "storeMediaFile",
+                    "params": {"filename": path.name, "data": data},
+                }
+            )
+
+        media_names = self._invoke(
+            action="multi",
+            params={"actions": media_actions},
+        ) or []
+        if len(media_names) != len(items):
+            raise ValueError(
+                f"AnkiConnect stored {len(media_names)} audio files for {len(items)} requested items."
+            )
+
+        update_actions = []
+        normalized_names: list[str] = []
+        for item, raw_media_name in zip(items, media_names):
+            if not raw_media_name:
+                raise ValueError(f"Could not store Anki media file for note {item['note_id']}.")
+            media_name = str(raw_media_name)
+            normalized_names.append(media_name)
+
+            note_id = int(item["note_id"])
+            field_name = str(item["field_name"])
+            existing_fields = dict(item.get("existing_fields") or {})
+            audio_metadata = item.get("audio_metadata")
+            sound = f"[sound:{media_name}]"
+
+            if bool(item.get("append")):
+                if field_name not in existing_fields:
+                    raise ValueError(f"Field '{field_name}' does not exist on note {note_id}.")
+                current_value = str(existing_fields.get(field_name) or "")
+                if "[sound:" in current_value.casefold():
+                    updated_value = current_value
+                elif current_value:
+                    updated_value = f"{current_value}<br>{sound}"
+                else:
+                    updated_value = sound
+                fields = {field_name: updated_value}
+            else:
+                fields = {field_name: sound}
+
+            fields.update(VocabularyFieldBuilder.audio_metadata_fields(audio_metadata))
+            fields = self._filter_existing_note_fields(
+                note_id,
+                fields,
+                existing_field_names=set(existing_fields),
+            )
+            if field_name not in fields:
+                raise ValueError(f"Field '{field_name}' does not exist on note {note_id}.")
+
+            update_actions.append(
+                {
+                    "action": "updateNoteFields",
+                    "params": {"note": {"id": note_id, "fields": fields}},
+                }
+            )
+
+        update_results = self._invoke(
+            action="multi",
+            params={"actions": update_actions},
+        ) or []
+        if len(update_results) != len(items):
+            raise ValueError(
+                f"AnkiConnect updated {len(update_results)} notes for {len(items)} requested audio items."
+            )
+        return normalized_names
+
     AUDIO_FIELD_CANDIDATES = ("Audio", "ExampleAudio", "WordAudio", "SentenceAudio")
     WORD_FIELD_CANDIDATES = ("Word", "Sentence", "Structure", "Front", "Expression", "Phrase", "Term")
     EXAMPLE_FIELD_CANDIDATES = ("Example", "ContextExample", "Sentence", "ExampleSentence", "Back")
