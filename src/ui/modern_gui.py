@@ -13162,7 +13162,10 @@ class ModernVocabularyGui:
         perf_items = 0
 
         def publish_progress(message: str) -> None:
-            self._root.after(0, self._render_speech_notes, message)
+            # Updating progress must stay O(1). Re-rendering the whole Speech &
+            # Audio checklist here rebuilt hundreds of CTk widgets after every
+            # card and dominated long audio runs.
+            self._root.after(0, self._speech_progress_var.set, message)
 
         stopped = False
         stop_message = ""
