@@ -12,6 +12,7 @@ from src.ai.prompts import (
     build_conversation_start_prompt,
     build_grammar_analysis_prompt,
     build_batch_grammar_prompt,
+    build_batch_grammar_cards_prompt,
     build_sentence_based_card_prompt,
     build_sentence_based_cards_batch_prompt,
     build_vocabulary_batch_prompt,
@@ -284,6 +285,63 @@ class OpenAiVocabularyClient(VocabularyAiClient):
             workflow=workflow,
         )
         return self._parse_grammar_analysis(raw_text, self.provider_name, target_language, explanation_language)
+
+    def generate_grammar_cards_batch(
+        self,
+        grammar_items: list[str],
+        target_language: str,
+        topic_contexts: list[str] | None = None,
+        explanation_language: str = "Same as target",
+    ) -> list[GrammarAnalysis]:
+        """Generate several Grammar cards in one provider request."""
+        requested = [str(item).strip() for item in grammar_items if str(item).strip()]
+        if not requested:
+            return []
+        contexts = topic_contexts or [""] * len(requested)
+        if len(contexts) != len(requested):
+            raise ValueError("Grammar batch contexts must match grammar item count.")
+
+        workflow = (
+            "import"
+            if any(
+                token in str(context or "").casefold()
+                for context in contexts
+                for token in ("source", "ocr", "import", "rule-only", "detected")
+            )
+            else "card"
+        )
+        raw_text = self._generate_text(
+            build_batch_grammar_cards_prompt(
+                requested,
+                target_language,
+                contexts,
+                explanation_language=explanation_language,
+            ),
+            workflow=workflow,
+        )
+        cleaned = raw_text.replace(chr(96) * 3 + "json", "").replace(chr(96) * 3, "").strip()
+        try:
+            payload = json.loads(cleaned)
+            raw_cards = payload.get("cards") if isinstance(payload, dict) else None
+            if not isinstance(raw_cards, list) or len(raw_cards) != len(requested):
+                raise ValueError(
+                    f"Expected {len(requested)} grammar cards, got "
+                    f"{len(raw_cards) if isinstance(raw_cards, list) else 'invalid payload'}."
+                )
+            return [
+                self._parse_grammar_analysis(
+                    json.dumps(raw_card, ensure_ascii=False),
+                    self.provider_name,
+                    target_language,
+                    explanation_language,
+                )
+                for raw_card in raw_cards
+            ]
+        except Exception as exc:
+            raise ValueError(
+                f"{self.provider_name} returned invalid grammar batch data.\n"
+                f"Raw response:\n{raw_text}"
+            ) from exc
 
     def generate_sentence_card(
         self,
