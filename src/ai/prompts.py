@@ -1510,8 +1510,8 @@ Important:
 - Return candidate drafts only. The app will review/edit/send them to Batch later.
 - Candidate count must be driven by what is actually present on the page, never by a fixed quota. Return every genuinely useful candidate and do not pad or truncate to a target number.
 - A sparse page may yield only a few candidates; a dense vocabulary/grammar page may legitimately yield many.
-- Do NOT extract every word from continuous prose. For ordinary paragraphs, return only high-value lesson vocabulary, idioms, collocations, and clearly marked/highlighted items.
-- If the page has explicit lists/tables, extract those first. If it is mostly prose, be selective.
+- Do NOT extract every word from continuous prose. For ordinary paragraphs, scan sentence by sentence and extract every clearly learnable non-basic item that is useful for an intermediate/advanced learner: phrasal verbs, idioms, collocations, fixed/semi-fixed phrases, useful academic/descriptive vocabulary, specialist terms, and transferable single words with meaningful learning value.
+- If the page has explicit lists/tables, extract those first. If it is mostly prose, do not collapse the result to a tiny "top few" subset: a dense reading passage can legitimately yield dozens of useful vocabulary candidates. Omit only genuinely basic, one-off/proper-name, OCR-garbage, or low-learning-value items.
 
 Table-aware rules:
 - If the page contains a table, preserve row relationships. Never mix cells from different rows.
@@ -1541,6 +1541,7 @@ Vocabulary image contract:
 - In Vocabulary mode, return type="vocabulary" only. Do not return provided_example or grammar.
 - In Vocabulary + source examples mode, return type="vocabulary" only, but attach source_sentence when a clear visible example belongs to that expression.
 - In Smart vocabulary mode, you may return type="vocabulary" and type="provided_example". Use provided_example only for complete useful source sentences with a clear target; never return grammar in Smart vocabulary mode.
+- In Smart vocabulary mode, after explicit lists/headings are handled, scan reading prose systematically for reusable learner vocabulary. Include useful single words as well as collocations/phrases; do not restrict prose extraction to only a handful of standout items.
 - Extract all explicit list items from visible Vocabulario/Vocabulary/Léxico/Expresiones sections before extracting anything from prose.
 - Extract numbered idiom/expression headings as vocabulary/idiom candidates.
 - Split slash-separated word lists into separate candidates; preserve or expand slash alternatives inside fixed expressions.
