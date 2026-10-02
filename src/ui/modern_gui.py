@@ -9333,7 +9333,7 @@ class ModernVocabularyGui:
                     or candidate.get("card")
                     or candidate.get("grammar_card")
                 ):
-                    break
+                    continue
 
                 candidate_word = str(candidate.get("word", "")).strip()
                 candidate_topic = str(
