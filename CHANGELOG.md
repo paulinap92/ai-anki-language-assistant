@@ -1,5 +1,17 @@
 # Changelog
 
+## v13.0.0 — Fast Version
+
+- Promoted the current fast desktop line to a new major release after the v12.4.x stabilization cycle.
+- Added background Queue processing so long AI generation work no longer has to block the desktop UI.
+- Expanded batch vocabulary generation and Queue regression coverage.
+- Improved existing-note handling and collection-wide duplicate protection around Anki writes.
+- Added app-wide audio coverage checks and related speech-service improvements.
+- Added Fix Cards flag filtering and additional Practice workflow fixes.
+- Expanded LangSmith tracing around the newer generation and workflow paths.
+- Includes the v12.4.9 free-cloud-provider work: OpenRouter, Groq LLM support and Groq Cloud STT.
+- Keeps the existing human-in-the-loop workflow: source → candidates → review → Queue → generation → review → Anki.
+
 ## v12.4.9 — Free cloud provider options
 
 - Added OpenRouter as a selectable LLM provider using the existing OpenAI-compatible client path; the default model is `openrouter/free` and can be overridden per card/import/review workflow.
