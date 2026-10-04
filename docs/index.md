@@ -6,7 +6,7 @@ If you received a ready-to-run Windows release and do not work with Python or Gi
 
 - [Install the Windows EXE](installation/windows-exe.md)
 - [Recommended setup](installation/recommended-setup.md)
-- [Create an OpenAI API key](installation/api-keys.md)
+- [Create an OpenAI or Gemini API key](installation/api-keys.md)
 
 
 **AI Anki Language Assistant** is a desktop application for creating reviewed language-learning Anki cards from vocabulary, grammar material, conversations, and imported text/images/PDFs.
