@@ -1,6 +1,12 @@
 # Environment configuration
 
-Runtime/provider configuration is loaded from a local `.env` file. Start from the repository example:
+Runtime/provider configuration is loaded from a local `.env` file. The same settings are exposed through the desktop **Setup** screen.
+
+![Setup screen](../assets/setup.png)
+
+*Setup keeps provider, STT, TTS, and local/cloud configuration in one place.*
+
+Start from the repository example:
 
 ```powershell
 Copy-Item .env.example .env
