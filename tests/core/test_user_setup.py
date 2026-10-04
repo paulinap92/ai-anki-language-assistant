@@ -117,3 +117,24 @@ def test_recommended_setup_can_save_supplied_openai_key(tmp_path: Path) -> None:
     assert values["OPENAI_API_KEY"] == "user-openai-key"
     assert values["AI_SETUP_MODE"] == "hybrid"
     assert values["STT_PROVIDER"] == "local_whisper"
+
+
+def test_recommended_setup_can_save_supplied_gemini_key(tmp_path: Path) -> None:
+    env_path = tmp_path / ".env"
+
+    apply_recommended_setup(env_path, gemini_api_key="user-gemini-key")
+    values = read_env_values(env_path)
+
+    assert values["GEMINI_API_KEY"] == "user-gemini-key"
+    assert values["AI_SETUP_MODE"] == "hybrid"
+    assert values["STT_PROVIDER"] == "local_whisper"
+
+
+def test_recommended_setup_preserves_existing_gemini_key_when_not_replaced(tmp_path: Path) -> None:
+    env_path = tmp_path / ".env"
+    env_path.write_text("GEMINI_API_KEY=keep-gemini\n", encoding="utf-8")
+
+    apply_recommended_setup(env_path)
+    values = read_env_values(env_path)
+
+    assert values["GEMINI_API_KEY"] == "keep-gemini"
