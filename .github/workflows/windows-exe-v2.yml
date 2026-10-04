@@ -7,7 +7,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   build-windows:
@@ -69,6 +69,13 @@ jobs:
             throw "Packaged Whisper/Piper self-test failed."
           }
 
+      - name: Create release ZIP
+        shell: pwsh
+        run: |
+          $zip = "dist\AIAnki-Windows-v13.2.0-test.1.zip"
+          if (Test-Path $zip) { Remove-Item $zip -Force }
+          Compress-Archive -Path "dist\AIAnki\*" -DestinationPath $zip -CompressionLevel Optimal
+
       - name: Upload Windows folder
         uses: actions/upload-artifact@v4
         with:
@@ -76,3 +83,13 @@ jobs:
           path: dist/AIAnki
           if-no-files-found: error
           retention-days: 14
+
+      - name: Create GitHub prerelease
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $tag = "v13.2.0-test.1"
+          $asset = "dist\AIAnki-Windows-v13.2.0-test.1.zip"
+          gh release delete $tag --yes --cleanup-tag 2>$null
+          gh release create $tag $asset --target "${{ github.sha }}" --prerelease --title "v13.2.0-test.1 — Windows EXE test build" --notes "Pre-release Windows one-folder build. Python is not required. Whisper and Piper runtime were functionally tested in the packaged EXE. Whisper model and Piper voices download on demand."
