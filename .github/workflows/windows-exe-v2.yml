@@ -1,0 +1,78 @@
+name: Windows EXE test build v2
+
+on:
+  push:
+    branches:
+      - feature/windows-exe-packaging-v13.2
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build-windows:
+    runs-on: windows-latest
+    timeout-minutes: 45
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install dependencies
+        shell: pwsh
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements-hybrid.txt
+          python -m pip install -r requirements-build.txt
+          python -c "import customtkinter, faster_whisper, ctranslate2, sounddevice, soundfile, piper; print('Core dependencies import OK')"
+
+      - name: Build one-folder package
+        shell: pwsh
+        run: |
+          python -m PyInstaller --noconfirm --clean packaging/ai_anki.spec
+          Copy-Item "packaging\README_FIRST.txt" "dist\AIAnki\README_FIRST.txt" -Force
+          New-Item -ItemType Directory -Force -Path "dist\AIAnki\voices\piper" | Out-Null
+
+      - name: Check package path lengths
+        shell: pwsh
+        run: python scripts/check_package_paths.py "dist\AIAnki"
+
+      - name: Smoke-test packaged EXE
+        shell: pwsh
+        run: |
+          $exe = Resolve-Path "dist\AIAnki\AI Anki Language Assistant.exe"
+          $proc = Start-Process -FilePath $exe -WorkingDirectory "dist\AIAnki" -PassThru
+          Start-Sleep -Seconds 12
+          if ($proc.HasExited) {
+            if (Test-Path "dist\AIAnki\logs\startup.log") {
+              Get-Content "dist\AIAnki\logs\startup.log"
+            }
+            throw "Packaged application exited during startup smoke test."
+          }
+          Stop-Process -Id $proc.Id -Force
+
+      - name: Functional-test packaged Whisper and Piper
+        shell: pwsh
+        run: |
+          $exe = Resolve-Path "dist\AIAnki\AI Anki Language Assistant.exe"
+          $proc = Start-Process -FilePath $exe -ArgumentList "--packaging-self-test" -WorkingDirectory "dist\AIAnki" -PassThru -Wait
+          if (Test-Path "dist\AIAnki\packaging_self_test.json") {
+            Get-Content "dist\AIAnki\packaging_self_test.json"
+          }
+          if ($proc.ExitCode -ne 0) {
+            throw "Packaged Whisper/Piper self-test failed."
+          }
+
+      - name: Upload Windows folder
+        uses: actions/upload-artifact@v4
+        with:
+          name: AIAnki-Windows-v2
+          path: dist/AIAnki
+          if-no-files-found: error
+          retention-days: 14
