@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import logging
 from pathlib import Path
+import time
 
 from src.speech.cache import AudioCache
 from datetime import datetime
@@ -10,6 +12,9 @@ from datetime import datetime
 from src.speech.models import TtsDiagnostic, TtsRequest, TtsResult
 from src.speech.tts.base import TextToSpeechProvider
 from src.observability.langsmith_tracing import get_llmops_tracer
+
+
+LOGGER = logging.getLogger(__name__)
 
 
 class SpeechService:
@@ -113,6 +118,7 @@ class SpeechService:
         voice: str,
     ) -> TtsResult:
         """Generate or reuse audio for an exact synthesis configuration."""
+        total_started_at = time.perf_counter()
         clean_text = " ".join(text.split())
         if not clean_text:
             raise ValueError("Cannot generate audio from empty text.")
@@ -126,18 +132,55 @@ class SpeechService:
             model=model.strip() or provider.default_model,
             voice=voice.strip() or provider.default_voice,
         )
+
+        cache_started_at = time.perf_counter()
         path = self._cache.path_for(
             provider.provider_name, request, provider.output_extension
         )
         cached = path.exists() and path.stat().st_size > 0
-        if not cached:
-            provider.synthesize(request, path)
+        cache_s = max(0.0, time.perf_counter() - cache_started_at)
+        synth_s = 0.0
+
+        try:
+            if not cached:
+                synth_started_at = time.perf_counter()
+                try:
+                    provider.synthesize(request, path)
+                finally:
+                    synth_s = max(0.0, time.perf_counter() - synth_started_at)
+        except Exception:
+            LOGGER.info(
+                "PERF tts provider=%s model=%s voice=%s status=error cached=%s "
+                "chars=%s cache_s=%.3f synth_s=%.3f total_s=%.3f",
+                provider.provider_name,
+                request.model,
+                request.voice,
+                cached,
+                len(clean_text),
+                cache_s,
+                synth_s,
+                max(0.0, time.perf_counter() - total_started_at),
+            )
+            raise
+
         result = TtsResult(
             path=path,
             provider_name=provider.provider_name,
             model=request.model,
             voice=request.voice,
             cached=cached,
+        )
+        LOGGER.info(
+            "PERF tts provider=%s model=%s voice=%s status=ok cached=%s "
+            "chars=%s cache_s=%.3f synth_s=%.3f total_s=%.3f",
+            provider.provider_name,
+            request.model,
+            request.voice,
+            cached,
+            len(clean_text),
+            cache_s,
+            synth_s,
+            max(0.0, time.perf_counter() - total_started_at),
         )
         try:
             tracer = get_llmops_tracer()

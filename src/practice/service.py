@@ -96,19 +96,39 @@ class PracticeService:
                     )
                 )
             elif model_name == cls.GRAMMAR_MODEL:
+                target = field("Target")
                 sentence = field("Sentence")
-                if not sentence:
+                context_example = field("ContextExample")
+                structure = field("Structure")
+                meaning = field("Meaning")
+
+                # Current grammar cards store the concise grammar target in Target
+                # and the real example sentence in Sentence/ContextExample.
+                # Older cards may have no Target and instead store the concise
+                # target in Sentence while ContextExample contains the real
+                # sentence. Normalize both layouts for Practice.
+                if target:
+                    answer = target
+                    example = context_example or sentence
+                elif context_example and sentence and context_example.casefold() != sentence.casefold():
+                    answer = sentence
+                    example = context_example
+                else:
+                    answer = structure or meaning or sentence
+                    example = context_example or sentence
+
+                if not answer:
                     continue
                 result.append(
                     PracticeItem(
                         note_id=note_id,
                         model_name=model_name,
                         item_type="grammar",
-                        answer=sentence,
-                        example=field("ContextExample"),
+                        answer=answer,
+                        example=example,
                         definition=field("Usage"),
-                        structure=field("Structure"),
-                        meaning=field("Meaning"),
+                        structure=structure,
+                        meaning=meaning,
                     )
                 )
         return result
@@ -136,10 +156,14 @@ class PracticeService:
         rng: random.Random,
     ) -> PracticeQuestion:
         if item.item_type == "grammar":
-            correct = item.structure or item.meaning or item.answer
-            prompt = f"Which structure is used in this sentence?\n\n{item.answer}"
+            # Ask about the real example sentence and keep answer options concise.
+            # The learner should choose the grammar target (e.g. "though"),
+            # not a long Structure/Meaning explanation.
+            correct = item.answer
+            prompt_sentence = item.example or item.answer
+            prompt = f"Which structure is used in this sentence?\n\n{prompt_sentence}"
             candidates = [
-                other.structure or other.meaning
+                other.answer
                 for other in pool
                 if other.item_type == "grammar" and other.note_id != item.note_id
             ]

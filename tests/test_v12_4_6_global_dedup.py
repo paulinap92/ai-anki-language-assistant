@@ -92,31 +92,33 @@ def test_vocabulary_final_guard_is_collection_wide_and_blocks_legacy_duplicate()
     assert all(action != "addNote" for action, _ in client.calls)
 
 
-class FakeCurrentModelBatchClient(AnkiClient):
+class FakeVerifiedBatchClient(AnkiClient):
     def __init__(self) -> None:
         super().__init__("http://localhost:8765", "Current Deck")
-        self.add_called = False
+        self.calls: list[tuple[str, dict | None]] = []
 
     def ensure_vocabulary_model_exists(self) -> None:
         return
 
     def find_existing_vocabulary_note_id(self, word_or_phrase: str) -> int | None:  # type: ignore[override]
-        assert word_or_phrase == "echo chamber"
-        return 88
+        raise AssertionError("verified Queue fast path must not rescan the collection per card")
 
     def _invoke(self, action, params=None):  # type: ignore[override]
+        self.calls.append((action, params))
         if action == "addNote":
-            self.add_called = True
-        return 123
+            return 123
+        raise AssertionError(f"unexpected Anki action: {action}")
 
 
-def test_batch_fast_path_still_has_final_duplicate_guard() -> None:
-    client = FakeCurrentModelBatchClient()
+def test_batch_verified_fast_path_skips_per_card_collection_rescan() -> None:
+    client = FakeVerifiedBatchClient()
 
-    with pytest.raises(DuplicateNoteError):
-        client.add_card_without_duplicate_scan(make_vocab(), provider_name="Gemini")
+    client.add_card_without_duplicate_scan(make_vocab(), provider_name="Gemini")
 
-    assert client.add_called is False
+    assert [action for action, _ in client.calls] == ["addNote"]
+    note = client.calls[0][1]["note"]
+    assert note["options"]["allowDuplicate"] is False
+    assert note["fields"]["Word"] == "echo chamber"
 
 
 class FakeGrammarCollectionClient(AnkiClient):

@@ -7,6 +7,8 @@ SUPPORTED_LANGUAGES = {
     "4": "French",
     "5": "Italian",
     "6": "Portuguese",
+    "7": "Russian",
+    "8": "Japanese",
 }
 
 LANGUAGE_TAGS = {
@@ -16,6 +18,8 @@ LANGUAGE_TAGS = {
     "French": "french",
     "Italian": "italian",
     "Portuguese": "portuguese",
+    "Russian": "russian",
+    "Japanese": "japanese",
 }
 
 
@@ -64,6 +68,17 @@ def normalize_language(language: str) -> str:
         "portugues": "Portuguese",
         "português": "Portuguese",
         "portugalski": "Portuguese",
+        "ru": "Russian",
+        "rus": "Russian",
+        "russian": "Russian",
+        "русский": "Russian",
+        "rosyjski": "Russian",
+        "ja": "Japanese",
+        "jpn": "Japanese",
+        "japanese": "Japanese",
+        "日本語": "Japanese",
+        "japoński": "Japanese",
+        "japonski": "Japanese",
     }
 
     if cleaned not in aliases:

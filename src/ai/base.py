@@ -32,6 +32,50 @@ class VocabularyAiClient(ABC):
     ) -> VocabularyCard:
         """Generate one validated vocabulary flashcard."""
 
+    def generate_cards_batch(
+        self,
+        words_or_phrases: list[str],
+        target_language: str,
+        explanation_language: str,
+        topic_context: str = "",
+    ) -> list[VocabularyCard]:
+        """Generate several vocabulary cards.
+
+        Providers may override this to use one API request. The default keeps
+        compatibility by falling back to one request per item.
+        """
+        return [
+            self.generate_card(
+                word_or_phrase,
+                target_language,
+                explanation_language,
+                topic_context,
+            )
+            for word_or_phrase in words_or_phrases
+        ]
+
+    def generate_sentence_cards_batch(
+        self,
+        raw_items: list[str],
+        target_language: str,
+        explanation_language: str,
+        topic_context: str = "",
+    ) -> list[VocabularyCard]:
+        """Generate several sentence-based cards.
+
+        Providers may override this to use one API request. The default preserves
+        compatibility by falling back to one request per item.
+        """
+        return [
+            self.generate_sentence_card(
+                raw_item,
+                target_language,
+                explanation_language,
+                topic_context,
+            )
+            for raw_item in raw_items
+        ]
+
     @abstractmethod
     def start_conversation(
         self,
@@ -59,6 +103,32 @@ class VocabularyAiClient(ABC):
         explanation_language: str = "Same as target",
     ) -> GrammarAnalysis:
         """Generate one grammar card for a Batch grammar item."""
+
+    def generate_grammar_cards_batch(
+        self,
+        grammar_items: list[str],
+        target_language: str,
+        topic_contexts: list[str] | None = None,
+        explanation_language: str = "Same as target",
+    ) -> list[GrammarAnalysis]:
+        """Generate several grammar cards.
+
+        Providers may override this to use one API request. The default keeps
+        compatibility by falling back to one request per item while preserving
+        each item's own source/topic context.
+        """
+        contexts = topic_contexts or [""] * len(grammar_items)
+        if len(contexts) != len(grammar_items):
+            raise ValueError("Grammar batch contexts must match grammar item count.")
+        return [
+            self.generate_grammar_card(
+                grammar_item,
+                target_language,
+                context,
+                explanation_language=explanation_language,
+            )
+            for grammar_item, context in zip(grammar_items, contexts)
+        ]
 
     @abstractmethod
     def generate_sentence_card(

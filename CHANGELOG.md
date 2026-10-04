@@ -1,5 +1,28 @@
 # Changelog
 
+## v13.0.0 — Fast Version
+
+- Promoted the current fast desktop line to a new major release after the v12.4.x stabilization cycle.
+- Added background Queue processing so long AI generation work no longer has to block the desktop UI.
+- Expanded batch vocabulary generation and Queue regression coverage.
+- Improved existing-note handling and collection-wide duplicate protection around Anki writes.
+- Added app-wide audio coverage checks and related speech-service improvements.
+- Added Fix Cards flag filtering and additional Practice workflow fixes.
+- Expanded LangSmith tracing around the newer generation and workflow paths.
+- Includes the v12.4.9 free-cloud-provider work: OpenRouter, Groq LLM support and Groq Cloud STT.
+- Keeps the existing human-in-the-loop workflow: source → candidates → review → Queue → generation → review → Anki.
+
+## v12.4.9 — Free cloud provider options
+
+- Added OpenRouter as a selectable LLM provider using the existing OpenAI-compatible client path; the default model is `openrouter/free` and can be overridden per card/import/review workflow.
+- Added Groq as a selectable LLM provider through its OpenAI-compatible Responses API, defaulting to `openai/gpt-oss-20b` for card/import/review workflows.
+- Added Groq Cloud STT as a third speech-to-text option next to Local Whisper and OpenAI Cloud, defaulting to `whisper-large-v3-turbo`.
+- Groq STT receives the same selected language and dynamic conversation/topic/vocabulary prompt as the existing STT providers.
+- Extended Setup/.env status and starter configuration for `OPENROUTER_API_KEY`, `GROQ_API_KEY` and their model settings.
+- Reused the already-installed `openai` SDK for both OpenRouter and Groq compatibility endpoints, so no new runtime dependency is required.
+- Added regression tests for provider construction, workflow model routing, language/context forwarding and Setup configuration.
+- Added Russian and Japanese as selectable learning languages, including STT language codes and voice-library filtering; Japanese remains cloud-TTS-first when no matching local Piper voice is installed.
+
 ## v12.4.8 — Multilingual Piper + cloud STT
 
 - Piper Voice Library language filter now expands from the live catalog instead of the original short list.

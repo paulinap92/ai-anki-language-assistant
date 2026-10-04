@@ -59,3 +59,32 @@ def test_configured_status_does_not_expose_secret_values() -> None:
     assert status["openai"] is True
     assert status["ollama"] is True
     assert status["whisper"] is True
+
+
+def test_starter_env_includes_free_cloud_provider_slots(tmp_path: Path) -> None:
+    env_path = tmp_path / ".env"
+
+    create_or_update_starter_env("API / BYOK", env_path)
+    values = read_env_values(env_path)
+
+    assert values["OPENROUTER_API_KEY"] == ""
+    assert values["OPENROUTER_MODEL"] == "openrouter/free"
+    assert values["GROQ_API_KEY"] == ""
+    assert values["GROQ_MODEL"] == "openai/gpt-oss-20b"
+    assert values["GROQ_IMPORT_MODEL"] == "openai/gpt-oss-20b"
+    assert values["GROQ_REVIEW_MODEL"] == "openai/gpt-oss-20b"
+    assert values["GROQ_STT_MODEL"] == "whisper-large-v3-turbo"
+
+
+def test_configured_status_recognizes_openrouter_and_groq() -> None:
+    status = configured_status(
+        {
+            "OPENROUTER_API_KEY": "router-secret",
+            "GROQ_API_KEY": "groq-secret",
+            "STT_PROVIDER": "groq",
+        }
+    )
+
+    assert status["openrouter"] is True
+    assert status["groq"] is True
+    assert status["groq_stt"] is True

@@ -12,6 +12,7 @@ import html
 import json
 import logging
 import os
+import queue
 import re
 import subprocess
 import sys
@@ -114,6 +115,7 @@ CONVERSATION_FLASHCARD_SOURCES = [
 CONVERSATION_FLASHCARD_LIMIT = 30
 STT_PROVIDER_LABELS = {
     "local_whisper": "Local Whisper",
+    "groq": "Groq Cloud",
     "openai": "OpenAI Cloud",
 }
 STT_PROVIDER_KEYS = {label: key for key, label in STT_PROVIDER_LABELS.items()}
@@ -125,6 +127,8 @@ STT_LANGUAGE_CODES = {
     "French": "fr",
     "Italian": "it",
     "Portuguese": "pt",
+    "Russian": "ru",
+    "Japanese": "ja",
 }
 TTS_SAMPLE_TEXTS = {
     "English": "Hello! This is a quick voice test for your flashcards.",
@@ -134,9 +138,13 @@ TTS_SAMPLE_TEXTS = {
     "French": "Bonjour. Voici un court test de voix pour vos cartes mémoire.",
     "Italian": "Ciao. Questo è un breve test della voce per le tue flashcard.",
     "Portuguese": "Olá. Este é um pequeno teste de voz para os seus cartões.",
+    "Russian": "Здравствуйте. Это короткая проверка голоса для ваших карточек.",
+    "Japanese": "こんにちは。これはフラッシュカード用の短い音声テストです。",
 }
 CREATE_CARD_MODES = ["Vocabulary", "Grammar"]
 BATCH_MODES = ["Vocabulary", "Grammar", "Mixed", "Provided examples"]
+QUEUE_AI_BATCH_SIZE = 4
+AUDIO_ANKI_BATCH_SIZE = 4
 OCR_EXTRACTION_MODES = [
     "Provided examples",
     "Vocabulary",
@@ -258,6 +266,8 @@ class ModernVocabularyGui:
             stt_key = "local_whisper"
         elif stt_key in {"openai_cloud", "openai_stt", "cloud_openai"}:
             stt_key = "openai"
+        elif stt_key in {"groq_cloud", "groq_stt", "cloud_groq"}:
+            stt_key = "groq"
         self._setup_stt_provider_var = ctk.StringVar(value=STT_PROVIDER_LABELS.get(stt_key, "Local Whisper"))
         self._setup_ollama_status_var = ctk.StringVar(value="Ollama status not checked yet.")
         self._setup_env_path = Path(".env")
@@ -301,6 +311,7 @@ class ModernVocabularyGui:
         self._tts_voice_var = ctk.StringVar(value="")
         self._speech_notes: list[dict[str, object]] = []
         self._speech_note_vars: list[ctk.BooleanVar] = []
+        self._speech_scan_loaded = False
         self._speech_search_var = ctk.StringVar(value="")
         self._speech_source_field_var = ctk.StringVar(value="Auto: Example/ContextExample/Back/Word")
         self._speech_target_field_var = ctk.StringVar(value="Audio")
@@ -412,6 +423,22 @@ class ModernVocabularyGui:
         self._batch_auto_generate_running = False
         self._batch_auto_generate_paused = False
         self._batch_auto_generate_stop_requested = False
+        self._batch_generation_in_flight = False
+        self._batch_processing_index: int | None = None
+        self._batch_worker_results: queue.Queue[dict[str, object]] = queue.Queue()
+        self._batch_auto_provider_name = ""
+        self._batch_auto_model_name = ""
+        self._batch_auto_target_language = ""
+        self._batch_auto_explanation_language = ""
+        self._batch_auto_mode = ""
+        self._batch_auto_topic_context = ""
+        self._batch_perf_active = False
+        self._batch_perf_started_at: float | None = None
+        self._batch_perf_precheck_s = 0.0
+        self._batch_perf_ai_s = 0.0
+        self._batch_perf_apply_s = 0.0
+        self._batch_perf_autosave_s = 0.0
+        self._batch_perf_items = 0
         self._batch_add_all_running = False
         self._batch_add_all_paused = False
         self._batch_add_all_stop_requested = False
@@ -463,7 +490,7 @@ class ModernVocabularyGui:
         self._existing_search_var = ctk.StringVar(value="")
         self._existing_scope_var = ctk.StringVar(value="Selected deck only")
         self._existing_tag_var = ctk.StringVar(value="")
-        self._existing_flag_var = ctk.StringVar(value="Any flag")
+        self._existing_flag_var = ctk.StringVar(value="No flag filter")
         self._existing_leech_var = ctk.BooleanVar(value=False)
         self._existing_topic_var = ctk.StringVar(value="character / personality traits")
         self._existing_progress_var = ctk.StringVar(value="Load flagged/leech/tagged cards, then fix or tag selected notes.")
@@ -474,6 +501,7 @@ class ModernVocabularyGui:
         self._speech_audio_pause_requested = threading.Event()
         self._speech_audio_stop_requested = threading.Event()
         self._speech_audio_autosave_path: Path | None = None
+        self._speech_audio_write_mode = ""
 
         # Practice and printable-test state.
         self._practice_scope_var = ctk.StringVar(value="All supported cards")
@@ -924,6 +952,49 @@ class ModernVocabularyGui:
         output = (result.stdout or "").strip()
         return output or "pagefile: unavailable"
 
+    def _process_memory_summary(self) -> str:
+        """Return current process working-set memory without extra dependencies."""
+        if os.name == "nt":
+            command = (
+                "$p=Get-Process -Id "
+                + str(os.getpid())
+                + "; if($p){[math]::Round($p.WorkingSet64/1MB,1)}"
+            )
+            try:
+                result = subprocess.run(
+                    ["powershell", "-NoProfile", "-Command", command],
+                    capture_output=True,
+                    text=True,
+                    timeout=4,
+                    check=False,
+                )
+                value = (result.stdout or "").strip()
+                if value:
+                    return f"App RAM: {value} MB"
+            except Exception:
+                pass
+        try:
+            import resource
+            usage = float(resource.getrusage(resource.RUSAGE_SELF).ru_maxrss)
+            if sys.platform == "darwin":
+                usage /= 1024 * 1024
+            else:
+                usage /= 1024
+            return f"App RAM: {usage:.1f} MB"
+        except Exception:
+            return "App RAM: unavailable"
+
+    def _runtime_collection_summary(self) -> str:
+        """Show sizes of the main in-memory collections that can grow during a session."""
+        return (
+            f"Queue: {len(getattr(self, '_batch_items', []))} item(s)\n"
+            f"Import candidates: {len(getattr(self, '_ocr_candidate_items', []))}\n"
+            f"Audio scan: {len(getattr(self, '_speech_notes', []))} note(s)\n"
+            f"Existing cards: {len(getattr(self, '_existing_cards', []))}\n"
+            f"Practice items: {len(getattr(self, '_practice_items', []))}\n"
+            f"Conversation rows: {len(getattr(self, '_conversation_flashcard_rows', []))}"
+        )
+
     def _clear_current_import_cache_files(self) -> int:
         """Delete only app-created import-cache files referenced by current OCR sources."""
         cache_root = Path(".import_cache").resolve()
@@ -952,7 +1023,11 @@ class ModernVocabularyGui:
         import_mb = self._folder_size_mb(Path(".import_cache"))
         audio_mb = self._folder_size_mb(Path(".audio_cache"))
         pagefile = self._windows_pagefile_summary()
+        process_memory = self._process_memory_summary()
+        collections = self._runtime_collection_summary()
         return (
+            f"{process_memory}\n"
+            f"{collections}\n\n"
             f"C: free approx: {free_gb:.2f} GB\n"
             f"TEMP: {temp_mb:.2f} MB\n"
             f".import_cache: {import_mb:.2f} MB\n"
@@ -1239,8 +1314,8 @@ class ModernVocabularyGui:
         )
         descriptions = [
             ("Fully local", "Ollama for AI, local Whisper for speech-to-text and Piper for TTS. No cloud API keys required."),
-            ("Hybrid / BYOK", "Mix local tools with your own OpenAI, Gemini, Claude, ElevenLabs or OCR API keys; STT can be local or OpenAI Cloud."),
-            ("API / BYOK", "Use your own cloud AI/TTS keys. Speech input can use OpenAI Cloud STT instead of local Whisper."),
+            ("Hybrid / BYOK", "Mix local tools with your own OpenAI, Gemini, OpenRouter, Claude, Groq, ElevenLabs or OCR API keys; STT can be local, Groq Cloud or OpenAI Cloud."),
+            ("API / BYOK", "Use your own cloud AI/TTS keys. Speech input can use Groq Cloud or OpenAI Cloud STT instead of local Whisper."),
         ]
         for index, (label, description) in enumerate(descriptions):
             card = ctk.CTkFrame(modes, corner_radius=12)
@@ -1305,7 +1380,7 @@ class ModernVocabularyGui:
         )
         ctk.CTkLabel(
             speech_card,
-            text="Choose local Whisper or cloud transcription. OpenAI Cloud uses OPENAI_API_KEY and does not load a local Whisper model.",
+            text="Choose local Whisper or cloud transcription. Groq Cloud uses GROQ_API_KEY; OpenAI Cloud uses OPENAI_API_KEY. Neither cloud option loads a local Whisper model.",
             wraplength=900,
             justify="left",
             text_color=("gray35", "gray75"),
@@ -1369,15 +1444,17 @@ class ModernVocabularyGui:
             stt_key = "local_whisper"
         elif stt_key in {"openai_cloud", "openai_stt", "cloud_openai"}:
             stt_key = "openai"
+        elif stt_key in {"groq_cloud", "groq_stt", "cloud_groq"}:
+            stt_key = "groq"
         self._setup_stt_provider_var.set(STT_PROVIDER_LABELS.get(stt_key, "Local Whisper"))
         def flag(name: str) -> str:
             return "✓" if status.get(name) else "—"
         self._setup_status_var.set(
             "Provider mode in .env: " + SETUP_MODE_LABELS.get(file_mode, file_mode) + "\n"
             f"Local: {flag('ollama')} Ollama · {flag('whisper')} Whisper STT · {flag('piper')} Piper\n"
-            f"Cloud STT: {flag('openai_stt')} OpenAI transcription\n"
-            f"BYOK: {flag('openai')} OpenAI · {flag('gemini')} Gemini · {flag('claude')} Claude · "
-            f"{flag('elevenlabs')} ElevenLabs · {flag('mistral')} Mistral OCR\n"
+            f"Cloud STT: {flag('groq_stt')} Groq Whisper · {flag('openai_stt')} OpenAI transcription\n"
+            f"BYOK: {flag('openai')} OpenAI · {flag('gemini')} Gemini · {flag('openrouter')} OpenRouter · "
+            f"{flag('groq')} Groq · {flag('claude')} Claude · {flag('elevenlabs')} ElevenLabs · {flag('mistral')} Mistral OCR\n"
             f"Active AI providers in this session: {', '.join(self._ai_clients) if self._ai_clients else 'none'}"
         )
 
@@ -1391,14 +1468,18 @@ class ModernVocabularyGui:
                 {
                     "STT_PROVIDER": provider,
                     "OPENAI_STT_MODEL": "gpt-4o-mini-transcribe",
+                    "GROQ_STT_MODEL": "whisper-large-v3-turbo",
                 },
             )
         except Exception as exc:
             messagebox.showerror("Speech-to-text", f"Could not save STT provider: {exc}")
             return
         self._reload_provider_configuration()
-        if provider == "openai" and not get_settings().openai_api_key:
+        settings = get_settings()
+        if provider == "openai" and not settings.openai_api_key:
             self._status_var.set("OpenAI Cloud STT selected. Add OPENAI_API_KEY in Setup, then reload configuration.")
+        elif provider == "groq" and not settings.groq_api_key:
+            self._status_var.set("Groq Cloud STT selected. Add GROQ_API_KEY in Setup, then reload configuration.")
         else:
             self._status_var.set(f"Speech-to-text provider saved: {label}.")
 
@@ -1506,6 +1587,8 @@ class ModernVocabularyGui:
             )
         elif (settings.stt_provider or "").strip().casefold() in {"openai", "openai_cloud", "openai_stt", "cloud_openai"}:
             self._stt_status_var.set("Speech input: OpenAI Cloud selected, but OPENAI_API_KEY is missing.")
+        elif (settings.stt_provider or "").strip().casefold() in {"groq", "groq_cloud", "groq_stt", "cloud_groq"}:
+            self._stt_status_var.set("Speech input: Groq Cloud selected, but GROQ_API_KEY is missing.")
         else:
             self._stt_status_var.set("Speech input: not configured.")
 
@@ -5701,6 +5784,15 @@ class ModernVocabularyGui:
         chunks = self._split_import_text_for_ai(full_text)
         if not chunks:
             return
+        LOGGER.info(
+            "Import AI source coverage: run_id=%s mode=%s source_chars=%s source_words=%s chunks=%s chunk_chars=%s",
+            run_id,
+            mode,
+            len(full_text),
+            len(full_text.split()),
+            len(chunks),
+            [len(chunk) for chunk in chunks],
+        )
 
         # A deliberate new search replaces the previous result set. Keeping old
         # cards visible after a blocked/failed rerun made it look as if English
@@ -5795,6 +5887,7 @@ class ModernVocabularyGui:
                 if len(part_items) > per_request_hard_limit:
                     self._reject_runaway_ai_candidates(len(part_items), per_request_hard_limit, mode, f"{source} part {part_index}")
                     return
+
                 for item in part_items:
                     item.setdefault("source_part", f"{part_index}/{len(chunks)}")
                 merged_items.extend(part_items)
@@ -6218,7 +6311,18 @@ class ModernVocabularyGui:
                     item["answer"] = clean_ocr_text(answer).replace("\n", " ").strip()
                 items.append(item)
         except Exception:
-            # Fallback for a provider that ignored JSON and returned lines.
+            # Only use the legacy line fallback when the provider clearly returned
+            # plain-text rows. A malformed/truncated JSON payload must NOT be
+            # reinterpreted line-by-line as hundreds of fake candidates.
+            stripped = cleaned.lstrip()
+            looks_like_json_payload = (
+                stripped.startswith("{")
+                or stripped.startswith("[")
+                or '"candidates"' in stripped[:500]
+                or re.search(r'"(?:type|target|sentence|source_role)"\s*:', stripped[:2000]) is not None
+            )
+            if looks_like_json_payload:
+                raise ValueError("AI candidate response looked like malformed or truncated JSON")
             for row in self._ocr_candidate_rows_from_ai_response(cleaned, default_mode):
                 parsed = self._parse_ocr_candidate_row(row, default_mode)
                 if parsed is None:
@@ -6803,7 +6907,7 @@ class ModernVocabularyGui:
         item["target_language"] = self._language_var.get().strip()
         item["explanation_language"] = self._explanation_language_var.get().strip()
         if not bool(item.get("mode_locked")):
-            item["batch_mode"] = self._batch_mode_var.get().strip() or "Vocabulary"
+            item["batch_mode"] = self._batch_auto_mode or "Vocabulary"
         item["edited"] = True
 
         if new_word != old_word:
@@ -8032,6 +8136,12 @@ class ModernVocabularyGui:
 
     def _remove_current_batch_item(self) -> None:
         """Remove only the current Queue row without rebuilding expensive views."""
+        if self._batch_generation_in_flight:
+            messagebox.showinfo(
+                "Queue busy",
+                "One AI request is still running. Wait for it to finish, then remove the item.",
+            )
+            return
         if not self._batch_items:
             return
         index = max(0, min(self._batch_index, len(self._batch_items) - 1))
@@ -8064,6 +8174,12 @@ class ModernVocabularyGui:
             self._show_current_batch_item(generate=False)
 
     def _clear_batch(self) -> None:
+        if self._batch_generation_in_flight:
+            messagebox.showinfo(
+                "Queue busy",
+                "One AI request is still running. Use Stop, wait for the current request to finish, then clear the Queue.",
+            )
+            return
         self._batch_items.clear()
         self._batch_index = 0
         self._batch_generated_card = None
@@ -8073,6 +8189,8 @@ class ModernVocabularyGui:
         self._batch_auto_generate_running = False
         self._batch_auto_generate_paused = False
         self._batch_auto_generate_stop_requested = False
+        self._batch_generation_in_flight = False
+        self._batch_processing_index = None
         self._batch_add_all_running = False
         self._batch_add_all_paused = False
         self._batch_add_all_stop_requested = False
@@ -8137,10 +8255,75 @@ class ModernVocabularyGui:
             self._batch_autosave_after_id = None
             self._autosave_batch_session(reason)
 
+    def _reset_batch_perf(self) -> None:
+        """Reset Queue timing counters. Timing data is written only to the app log."""
+        self._batch_perf_active = True
+        self._batch_perf_started_at = time.perf_counter()
+        self._batch_perf_precheck_s = 0.0
+        self._batch_perf_ai_s = 0.0
+        self._batch_perf_apply_s = 0.0
+        self._batch_perf_autosave_s = 0.0
+        self._batch_perf_items = 0
+
+    def _record_batch_item_perf(
+        self,
+        payload: dict[str, object],
+        *,
+        status: str,
+        apply_started_at: float,
+    ) -> None:
+        """Record one Queue item's timings without exposing them in the card/UI."""
+        ai_s = float(payload.get("perf_ai_s") or 0.0)
+        item_started_at = float(payload.get("perf_item_started_at") or apply_started_at)
+        apply_s = max(0.0, time.perf_counter() - apply_started_at)
+        total_s = max(0.0, time.perf_counter() - item_started_at)
+
+        if getattr(self, "_batch_perf_active", False):
+            self._batch_perf_ai_s += ai_s
+            self._batch_perf_apply_s += apply_s
+            self._batch_perf_items += 1
+
+        LOGGER.info(
+            "PERF queue_item index=%s mode=%s provider=%s model=%s status=%s "
+            "ai_s=%.3f apply_s=%.3f total_s=%.3f word=%r",
+            payload.get("index"),
+            payload.get("resolved_mode"),
+            payload.get("provider_name"),
+            payload.get("model_name"),
+            status,
+            ai_s,
+            apply_s,
+            total_s,
+            payload.get("word"),
+        )
+
+    def _log_batch_perf_summary(self, outcome: str) -> None:
+        """Write one Queue-run performance summary to the log and reset counters."""
+        if not getattr(self, "_batch_perf_active", False):
+            return
+        started_at = self._batch_perf_started_at
+        total_s = max(0.0, time.perf_counter() - started_at) if started_at is not None else 0.0
+        avg_s = total_s / self._batch_perf_items if self._batch_perf_items else 0.0
+        LOGGER.info(
+            "PERF queue_summary outcome=%s items=%s total_s=%.3f avg_s=%.3f "
+            "precheck_s=%.3f ai_s=%.3f apply_s=%.3f autosave_s=%.3f",
+            outcome,
+            self._batch_perf_items,
+            total_s,
+            avg_s,
+            self._batch_perf_precheck_s,
+            self._batch_perf_ai_s,
+            self._batch_perf_apply_s,
+            self._batch_perf_autosave_s,
+        )
+        self._batch_perf_active = False
+        self._batch_perf_started_at = None
+
     def _autosave_batch_session(self, reason: str) -> None:
         """Save the current Queue session automatically."""
         if not self._batch_items:
             return
+        started_at = time.perf_counter()
         path = self._ensure_batch_autosave_path()
         try:
             path.write_text(
@@ -8152,6 +8335,16 @@ class ModernVocabularyGui:
             LOGGER.exception("Queue autosave failed: reason=%s", reason)
             self._record_activity(f"Autosave failed: {exc}")
             return
+        finally:
+            elapsed = max(0.0, time.perf_counter() - started_at)
+            if getattr(self, "_batch_perf_active", False):
+                self._batch_perf_autosave_s += elapsed
+            LOGGER.info(
+                "PERF queue_autosave reason=%r seconds=%.3f items=%s",
+                reason,
+                elapsed,
+                len(self._batch_items),
+            )
 
     def _card_from_batch_payload(self, payload: object) -> VocabularyCard | None:
         """Rebuild a vocabulary card stored inside a Queue item."""
@@ -8888,8 +9081,8 @@ class ModernVocabularyGui:
         )
 
     def _auto_generate_pending_batch_cards(self) -> None:
-        """Generate pending Queue cards one by one using Tk after()."""
-        if self._batch_auto_generate_running:
+        """Generate pending Queue cards sequentially without blocking Tk's UI thread."""
+        if self._batch_auto_generate_running or self._batch_generation_in_flight:
             self._batch_status_var.set("Auto-generation is already running.")
             return
         if not self._batch_items:
@@ -8897,19 +9090,50 @@ class ModernVocabularyGui:
             return
 
         resume = self._batch_auto_generate_paused
+        self._reset_batch_perf()
+        precheck_started_at = time.perf_counter()
         # Always precheck remaining pending items before Auto Queue calls a provider.
         # This also covers paused/resumed sessions and old autosaves created before
         # duplicate precheck metadata existed.
         precheck_result = self._mark_pending_duplicates_before_auto_generation()
+        self._batch_perf_precheck_s = max(0.0, time.perf_counter() - precheck_started_at)
+        LOGGER.info(
+            "PERF queue_precheck seconds=%.3f duplicates=%s items=%s",
+            self._batch_perf_precheck_s,
+            precheck_result,
+            len(self._batch_items),
+        )
         if precheck_result < 0:
+            self._log_batch_perf_summary("precheck_failed")
             self._autosave_batch_session("auto-generation cancelled: duplicate precheck failed")
             return
-        if not any(str(item.get("status", "pending")) == "pending" and not item.get("card") and not item.get("grammar_card") for item in self._batch_items):
+        if not any(
+            str(item.get("status", "pending")) == "pending"
+            and not item.get("card")
+            and not item.get("grammar_card")
+            for item in self._batch_items
+        ):
             message = "Auto-generation skipped: all pending items already exist in Anki or are not ready for generation."
             self._batch_status_var.set(message)
             self._status_var.set(message)
             self._autosave_batch_session("auto-generation skipped duplicates")
+            self._log_batch_perf_summary("nothing_to_generate")
             return
+
+        provider_name = self._provider_var.get().strip()
+        if provider_name not in self._ai_clients:
+            messagebox.showerror("AI provider", "Select a configured AI provider before starting Queue generation.")
+            return
+
+        # Lock generation settings for this run. The user can navigate the UI while
+        # the Queue works, but changing the visible selectors must not silently
+        # change provider/language halfway through the same Queue run.
+        self._batch_auto_provider_name = provider_name
+        self._batch_auto_model_name = self._current_ai_model_name(provider_name)
+        self._batch_auto_target_language = self._language_var.get().strip()
+        self._batch_auto_explanation_language = self._explanation_language_var.get().strip()
+        self._batch_auto_mode = self._batch_mode_var.get().strip() or "Vocabulary"
+        self._batch_auto_topic_context = self._batch_topic_var.get().strip()
 
         self._batch_auto_generate_running = True
         self._batch_auto_generate_paused = False
@@ -8919,11 +9143,15 @@ class ModernVocabularyGui:
         self._root.after(50, self._auto_generate_next_pending_batch_card)
 
     def _auto_generate_next_pending_batch_card(self) -> None:
-        """Generate the next pending Queue card and schedule the following one."""
+        """Start one background provider call for the next pending Queue item."""
+        if self._batch_generation_in_flight:
+            return
         if self._batch_auto_generate_stop_requested:
             self._batch_auto_generate_running = False
             self._batch_auto_generate_stop_requested = False
             self._autosave_batch_session("auto-generation stopped")
+            if not self._batch_generation_in_flight:
+                self._log_batch_perf_summary("stopped")
             message = f"Auto-generation stopped. Progress saved: {self._batch_autosave_path}"
             self._batch_status_var.set(message)
             self._status_var.set(message)
@@ -8931,6 +9159,7 @@ class ModernVocabularyGui:
             return
         if self._batch_auto_generate_paused or not self._batch_auto_generate_running:
             return
+
         next_index = None
         for index, item in enumerate(self._batch_items):
             if str(item.get("status", "pending")) == "pending":
@@ -8945,53 +9174,700 @@ class ModernVocabularyGui:
             self._batch_status_var.set("Auto-generation finished. Autosaved.")
             self._status_var.set(self._batch_status_var.get())
             self._record_activity("Auto-generation finished")
+            self._log_batch_perf_summary("finished")
             return
 
-        self._batch_index = next_index
-        word = str(self._batch_items[next_index].get("word", "")).strip()
-        self._batch_word_var.set(word)
-        self._batch_status_var.set(f"Auto-generating {next_index + 1}/{len(self._batch_items)}: {word}")
+        item = self._batch_items[next_index]
+        word = str(item.get("word", "")).strip()
+        topic_context = str(item.get("topic") or self._batch_auto_topic_context).strip()
+        target_language = self._batch_auto_target_language or self._language_var.get().strip()
+        explanation_language = (
+            self._batch_auto_explanation_language or self._explanation_language_var.get().strip()
+        )
+        provider_name = self._batch_auto_provider_name or self._provider_var.get().strip()
+        model_name = self._batch_auto_model_name or self._current_ai_model_name(provider_name)
+
+        item["word"] = word
+        item["topic"] = topic_context
+        item["target_language"] = target_language
+        item["explanation_language"] = explanation_language
+        if not bool(item.get("mode_locked")):
+            item["batch_mode"] = self._batch_mode_var.get().strip() or "Vocabulary"
+        resolved_mode = self._batch_mode_for_item(item, word)
+        item["resolved_mode"] = resolved_mode
+
+        preserve_vocab_source = (
+            resolved_mode == "Vocabulary"
+            and str(item.get("generation_strategy") or "") == "preserve_source_sentence"
+            and bool(str(item.get("source_sentence") or "").strip())
+        )
+        provided_target = ""
+        provided_sentence = ""
+        sentence_request_word = word
+        grammar_topic_context = ""
+
+        if resolved_mode == "Provided examples" or preserve_vocab_source:
+            if preserve_vocab_source:
+                provided_target = str(item.get("provided_target") or word).strip()
+                provided_sentence = str(item.get("source_sentence") or "").strip()
+                sentence_request_word = f"{provided_target} | {provided_sentence}"
+            else:
+                provided_target, provided_sentence = self._parse_provided_example_item(word)
+            if not provided_sentence:
+                item["status"] = "invalid"
+                item["error"] = "Provided examples mode needs a sentence. Use: target | sentence, or paste a sentence."
+                self._batch_status_var.set("Invalid provided example: missing sentence.")
+                self._set_batch_status_card("INVALID PROVIDED EXAMPLE", word, "invalid", str(item["error"]))
+                self._update_batch_progress()
+                self._autosave_batch_session(f"invalid provided example: {word}")
+                self._root.after(120, self._auto_generate_next_pending_batch_card)
+                return
+            item["provided_target"] = provided_target
+            item["provided_sentence"] = provided_sentence
+        elif resolved_mode == "Grammar":
+            grammar_topic_context = self._grammar_topic_context_for_item(item, topic_context)
+
+        client = self._ai_clients[provider_name]
+        item_ref = item
+        self._batch_processing_index = next_index
+        self._batch_generation_in_flight = True
+        self._batch_status_var.set(
+            f"Generating {resolved_mode.lower()} card {next_index + 1}/{len(self._batch_items)}: {word}..."
+        )
         self._status_var.set(self._batch_status_var.get())
-        self._show_current_batch_item(generate=False)
-        self._root.update_idletasks()
 
+        job = {
+            "index": next_index,
+            "perf_item_started_at": time.perf_counter(),
+            "item_ref": item_ref,
+            "word": word,
+            "resolved_mode": resolved_mode,
+            "provider_name": provider_name,
+            "model_name": model_name,
+            "topic_context": topic_context,
+            "target_language": target_language,
+            "explanation_language": explanation_language,
+            "preserve_vocab_source": preserve_vocab_source,
+            "provided_target": provided_target,
+            "sentence_request_word": sentence_request_word,
+            "grammar_topic_context": grammar_topic_context,
+        }
+
+        jobs = [job]
+        # Capability must be checked on the real provider, not only on a
+        # tracing/decorator wrapper. A wrapper may expose batch methods while its
+        # inner client still inherits the base fallback that loops one-by-one.
+        capability_client = getattr(client, "_inner", client)
+        provider_vocab_batch_method = getattr(
+            type(capability_client),
+            "generate_cards_batch",
+            VocabularyAiClient.generate_cards_batch,
+        )
+        provider_sentence_batch_method = getattr(
+            type(capability_client),
+            "generate_sentence_cards_batch",
+            VocabularyAiClient.generate_sentence_cards_batch,
+        )
+        provider_grammar_batch_method = getattr(
+            type(capability_client),
+            "generate_grammar_cards_batch",
+            VocabularyAiClient.generate_grammar_cards_batch,
+        )
+        provider_supports_vocab_batch = (
+            provider_vocab_batch_method is not VocabularyAiClient.generate_cards_batch
+        )
+        provider_supports_sentence_batch = (
+            provider_sentence_batch_method
+            is not VocabularyAiClient.generate_sentence_cards_batch
+        )
+        provider_supports_grammar_batch = (
+            provider_grammar_batch_method
+            is not VocabularyAiClient.generate_grammar_cards_batch
+        )
+        LOGGER.info(
+            "PERF queue_batch_capability provider=%s runtime=%s inner=%s "
+            "vocab=%s sentence=%s grammar=%s",
+            provider_name,
+            type(client).__name__,
+            type(capability_client).__name__,
+            provider_supports_vocab_batch,
+            provider_supports_sentence_batch,
+            provider_supports_grammar_batch,
+        )
+        if (
+            resolved_mode == "Vocabulary"
+            and not preserve_vocab_source
+            and provider_supports_vocab_batch
+        ):
+            for candidate_index in range(next_index + 1, len(self._batch_items)):
+                if len(jobs) >= QUEUE_AI_BATCH_SIZE:
+                    break
+                candidate = self._batch_items[candidate_index]
+                if (
+                    str(candidate.get("status", "pending")) != "pending"
+                    or candidate.get("card")
+                    or candidate.get("grammar_card")
+                ):
+                    continue
+
+                candidate_word = str(candidate.get("word", "")).strip()
+                candidate_topic = str(
+                    candidate.get("topic") or self._batch_auto_topic_context
+                ).strip()
+                if not bool(candidate.get("mode_locked")):
+                    candidate["batch_mode"] = self._batch_auto_mode or "Vocabulary"
+                candidate_mode = self._batch_mode_for_item(candidate, candidate_word)
+                candidate_preserve = (
+                    candidate_mode == "Vocabulary"
+                    and str(candidate.get("generation_strategy") or "")
+                    == "preserve_source_sentence"
+                    and bool(str(candidate.get("source_sentence") or "").strip())
+                )
+                if (
+                    candidate_mode != "Vocabulary"
+                    or candidate_preserve
+                    or candidate_topic != topic_context
+                ):
+                    continue
+
+                candidate["word"] = candidate_word
+                candidate["topic"] = candidate_topic
+                candidate["target_language"] = target_language
+                candidate["explanation_language"] = explanation_language
+                candidate["resolved_mode"] = "Vocabulary"
+                jobs.append(
+                    {
+                        "index": candidate_index,
+                        "perf_item_started_at": time.perf_counter(),
+                        "item_ref": candidate,
+                        "word": candidate_word,
+                        "resolved_mode": "Vocabulary",
+                        "provider_name": provider_name,
+                        "model_name": model_name,
+                        "topic_context": candidate_topic,
+                        "target_language": target_language,
+                        "explanation_language": explanation_language,
+                        "preserve_vocab_source": False,
+                        "provided_target": "",
+                        "sentence_request_word": candidate_word,
+                        "grammar_topic_context": "",
+                    }
+                )
+        elif (
+            resolved_mode == "Vocabulary"
+            and preserve_vocab_source
+            and provider_supports_sentence_batch
+        ):
+            for candidate_index in range(next_index + 1, len(self._batch_items)):
+                if len(jobs) >= QUEUE_AI_BATCH_SIZE:
+                    break
+                candidate = self._batch_items[candidate_index]
+                if (
+                    str(candidate.get("status", "pending")) != "pending"
+                    or candidate.get("card")
+                    or candidate.get("grammar_card")
+                ):
+                    continue
+
+                candidate_word = str(candidate.get("word", "")).strip()
+                candidate_topic = str(
+                    candidate.get("topic") or self._batch_auto_topic_context
+                ).strip()
+                if not bool(candidate.get("mode_locked")):
+                    candidate["batch_mode"] = self._batch_auto_mode or "Vocabulary"
+                candidate_mode = self._batch_mode_for_item(candidate, candidate_word)
+                candidate_source_sentence = str(candidate.get("source_sentence") or "").strip()
+                candidate_preserve = (
+                    candidate_mode == "Vocabulary"
+                    and str(candidate.get("generation_strategy") or "")
+                    == "preserve_source_sentence"
+                    and bool(candidate_source_sentence)
+                )
+                if (
+                    not candidate_preserve
+                    or candidate_topic != topic_context
+                ):
+                    continue
+
+                candidate_target = str(
+                    candidate.get("provided_target") or candidate_word
+                ).strip()
+                candidate["word"] = candidate_word
+                candidate["topic"] = candidate_topic
+                candidate["target_language"] = target_language
+                candidate["explanation_language"] = explanation_language
+                candidate["resolved_mode"] = "Vocabulary"
+                candidate["provided_target"] = candidate_target
+                candidate["provided_sentence"] = candidate_source_sentence
+                jobs.append(
+                    {
+                        "index": candidate_index,
+                        "perf_item_started_at": time.perf_counter(),
+                        "item_ref": candidate,
+                        "word": candidate_word,
+                        "resolved_mode": "Vocabulary",
+                        "provider_name": provider_name,
+                        "model_name": model_name,
+                        "topic_context": candidate_topic,
+                        "target_language": target_language,
+                        "explanation_language": explanation_language,
+                        "preserve_vocab_source": True,
+                        "provided_target": candidate_target,
+                        "sentence_request_word": f"{candidate_target} | {candidate_source_sentence}",
+                        "grammar_topic_context": "",
+                    }
+                )
+        elif resolved_mode == "Grammar" and provider_supports_grammar_batch:
+            for candidate_index in range(next_index + 1, len(self._batch_items)):
+                if len(jobs) >= QUEUE_AI_BATCH_SIZE:
+                    break
+                candidate = self._batch_items[candidate_index]
+                if (
+                    str(candidate.get("status", "pending")) != "pending"
+                    or candidate.get("card")
+                    or candidate.get("grammar_card")
+                ):
+                    continue
+
+                candidate_word = str(candidate.get("word", "")).strip()
+                if not bool(candidate.get("mode_locked")):
+                    candidate["batch_mode"] = self._batch_auto_mode or "Grammar"
+                candidate_mode = self._batch_mode_for_item(candidate, candidate_word)
+                if candidate_mode != "Grammar":
+                    continue
+
+                candidate_topic = str(
+                    candidate.get("topic") or self._batch_auto_topic_context
+                ).strip()
+                candidate_grammar_context = self._grammar_topic_context_for_item(
+                    candidate, candidate_topic
+                )
+                candidate["word"] = candidate_word
+                candidate["topic"] = candidate_topic
+                candidate["target_language"] = target_language
+                candidate["explanation_language"] = explanation_language
+                candidate["resolved_mode"] = "Grammar"
+                jobs.append(
+                    {
+                        "index": candidate_index,
+                        "perf_item_started_at": time.perf_counter(),
+                        "item_ref": candidate,
+                        "word": candidate_word,
+                        "resolved_mode": "Grammar",
+                        "provider_name": provider_name,
+                        "model_name": model_name,
+                        "topic_context": candidate_topic,
+                        "target_language": target_language,
+                        "explanation_language": explanation_language,
+                        "preserve_vocab_source": False,
+                        "provided_target": "",
+                        "sentence_request_word": candidate_word,
+                        "grammar_topic_context": candidate_grammar_context,
+                    }
+                )
+        elif (
+            resolved_mode == "Provided examples"
+            and bool(provided_target)
+            and bool(provided_sentence)
+            and provider_supports_sentence_batch
+        ):
+            for candidate_index in range(next_index + 1, len(self._batch_items)):
+                if len(jobs) >= QUEUE_AI_BATCH_SIZE:
+                    break
+                candidate = self._batch_items[candidate_index]
+                if (
+                    str(candidate.get("status", "pending")) != "pending"
+                    or candidate.get("card")
+                    or candidate.get("grammar_card")
+                ):
+                    continue
+
+                candidate_word = str(candidate.get("word", "")).strip()
+                candidate_topic = str(
+                    candidate.get("topic") or self._batch_auto_topic_context
+                ).strip()
+                if not bool(candidate.get("mode_locked")):
+                    candidate["batch_mode"] = self._batch_auto_mode or "Provided examples"
+                candidate_mode = self._batch_mode_for_item(candidate, candidate_word)
+                candidate_target, candidate_sentence = self._parse_provided_example_item(
+                    candidate_word
+                )
+                if (
+                    candidate_mode != "Provided examples"
+                    or not candidate_target
+                    or not candidate_sentence
+                    or candidate_topic != topic_context
+                ):
+                    continue
+
+                candidate["word"] = candidate_word
+                candidate["topic"] = candidate_topic
+                candidate["target_language"] = target_language
+                candidate["explanation_language"] = explanation_language
+                candidate["resolved_mode"] = "Provided examples"
+                candidate["provided_target"] = candidate_target
+                candidate["provided_sentence"] = candidate_sentence
+                jobs.append(
+                    {
+                        "index": candidate_index,
+                        "perf_item_started_at": time.perf_counter(),
+                        "item_ref": candidate,
+                        "word": candidate_word,
+                        "resolved_mode": "Provided examples",
+                        "provider_name": provider_name,
+                        "model_name": model_name,
+                        "topic_context": candidate_topic,
+                        "target_language": target_language,
+                        "explanation_language": explanation_language,
+                        "preserve_vocab_source": False,
+                        "provided_target": candidate_target,
+                        "sentence_request_word": f"{candidate_target} | {candidate_sentence}",
+                        "grammar_topic_context": "",
+                    }
+                )
+
+        LOGGER.info(
+            "PERF queue_batch_plan mode=%s provider=%s jobs=%s indexes=%s "
+            "preserve_source=%s",
+            resolved_mode,
+            provider_name,
+            len(jobs),
+            [int(batch_job["index"]) for batch_job in jobs],
+            preserve_vocab_source,
+        )
+
+        if len(jobs) > 1:
+            batch_label = {
+                "Provided examples": "provided examples",
+                "Grammar": "grammar",
+            }.get(resolved_mode, "vocabulary")
+            self._batch_status_var.set(
+                f"Generating {batch_label} batch of {len(jobs)} cards "
+                f"starting at {next_index + 1}/{len(self._batch_items)}..."
+            )
+            self._status_var.set(self._batch_status_var.get())
+
+        def worker() -> None:
+            if len(jobs) > 1:
+                batch_started_at = time.perf_counter()
+                try:
+                    if resolved_mode == "Provided examples" or preserve_vocab_source:
+                        batch_results = client.generate_sentence_cards_batch(
+                            [str(batch_job["sentence_request_word"]) for batch_job in jobs],
+                            target_language,
+                            explanation_language,
+                            topic_context,
+                        )
+                    elif resolved_mode == "Grammar":
+                        batch_results = client.generate_grammar_cards_batch(
+                            [str(batch_job["word"]) for batch_job in jobs],
+                            target_language,
+                            [str(batch_job["grammar_topic_context"]) for batch_job in jobs],
+                            explanation_language=explanation_language,
+                        )
+                    else:
+                        batch_results = client.generate_cards_batch(
+                            [str(batch_job["word"]) for batch_job in jobs],
+                            target_language,
+                            explanation_language,
+                            topic_context,
+                        )
+                    if len(batch_results) != len(jobs):
+                        raise ValueError(
+                            f"Provider returned {len(batch_results)} cards for "
+                            f"{len(jobs)} Queue items."
+                        )
+                    batch_ai_s = max(0.0, time.perf_counter() - batch_started_at)
+                    LOGGER.info(
+                        "PERF queue_ai_batch mode=%s provider=%s model=%s size=%s seconds=%.3f",
+                        resolved_mode,
+                        provider_name,
+                        model_name,
+                        len(jobs),
+                        batch_ai_s,
+                    )
+                    per_item_ai_s = batch_ai_s / len(jobs)
+                    batch_size = len(jobs)
+                    for position, (batch_job, batch_result) in enumerate(
+                        zip(jobs, batch_results),
+                        start=1,
+                    ):
+                        self._batch_worker_results.put(
+                            {
+                                **batch_job,
+                                "result": batch_result,
+                                "error": None,
+                                "perf_ai_s": per_item_ai_s,
+                                "batch_position": position,
+                                "batch_size": batch_size,
+                            }
+                        )
+                    return
+                except Exception:
+                    # A malformed multi-card response must not poison the Queue.
+                    # Retry only the first item through the proven single-card
+                    # contract; the remaining items stay pending for the next pass.
+                    LOGGER.exception(
+                        "Queue %s batch failed; falling back to one-card generation: "
+                        "start_index=%s size=%s provider=%s",
+                        resolved_mode,
+                        next_index,
+                        len(jobs),
+                        provider_name,
+                    )
+
+            result: object | None = None
+            error: Exception | None = None
+            request_started_at = time.perf_counter()
+            try:
+                if resolved_mode == "Provided examples" or preserve_vocab_source:
+                    result = client.generate_sentence_card(
+                        sentence_request_word,
+                        target_language,
+                        explanation_language,
+                        topic_context,
+                    )
+                elif resolved_mode == "Grammar":
+                    result = client.generate_grammar_card(
+                        word,
+                        target_language,
+                        grammar_topic_context,
+                        explanation_language=explanation_language,
+                    )
+                else:
+                    result = client.generate_card(
+                        word,
+                        target_language,
+                        explanation_language,
+                        topic_context,
+                    )
+            except Exception as exc:
+                error = exc
+                LOGGER.exception(
+                    "Background Queue provider call failed: index=%s word=%s provider=%s",
+                    next_index,
+                    word,
+                    provider_name,
+                )
+            ai_s = max(0.0, time.perf_counter() - request_started_at)
+            self._batch_worker_results.put(
+                {
+                    **job,
+                    "result": result,
+                    "error": error,
+                    "perf_ai_s": ai_s,
+                    "batch_position": 1,
+                    "batch_size": 1,
+                }
+            )
+
+        threading.Thread(
+            target=worker,
+            name=f"queue-ai-{next_index}",
+            daemon=True,
+        ).start()
+        self._root.after(50, self._poll_background_batch_generation)
+
+    def _poll_background_batch_generation(self) -> None:
+        """Poll worker results from Tk's main thread; workers never touch Tk."""
         try:
-            self._generate_current_batch_card("auto_generate_pending")
-        except Exception as exc:
-            LOGGER.exception("Auto-generation failed for %s", word)
-            item = self._batch_items[next_index]
-            item["status"] = "error"
-            item["error"] = str(exc)
-            self._autosave_batch_session(f"auto-generation exception: {word}")
+            payload = self._batch_worker_results.get_nowait()
+        except queue.Empty:
+            if self._batch_generation_in_flight:
+                self._root.after(50, self._poll_background_batch_generation)
+            return
+        self._finish_background_batch_generation(payload)
 
-            if self._is_provider_rate_limit_detail(str(exc)):
+    def _finish_background_batch_generation(self, payload: dict[str, object]) -> None:
+        """Apply one worker result on Tk's main thread, then continue the Queue."""
+        apply_started_at = time.perf_counter()
+        batch_position = int(payload.get("batch_position") or 1)
+        batch_size = int(payload.get("batch_size") or 1)
+        batch_has_more = batch_position < batch_size
+        self._batch_generation_in_flight = batch_has_more
+        if not batch_has_more:
+            self._batch_processing_index = None
+
+        index = int(payload["index"])
+        item_ref = payload["item_ref"]
+        if index >= len(self._batch_items) or self._batch_items[index] is not item_ref:
+            LOGGER.warning("Discarding Queue result because the Queue changed while the request was running.")
+            self._record_batch_item_perf(
+                payload,
+                status="discarded_queue_changed",
+                apply_started_at=apply_started_at,
+            )
+            if batch_has_more:
+                self._root.after(0, self._poll_background_batch_generation)
+            elif self._batch_auto_generate_running and not self._batch_auto_generate_paused:
+                self._root.after(120, self._auto_generate_next_pending_batch_card)
+            return
+
+        item = self._batch_items[index]
+        word = str(payload["word"])
+        resolved_mode = str(payload["resolved_mode"])
+        provider_name = str(payload["provider_name"])
+        model_name = str(payload["model_name"])
+        topic_context = str(payload["topic_context"])
+        target_language = str(payload["target_language"])
+        explanation_language = str(payload["explanation_language"])
+        preserve_vocab_source = bool(payload["preserve_vocab_source"])
+        provided_target = str(payload["provided_target"])
+        error = payload.get("error")
+
+        if isinstance(error, Exception):
+            detail = str(error)
+            item["status"] = "error"
+            item["error"] = detail
+            if self._is_provider_rate_limit_detail(detail):
                 item["status"] = "rate_limited"
-                self._stop_batch_on_rate_limit(word, str(exc))
+                self._batch_status_var.set(f"Rate limit while generating: {word}. Session autosaved.")
+                self._update_batch_progress()
+                self._record_batch_item_perf(
+                    payload,
+                    status="rate_limited",
+                    apply_started_at=apply_started_at,
+                )
+                self._stop_batch_on_provider_error(word, detail, provider_name, model_name)
+                self._log_batch_perf_summary("rate_limited")
+                return
+            if self._is_fatal_long_generation_detail(detail):
+                item["status"] = "provider_failed"
+                self._batch_status_var.set(f"Provider stopped while generating: {word}. Session autosaved.")
+                self._update_batch_progress()
+                self._record_batch_item_perf(
+                    payload,
+                    status="provider_failed",
+                    apply_started_at=apply_started_at,
+                )
+                self._stop_batch_on_provider_error(word, detail, provider_name, model_name)
+                self._log_batch_perf_summary("provider_failed")
                 return
 
-        current_item = self._batch_items[next_index]
-        current_status = str(current_item.get("status"))
-        if current_status == "rate_limited":
-            self._stop_batch_on_provider_error(
-                word,
-                str(current_item.get("error", "Provider rate limit.")),
-                self._provider_var.get(),
-                self._current_ai_model_name(),
+            self._batch_status_var.set(f"Generation error: {word}. Raw details saved in logs/autosave.")
+            if self._batch_index == index:
+                self._batch_generated_card = None
+                self._batch_generated_grammar = None
+                self._set_batch_status_card(
+                    "GENERATION ERROR",
+                    word,
+                    "error",
+                    self._friendly_generation_error_detail(detail, provider_name, model_name),
+                )
+            self._update_batch_progress()
+            self._autosave_batch_session(f"generation error: {word}")
+            self._record_batch_item_perf(
+                payload,
+                status="error",
+                apply_started_at=apply_started_at,
             )
+            if self._batch_auto_generate_running and not self._batch_auto_generate_paused:
+                self._root.after(120, self._auto_generate_next_pending_batch_card)
             return
-        if current_status == "provider_failed":
-            self._stop_batch_on_provider_error(
-                word,
-                str(current_item.get("error", "Provider error.")),
-                self._provider_var.get(),
-                self._current_ai_model_name(),
-            )
-            return
-        if current_status == "error":
-            # A failed item must not be retried immediately. It remains for manual review.
-            LOGGER.info("Skipping failed queue item after one attempt: %s", word)
 
-        self._root.after(1600, self._auto_generate_next_pending_batch_card)
+        result = payload.get("result")
+        if resolved_mode == "Grammar":
+            grammar_card = result
+            if not isinstance(grammar_card, GrammarAnalysis):
+                item["status"] = "error"
+                item["error"] = "Provider returned an unexpected grammar result."
+                self._batch_status_var.set(f"Grammar generation error: {word}. Unexpected provider result.")
+                self._autosave_batch_session(f"grammar generation error: {word}")
+            else:
+                grammar_card, focus_warnings = self._grammar_card_with_source_focus_guard(item, grammar_card)
+                if focus_warnings:
+                    item["source_focus_warning"] = ", ".join(focus_warnings)
+                else:
+                    item.pop("source_focus_warning", None)
+                item["status"] = "ready"
+                item["grammar_card"] = self._grammar_to_batch_payload(grammar_card)
+                item.pop("card", None)
+                item["provider_name"] = provider_name
+                item.pop("error", None)
+                if self._batch_index == index:
+                    self._batch_generated_card = None
+                    self._batch_generated_grammar = grammar_card
+                    self._batch_generated_provider_name = provider_name
+                    self._set_batch_preview(self._format_batch_grammar_preview(item, grammar_card))
+                self._batch_status_var.set(f"Grammar card ready to review: {word}")
+                self._autosave_batch_session(f"generated grammar: {word}")
+        else:
+            card = result
+            if not isinstance(card, VocabularyCard):
+                item["status"] = "error"
+                item["error"] = "Provider returned an unexpected vocabulary result."
+                self._batch_status_var.set(f"Generation error: {word}. Unexpected provider result.")
+                self._autosave_batch_session(f"generation error: {word}")
+            elif not card.is_valid:
+                item["status"] = "invalid"
+                detail = card.validation_error or "Invalid word or phrase."
+                if card.suggested_correction:
+                    detail += f" Suggested correction: {card.suggested_correction}"
+                item["error"] = detail
+                if self._batch_index == index:
+                    self._batch_generated_card = None
+                    self._set_batch_status_card("VALIDATION ERROR", word, "invalid", detail)
+                self._batch_status_var.set(f"Invalid: {word}")
+                self._autosave_batch_session(f"invalid item: {word}")
+            else:
+                expected_input = self._quality_expected_input_for_item(item, card)
+                quality_warnings = validate_vocabulary_card(
+                    card,
+                    expected_input=expected_input,
+                    expected_target_language=target_language,
+                    expected_explanation_language=explanation_language,
+                    topic_context=topic_context,
+                )
+                card.quality_warnings = list(
+                    dict.fromkeys([*card.quality_warnings, *quality_warnings])
+                )
+                item["status"] = "ready"
+                item["card"] = self._card_to_batch_payload(card)
+                item.pop("grammar_card", None)
+                item["provider_name"] = provider_name
+                item.pop("error", None)
+                item["topic_status"] = card.topic_fit or (
+                    "topic_ok" if topic_context and not quality_warnings else ""
+                )
+                if quality_warnings:
+                    item["quality_warnings"] = quality_warnings
+                else:
+                    item.pop("quality_warnings", None)
+
+                if self._batch_index == index:
+                    self._batch_generated_card = card
+                    self._batch_generated_grammar = None
+                    self._batch_generated_provider_name = provider_name
+                    self._set_batch_preview(self._format_batch_card_preview(item, card))
+
+                if resolved_mode == "Provided examples":
+                    self._batch_status_var.set(f"Provided-example card ready to review: {card.word_or_phrase}")
+                    autosave_label = "generated provided example"
+                elif preserve_vocab_source:
+                    item["resolved_mode"] = "Vocabulary"
+                    self._batch_status_var.set(
+                        f"Vocabulary card ready with preserved source example: {card.word_or_phrase}"
+                    )
+                    autosave_label = "generated vocabulary with source example"
+                elif quality_warnings:
+                    self._batch_status_var.set(f"Ready with quality warning(s): {word}")
+                    autosave_label = "generated"
+                else:
+                    self._batch_status_var.set(f"Ready to review: {word}")
+                    autosave_label = "generated"
+                self._autosave_batch_session(f"{autosave_label}: {card.word_or_phrase}")
+
+        self._status_var.set(self._batch_status_var.get())
+        self._update_batch_progress()
+        self._record_batch_item_perf(
+            payload,
+            status=str(item.get("status") or "unknown"),
+            apply_started_at=apply_started_at,
+        )
+        if batch_has_more:
+            self._root.after(0, self._poll_background_batch_generation)
+        elif self._batch_auto_generate_running and not self._batch_auto_generate_paused:
+            self._root.after(120, self._auto_generate_next_pending_batch_card)
 
     def _pause_batch_process(self) -> None:
         """Pause the currently running Queue operation without clearing results."""
@@ -8999,6 +9875,7 @@ class ModernVocabularyGui:
             self._batch_auto_generate_paused = True
             self._batch_auto_generate_running = False
             self._autosave_batch_session("auto-generation paused")
+            self._log_batch_perf_summary("paused")
             message = f"Auto-generation paused. Progress saved: {self._batch_autosave_path}"
         elif self._batch_add_all_running:
             self._batch_add_all_paused = True
@@ -9832,7 +10709,8 @@ class ModernVocabularyGui:
             left,
             variable=self._existing_flag_var,
             values=[
-                "Any flag",
+                "No flag filter",
+                "Any flag (flagged only)",
                 "Red flag (flag:1)",
                 "Orange flag (flag:2)",
                 "Green flag (flag:3)",
@@ -9948,8 +10826,8 @@ class ModernVocabularyGui:
         self._load_existing_cards()
 
     def _load_flagged_existing_cards(self) -> None:
-        if self._existing_flag_var.get() == "Any flag":
-            self._existing_flag_var.set("Red flag (flag:1)")
+        if self._existing_flag_var.get() == "No flag filter":
+            self._existing_flag_var.set("Any flag (flagged only)")
         self._load_existing_cards()
 
     def _load_leech_existing_cards(self) -> None:
@@ -9970,7 +10848,12 @@ class ModernVocabularyGui:
         self._load_existing_cards(words=clean_words)
 
     def _existing_flag_query(self) -> str:
-        value = self._existing_flag_var.get()
+        value = self._existing_flag_var.get().strip()
+        if value.startswith("Any flag"):
+            # Anki flag:0 means unflagged; its negation means any non-zero flag.
+            return "-flag:0"
+        if value == "No flag filter":
+            return ""
         match = re.search(r"flag:(\d)", value)
         return f"flag:{match.group(1)}" if match else ""
 
@@ -10770,6 +11653,11 @@ class ModernVocabularyGui:
         actions = ctk.CTkFrame(frame, corner_radius=18)
         actions.grid(row=3, column=0, sticky="ew", pady=(0, 10))
         ctk.CTkButton(actions, text="Find missing audio", command=self._load_speech_notes).pack(side="left", padx=16, pady=14)
+        ctk.CTkButton(
+            actions,
+            text="Find missing audio — all decks / current language",
+            command=lambda: self._load_speech_notes(include_all_decks=True),
+        ).pack(side="left", padx=(0, 8), pady=14)
         ctk.CTkButton(actions, text="Select ready", command=self._select_ready_speech_notes).pack(side="left", padx=(0, 8), pady=14)
         ctk.CTkButton(actions, text="Deselect all", command=self._deselect_speech_notes).pack(side="left", padx=(0, 8), pady=14)
         ctk.CTkButton(actions, text="Clear results", command=self._clear_speech_results).pack(side="left", padx=(0, 8), pady=14)
@@ -12062,6 +12950,7 @@ class ModernVocabularyGui:
         self._speech_audio_status_by_note_id = {}
         self._speech_audio_error_by_note_id = {}
         self._speech_audio_path_by_note_id = {}
+        self._speech_scan_loaded = False
         self._speech_summary_var.set("No audio scan loaded yet.")
         self._render_speech_notes("Audio results cleared. Click Find missing audio to scan again.")
 
@@ -12071,7 +12960,8 @@ class ModernVocabularyGui:
             var.set(can_generate)
         self._render_speech_notes("Selected only cards that are ready for audio generation.")
 
-    def _speech_scan_summary(self) -> str:
+    def _speech_scan_summary(self, notes: list[dict[str, object]] | None = None) -> str:
+        scan_notes = self._speech_notes if notes is None else notes
         counts = {
             "ready_for_audio": 0,
             "has_audio": 0,
@@ -12082,33 +12972,61 @@ class ModernVocabularyGui:
             "audio_error": 0,
             "provider_failed": 0,
         }
-        for note in self._speech_notes:
+        for note in scan_notes:
             can_generate, status, *_ = self._speech_note_readiness(note)
             key = "ready_for_audio" if can_generate else status
             counts[key] = counts.get(key, 0) + 1
+
+        total = len(scan_notes)
+        with_audio = counts.get("has_audio", 0)
+        missing = max(0, total - with_audio)
+        coverage = (100.0 * with_audio / total) if total else 100.0
+        blocked_target = counts.get("needs_audio_field", 0) + counts.get("needs_append_target_field", 0)
         return (
-            "Scan completed: "
-            f"{counts.get('ready_for_audio', 0)} ready for audio, "
-            f"{counts.get('has_audio', 0)} already have audio, "
-            f"{counts.get('needs_audio_field', 0) + counts.get('needs_append_target_field', 0)} need a target audio field, "
+            f"Audio coverage: {with_audio}/{total} ({coverage:.1f}%) have audio · "
+            f"{missing} need attention: "
+            f"{counts.get('ready_for_audio', 0)} ready to generate, "
+            f"{blocked_target} need a target audio field, "
             f"{counts.get('needs_source_text', 0)} need source text, "
             f"{counts.get('malformed_audio', 0)} malformed."
         )
 
-    def _load_speech_notes(self) -> None:
-        """Load missing/malformed audio from all supported note types in the deck."""
+    @classmethod
+    def _speech_note_language_matches(cls, note_language: object, requested_language: str) -> bool:
+        """Match explicit Anki note language to the active learning language.
+
+        Global all-deck scans intentionally exclude notes with no Language value
+        so TTS never guesses across mixed-language collections.
+        """
+        candidate = str(note_language or "").strip()
+        requested = str(requested_language or "").strip()
+        if not candidate or not requested:
+            return False
+        return cls._voice_language_matches(candidate, requested)
+
+    def _load_speech_notes(self, include_all_decks: bool = False) -> None:
+        """Load missing/malformed audio from one deck or the whole Anki collection."""
         try:
-            self._set_speech_selected_deck()
+            if not include_all_decks:
+                self._set_speech_selected_deck()
             # Make sure grammar note types created by Queue Grammar expose Audio/ExampleAudio
             # before the broad missing-audio scan runs. This is idempotent.
             try:
                 self._anki_client.ensure_grammar_model_exists()
             except Exception:
                 LOGGER.info("Grammar model audio-field refresh skipped during audio scan", exc_info=True)
-            self._speech_notes = self._anki_client.list_existing_notes(
+            all_notes = self._anki_client.list_existing_notes(
                 search_query=self._speech_search_var.get().strip(),
-                missing_audio_only=True,
+                missing_audio_only=False,
+                include_all_decks=include_all_decks,
             )
+            requested_language = self._current_speech_language()
+            if include_all_decks:
+                all_notes = [
+                    note
+                    for note in all_notes
+                    if self._speech_note_language_matches(note.get("language"), requested_language)
+                ]
         except Exception as exc:
             LOGGER.exception("Speech/audio missing-audio scan failed")
             messagebox.showerror("Anki error", str(exc))
@@ -12116,12 +13034,28 @@ class ModernVocabularyGui:
         self._speech_audio_status_by_note_id = {}
         self._speech_audio_error_by_note_id = {}
         self._speech_audio_path_by_note_id = {}
-        for note in self._speech_notes:
+        for note in all_notes:
             note_id = int(note["note_id"])
             self._speech_audio_status_by_note_id[note_id] = str(note.get("audio_status") or "missing_audio")
+
+        scan_summary = self._speech_scan_summary(all_notes)
+        # Keep the work list focused: coverage counts all supported notes, while
+        # the rows below show only notes that still need audio-related attention.
+        self._speech_notes = []
+        for note in all_notes:
+            _can_generate, status, *_ = self._speech_note_readiness(note)
+            if status != "has_audio":
+                self._speech_notes.append(note)
+
+        self._speech_scan_loaded = True
         extra = self._speech_search_var.get().strip()
+        scope = (
+            f" · scope: all decks · language: {self._current_speech_language()}"
+            if include_all_decks
+            else f" · deck: {self._speech_deck_var.get().strip()}"
+        )
         suffix = f" · filter: {extra}" if extra else ""
-        scan_summary = f"{self._speech_scan_summary()}{suffix}"
+        scan_summary = f"{scan_summary}{scope}{suffix}"
         self._speech_summary_var.set(scan_summary)
         self._render_speech_notes(scan_summary)
 
@@ -12131,9 +13065,14 @@ class ModernVocabularyGui:
             widget.destroy()
         self._speech_note_vars = []
         if not self._speech_notes:
+            empty_text = (
+                "✓ All supported cards in this scan have audio."
+                if self._speech_scan_loaded
+                else "No audio scan results. Click Find missing audio to load cards from the selected deck."
+            )
             ctk.CTkLabel(
                 self._speech_scroll,
-                text="No audio scan results. Click Find missing audio to load cards from the selected deck.",
+                text=empty_text,
                 text_color=("gray35", "gray75"),
             ).grid(row=0, column=0, sticky="w", padx=12, pady=12)
         for index, note in enumerate(self._speech_notes):
@@ -12202,7 +13141,7 @@ class ModernVocabularyGui:
                     "language": note.get("language", ""),
                     "audio_field": note.get("_target_audio_field") or note.get("audio_field", "Audio"),
                     "source_text": note.get("_source_text") or note.get("example", ""),
-                    "write_mode": note.get("_write_mode") or self._speech_write_mode_var.get(),
+                    "write_mode": note.get("_write_mode") or self._speech_audio_write_mode,
                     "status": self._speech_audio_status_by_note_id.get(note_id, "pending_audio"),
                     "audio_path": self._speech_audio_path_by_note_id.get(note_id, ""),
                     "error": self._speech_audio_error_by_note_id.get(note_id, ""),
@@ -12226,6 +13165,7 @@ class ModernVocabularyGui:
         voice_label: str = "",
         voice_value: str = "",
     ) -> None:
+        started_at = time.perf_counter()
         path = self._ensure_audio_autosave_path()
         try:
             path.write_text(
@@ -12239,6 +13179,13 @@ class ModernVocabularyGui:
             LOGGER.info("Audio progress autosaved: reason=%s path=%s", reason, path)
         except Exception:
             LOGGER.exception("Audio progress autosave failed: reason=%s", reason)
+        finally:
+            LOGGER.info(
+                "PERF audio_autosave reason=%r seconds=%.3f notes=%s",
+                reason,
+                max(0.0, time.perf_counter() - started_at),
+                len(getattr(self, "_speech_notes", [])),
+            )
 
     def _pause_existing_audio_batch(self) -> None:
         if not self._speech_audio_running:
@@ -12305,6 +13252,7 @@ class ModernVocabularyGui:
         model_name = self._tts_model_var.get()
         voice_label = self._tts_voice_var.get()
         voice_value = self._selected_tts_voice()
+        self._speech_audio_write_mode = self._speech_write_mode_var.get()
         if not self._test_tts_provider(preflight=True):
             message = "Audio queue not started because audio provider diagnostics failed. Fix the provider/key/voice or switch provider."
             self._speech_progress_var.set(message)
@@ -12395,26 +13343,142 @@ class ModernVocabularyGui:
         completed = 0
         skipped_done = 0
         errors = 0
+        perf_run_started_at = time.perf_counter()
+        perf_tts_s = 0.0
+        perf_media_s = 0.0
+        perf_anki_update_s = 0.0
+        perf_items = 0
 
         def publish_progress(message: str) -> None:
-            # Keep rapid audio progress inside Speech & Audio. The global activity
-            # footer is reserved for final summaries so Queue and Audio logs do not
-            # blur into one unreadable line.
-            self._root.after(0, self._render_speech_notes, message)
+            # Updating progress must stay O(1). Re-rendering the whole Speech &
+            # Audio checklist here rebuilt hundreds of CTk widgets after every
+            # card and dominated long audio runs.
+            self._root.after(0, self._speech_progress_var.set, message)
 
         stopped = False
         stop_message = ""
         failed_index = None
         stop_status = ""
+        pending_writes: list[dict[str, object]] = []
+
+        def apply_success(entry: dict[str, object], media_name: str) -> None:
+            nonlocal completed
+            note = entry["note"]
+            assert isinstance(note, dict)
+            note_id = int(entry["note_id"])
+            audio_field = str(entry["audio_field"])
+            write_mode = str(entry["write_mode"])
+            known_fields = entry["known_fields"]
+            assert isinstance(known_fields, dict)
+
+            self._speech_audio_status_by_note_id[note_id] = "updated_in_anki"
+            fields = known_fields
+            if write_mode == "Append [sound] to existing field" and audio_field in fields:
+                fields[audio_field] = (
+                    f"{fields.get(audio_field, '')}<br>[sound:{media_name}]"
+                    if fields.get(audio_field)
+                    else f"[sound:{media_name}]"
+                )
+            elif audio_field in fields:
+                fields[audio_field] = f"[sound:{media_name}]"
+            note["fields"] = fields
+            note["audio_field"] = audio_field
+            note["audio_status"] = "has_audio"
+            completed += 1
+
+        def flush_pending() -> None:
+            nonlocal errors, perf_media_s, perf_anki_update_s
+            if not pending_writes:
+                return
+
+            batch = list(pending_writes)
+            pending_writes.clear()
+            anki_started_at = time.perf_counter()
+            try:
+                media_names = self._anki_client.store_and_attach_audio_batch(
+                    [
+                        {
+                            "path": entry["path"],
+                            "note_id": entry["note_id"],
+                            "field_name": entry["audio_field"],
+                            "audio_metadata": entry["audio_metadata"],
+                            "existing_fields": entry["known_fields"],
+                            "append": entry["write_mode"] == "Append [sound] to existing field",
+                        }
+                        for entry in batch
+                    ]
+                )
+                anki_s = max(0.0, time.perf_counter() - anki_started_at)
+                perf_anki_update_s += anki_s
+                LOGGER.info(
+                    "PERF audio_anki_batch size=%s seconds=%.3f mode=multi",
+                    len(batch),
+                    anki_s,
+                )
+                for entry, media_name in zip(batch, media_names):
+                    apply_success(entry, media_name)
+            except Exception:
+                # One malformed legacy note must not poison the whole audio run.
+                # Fall back only for this batch; normal batches keep the two-call
+                # AnkiConnect multi fast path.
+                LOGGER.exception(
+                    "Audio Anki multi batch failed; falling back to per-note writes: size=%s",
+                    len(batch),
+                )
+                for entry in batch:
+                    note_id = int(entry["note_id"])
+                    try:
+                        media_started_at = time.perf_counter()
+                        media_name = self._anki_client.store_media_file(Path(str(entry["path"])))
+                        perf_media_s += max(0.0, time.perf_counter() - media_started_at)
+
+                        update_started_at = time.perf_counter()
+                        if entry["write_mode"] == "Append [sound] to existing field":
+                            self._anki_client.append_audio_to_note(
+                                note_id,
+                                media_name,
+                                str(entry["audio_field"]),
+                                audio_metadata=entry["audio_metadata"],
+                                existing_fields=entry["known_fields"],
+                            )
+                        else:
+                            self._anki_client.attach_audio_to_note(
+                                note_id,
+                                media_name,
+                                str(entry["audio_field"]),
+                                audio_metadata=entry["audio_metadata"],
+                                existing_field_names=set(entry["known_fields"]),
+                            )
+                        perf_anki_update_s += max(0.0, time.perf_counter() - update_started_at)
+                        apply_success(entry, media_name)
+                    except Exception as exc:
+                        errors += 1
+                        self._speech_audio_status_by_note_id[note_id] = "audio_error"
+                        self._speech_audio_error_by_note_id[note_id] = str(exc)
+                        LOGGER.exception(
+                            "Audio Anki fallback write failed: note_id=%s",
+                            note_id,
+                        )
+
+            self._autosave_audio_progress(
+                f"audio batch flushed ({len(batch)})",
+                provider_name,
+                model_name,
+                voice_label,
+                voice_value,
+            )
 
         try:
             for index, note in enumerate(notes, start=1):
                 if self._speech_audio_stop_requested.is_set():
+                    flush_pending()
                     stopped = True
                     failed_index = index
                     stop_message = "User stopped audio queue."
                     break
 
+                if self._speech_audio_pause_requested.is_set():
+                    flush_pending()
                 while self._speech_audio_pause_requested.is_set():
                     self._autosave_audio_progress(
                         "audio paused",
@@ -12442,7 +13506,8 @@ class ModernVocabularyGui:
                 audio_field = str(note.get("_target_audio_field") or note.get("audio_field") or "").strip()
                 source_text = str(note.get("_source_text") or note.get("example") or note.get("word") or "").strip()
                 write_mode = str(note.get("_write_mode") or "Use dedicated audio field")
-                if current_status in {"audio_ready", "updated_in_anki", "has_audio"}:
+
+                if current_status in {"updated_in_anki", "has_audio"}:
                     skipped_done += 1
                     publish_progress(
                         f"Skipping already generated {index}/{len(notes)} · Updated {completed} · Skipped {skipped_done} · Failed {errors}"
@@ -12454,70 +13519,56 @@ class ModernVocabularyGui:
                     self._speech_audio_error_by_note_id[note_id] = (
                         "Missing target audio field." if not audio_field else "Missing source text for TTS."
                     )
-                    publish_progress(
-                        f"Skipping not-ready note {index}/{len(notes)} · Updated {completed} · Skipped {skipped_done} · Failed {errors}"
-                    )
                     continue
 
                 self._speech_audio_status_by_note_id[note_id] = "pending_audio"
-                self._autosave_audio_progress(
-                    f"before audio item {index}",
-                    provider_name,
-                    model_name,
-                    voice_label,
-                    voice_value,
-                )
+                item_started_at = time.perf_counter()
+                tts_s = 0.0
+                cached: bool | None = None
                 try:
-                    result = self._speech_service.generate(
-                        provider_name,
-                        source_text,
-                        str(note.get("language") or self._current_speech_language()),
-                        model_name,
-                        voice_value,
-                    )
+                    tts_started_at = time.perf_counter()
+                    try:
+                        result = self._speech_service.generate(
+                            provider_name,
+                            source_text,
+                            str(note.get("language") or self._current_speech_language()),
+                            model_name,
+                            voice_value,
+                        )
+                    finally:
+                        tts_s = max(0.0, time.perf_counter() - tts_started_at)
+
+                    cached = result.cached
                     self._speech_audio_status_by_note_id[note_id] = "audio_ready"
                     self._speech_audio_path_by_note_id[note_id] = str(result.path)
+                    known_fields = note.get("fields") if isinstance(note.get("fields"), dict) else {}
+                    pending_writes.append(
+                        {
+                            "index": index,
+                            "note": note,
+                            "note_id": note_id,
+                            "path": result.path,
+                            "audio_field": audio_field,
+                            "write_mode": write_mode,
+                            "known_fields": known_fields,
+                            "audio_metadata": self._audio_metadata_from_tts_result(
+                                result,
+                                source_text,
+                                voice_label,
+                            ),
+                        }
+                    )
                     LOGGER.info(
-                        "Existing-card TTS ready: note_id=%s word=%s path=%s cached=%s provider=%s model=%s voice_label=%s voice_value=%s",
-                        note.get("note_id"),
+                        "Existing-card TTS ready: note_id=%s word=%s path=%s cached=%s provider=%s model=%s",
+                        note_id,
                         note.get("word"),
                         result.path,
                         result.cached,
                         provider_name,
                         model_name,
-                        voice_label,
-                        voice_value,
                     )
-                    media_name = self._anki_client.store_media_file(result.path)
-                    audio_metadata = self._audio_metadata_from_tts_result(
-                        result,
-                        source_text,
-                        voice_label,
-                    )
-                    if write_mode == "Append [sound] to existing field":
-                        self._anki_client.append_audio_to_note(
-                            note_id,
-                            media_name,
-                            audio_field,
-                            audio_metadata=audio_metadata,
-                        )
-                    else:
-                        self._anki_client.attach_audio_to_note(
-                            note_id,
-                            media_name,
-                            audio_field,
-                            audio_metadata=audio_metadata,
-                        )
-                    self._speech_audio_status_by_note_id[note_id] = "updated_in_anki"
-                    fields = note.get("fields") if isinstance(note.get("fields"), dict) else {}
-                    if write_mode == "Append [sound] to existing field" and audio_field in fields:
-                        fields[audio_field] = f"{fields.get(audio_field, '')}<br>[sound:{media_name}]" if fields.get(audio_field) else f"[sound:{media_name}]"
-                    elif audio_field in fields:
-                        fields[audio_field] = f"[sound:{media_name}]"
-                    note["fields"] = fields
-                    note["audio_field"] = audio_field
-                    note["audio_status"] = "has_audio"
-                    completed += 1
+                    if len(pending_writes) >= AUDIO_ANKI_BATCH_SIZE:
+                        flush_pending()
                 except Exception as exc:
                     errors += 1
                     failed_index = index
@@ -12537,37 +13588,58 @@ class ModernVocabularyGui:
                         voice_value,
                     )
                     LOGGER.exception(
-                        "Existing-card audio generation/update failed: note_id=%s word=%s example=%s fatal=%s error=%s",
-                        note.get("note_id"),
+                        "Existing-card audio generation failed: note_id=%s word=%s fatal=%s error=%s",
+                        note_id,
                         note.get("word"),
-                        note.get("example"),
                         self._is_fatal_tts_error(exc),
                         exc,
                     )
                     if self._is_fatal_tts_error(exc):
+                        flush_pending()
                         stopped = True
-                        LOGGER.warning(
-                            "Stopping existing-card TTS queue after fatal provider error: provider=%s model=%s voice_label=%s voice_value=%s status=%s failed_index=%s note_id=%s",
-                            provider_name,
-                            model_name,
-                            voice_label,
-                            voice_value,
-                            http_status,
-                            index,
-                            note_id,
-                        )
                         break
+                finally:
+                    perf_items += 1
+                    perf_tts_s += tts_s
+                    LOGGER.info(
+                        "PERF audio_item index=%s/%s note_id=%s status=%s cached=%s "
+                        "tts_s=%.3f total_s=%.3f chars=%s word=%r",
+                        index,
+                        len(notes),
+                        note_id,
+                        self._speech_audio_status_by_note_id.get(note_id, "unknown"),
+                        cached,
+                        tts_s,
+                        max(0.0, time.perf_counter() - item_started_at),
+                        len(source_text),
+                        note.get("word"),
+                    )
 
                 publish_progress(
-                    f"Generating {index}/{len(notes)} · Updated {completed} · Skipped {skipped_done} · Failed {errors}"
+                    f"Generating {index}/{len(notes)} · Updated {completed} · Buffered {len(pending_writes)} · Skipped {skipped_done} · Failed {errors}"
                 )
 
+            flush_pending()
             self._autosave_audio_progress(
                 "audio queue finished" if not stopped else "audio queue stopped",
                 provider_name,
                 model_name,
                 voice_label,
                 voice_value,
+            )
+            LOGGER.info(
+                "PERF audio_summary outcome=%s selected=%s processed=%s updated=%s skipped=%s failed=%s "
+                "total_s=%.3f tts_s=%.3f media_s=%.3f anki_update_s=%.3f",
+                "stopped" if stopped else "finished",
+                len(notes),
+                perf_items,
+                completed,
+                skipped_done,
+                errors,
+                max(0.0, time.perf_counter() - perf_run_started_at),
+                perf_tts_s,
+                perf_media_s,
+                perf_anki_update_s,
             )
 
             if stopped:
@@ -12717,7 +13789,7 @@ class ModernVocabularyGui:
         if not self._stt_service:
             messagebox.showerror(
                 "Speech input not configured",
-                "Speech-to-text is not configured. Choose Local Whisper or OpenAI Cloud in Setup.",
+                "Speech-to-text is not configured. Choose Local Whisper, Groq Cloud or OpenAI Cloud in Setup.",
             )
             return
         try:
@@ -12782,7 +13854,7 @@ class ModernVocabularyGui:
     def _stop_conversation_recording(self) -> None:
         """Stop recording and transcribe the audio in a background thread."""
         if not self._stt_service:
-            messagebox.showerror("Speech input not configured", "Choose Local Whisper or OpenAI Cloud in Setup.")
+            messagebox.showerror("Speech input not configured", "Choose Local Whisper, Groq Cloud or OpenAI Cloud in Setup.")
             return
         if not self._stt_service.is_recording:
             messagebox.showinfo("Speech input", "No recording is running.")

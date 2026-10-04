@@ -245,6 +245,97 @@ Return this exact JSON structure:
 """
 
 
+def build_vocabulary_batch_prompt(
+    words_or_phrases: list[str],
+    target_language: str,
+    explanation_language: str,
+    topic_context: str = "",
+) -> str:
+    """Build one request that returns several independent vocabulary cards."""
+    items = [str(item).strip() for item in words_or_phrases if str(item).strip()]
+    if not items:
+        raise ValueError("At least one vocabulary item is required.")
+    explanation_language = explanation_language.strip()
+    if not explanation_language:
+        raise ValueError("Explanation language must be selected explicitly.")
+    effective_explanation_language = (
+        target_language if explanation_language == "Same as target" else explanation_language
+    )
+    no_translation = explanation_language == "No translation"
+    explanation_rules = _language_quality_rules(effective_explanation_language, target_language)
+    topic_rules = _topic_rules(topic_context)
+    numbered_items = "\n".join(
+        f'{index + 1}. "{item}"' for index, item in enumerate(items)
+    )
+
+    return f"""
+You are a professional {target_language} language teacher and flashcard quality reviewer.
+
+Create EXACTLY {len(items)} independent vocabulary flashcards, one for each input below.
+
+INPUTS — preserve this order:
+{numbered_items}
+
+Target language: {target_language}
+Explanation language: {effective_explanation_language}
+
+Critical batch rules:
+- Return exactly one card per input, in exactly the same order as INPUTS.
+- For every valid card, word_or_phrase MUST exactly equal its corresponding input.
+- Never merge, skip, reorder, or replace inputs.
+- Treat each complete input as one learning item before analysing individual words.
+- Accept useful words, phrases, collocations, sentence fragments, idioms, grammar patterns, and lesson/context expressions.
+- Set is_valid=false only for true garbage, wrong-language text, malformed/nonexistent wording, or an unusable obvious typo.
+- For invalid input, keep word_or_phrase equal to the original input and leave flashcard content empty.
+- Definition is short, clear, and written in {target_language}.
+{explanation_rules}
+{topic_rules}
+Example and quality rules for EVERY card:
+- Use the target itself or a correct inflected/conjugated form of the SAME lexical target.
+- Do not substitute a synonym or visually similar word.
+- Prefer natural, common, realistic usage and established collocations.
+- used_form_in_example must be the exact surface form copied from example.
+- example_uses_target is true only when the example really uses the target or its valid inflection.
+- target_usage is exactly: exact, valid_inflection, mismatch, or uncertain.
+- collocation_naturalness and translation_naturalness are exactly: ok, weak, or bad.
+- topic_fit is exactly: ok, weak, mismatch, or not_applicable.
+- Put any uncertainty or quality problem into quality_warnings instead of hiding it.
+- Run the same quality self-check independently for every item.
+
+Return ONLY valid JSON. No markdown and no comments.
+Return this exact top-level structure:
+
+{{
+  "cards": [
+    {{
+      "is_valid": true,
+      "validation_error": "",
+      "suggested_correction": "",
+      "explanation_language": "{effective_explanation_language}",
+      "word_or_phrase": "EXACT corresponding input",
+      "target_language": "{target_language}",
+      "part_of_speech": "string",
+      "definition": "string",
+      "translation": "{'' if no_translation else 'string'}",
+      "example": "string",
+      "example_translation": "{'' if no_translation else 'string'}",
+      "synonyms": ["string"],
+      "collocations": ["string"],
+      "grammar_note": "string",
+      "topic_fit": "ok",
+      "topic_warning": "",
+      "quality_warnings": [],
+      "used_form_in_example": "string",
+      "example_uses_target": true,
+      "target_usage": "exact",
+      "collocation_naturalness": "ok",
+      "translation_naturalness": "ok"
+    }}
+  ]
+}}
+"""
+
+
 def _split_target_and_sentence(raw_item: str) -> tuple[str, str]:
     """Split an optional `target | sentence` Batch input."""
     value = raw_item.strip()
@@ -352,6 +443,107 @@ Return ONLY valid JSON. Do not use markdown or comments outside JSON.
 """
 
 
+def build_sentence_based_cards_batch_prompt(
+    raw_items: list[str],
+    target_language: str,
+    explanation_language: str,
+    topic_context: str = "",
+) -> str:
+    """Build one request for several target + provided-sentence cards."""
+    items = [str(item).strip() for item in raw_items if str(item).strip()]
+    if not items:
+        raise ValueError("At least one provided-example item is required.")
+
+    parsed: list[tuple[str, str]] = []
+    for raw_item in items:
+        target_item, provided_sentence = _split_target_and_sentence(raw_item)
+        if not target_item or not provided_sentence:
+            raise ValueError(
+                "Batched Provided examples require explicit 'target | sentence' rows."
+            )
+        parsed.append((target_item, provided_sentence))
+
+    explanation_language = explanation_language.strip()
+    if not explanation_language:
+        raise ValueError("Explanation language must be selected explicitly.")
+    effective_explanation_language = (
+        target_language if explanation_language == "Same as target" else explanation_language
+    )
+    no_translation = explanation_language == "No translation"
+    explanation_rules = _language_quality_rules(effective_explanation_language, target_language)
+    topic_rules = _topic_rules(topic_context)
+
+    numbered_items = "\n".join(
+        f'{index + 1}. target="{target}" | sentence="{sentence}"'
+        for index, (target, sentence) in enumerate(parsed)
+    )
+
+    return f"""
+You are a professional {target_language} language teacher and flashcard quality reviewer.
+
+Create EXACTLY {len(parsed)} independent sentence-based flashcards.
+
+INPUTS — preserve this order and pairing:
+{numbered_items}
+
+Target language: {target_language}
+Explanation language: {effective_explanation_language}
+
+Critical batch rules:
+- Return exactly one card per input and keep the same order.
+- NEVER mix a target with another input's sentence.
+- word_or_phrase MUST exactly equal the corresponding target.
+- example MUST preserve the corresponding provided sentence.
+- Do not invent a replacement example.
+- Do not change the sentence meaning.
+- Only a tiny obvious typo correction is allowed; if you make one, add a quality warning.
+- Treat each target + sentence pair independently.
+- Definition must explain that target in {target_language}.
+{explanation_rules}
+{topic_rules}
+Quality rules for EVERY card:
+- example_uses_target is true only when the example contains the target or a valid inflected form of the SAME lexical target.
+- used_form_in_example must be copied literally from the example.
+- target_usage is exactly: exact, valid_inflection, mismatch, or uncertain.
+- collocation_naturalness and translation_naturalness are exactly: ok, weak, or bad.
+- topic_fit is exactly: ok, weak, mismatch, or not_applicable.
+- Put uncertainty, a typo correction, awkward usage, or any mismatch into quality_warnings.
+- If the sentence is not in {target_language}, set is_valid=false rather than inventing content.
+
+Return ONLY valid JSON. No markdown and no comments.
+Return this exact top-level structure:
+
+{{
+  "cards": [
+    {{
+      "is_valid": true,
+      "validation_error": "",
+      "suggested_correction": "",
+      "explanation_language": "{effective_explanation_language}",
+      "word_or_phrase": "EXACT corresponding target",
+      "target_language": "{target_language}",
+      "part_of_speech": "string",
+      "definition": "string",
+      "translation": "{'' if no_translation else 'string'}",
+      "example": "EXACT corresponding provided sentence",
+      "example_translation": "{'' if no_translation else 'string'}",
+      "synonyms": ["string"],
+      "collocations": ["string"],
+      "grammar_note": "string",
+      "topic_fit": "ok",
+      "topic_warning": "",
+      "quality_warnings": [],
+      "used_form_in_example": "string",
+      "example_uses_target": true,
+      "target_usage": "exact",
+      "collocation_naturalness": "ok",
+      "translation_naturalness": "ok"
+    }}
+  ]
+}}
+"""
+
+
 def build_batch_grammar_prompt(
     grammar_item: str,
     target_language: str,
@@ -432,6 +624,74 @@ Return ONLY valid JSON with EXACTLY these keys:
   "target_is_structure": true
 }}
 """
+
+def build_batch_grammar_cards_prompt(
+    grammar_items: list[str],
+    target_language: str,
+    topic_contexts: list[str] | None = None,
+    explanation_language: str = "Same as target",
+) -> str:
+    """Generate several Grammar cards in one request with per-item context."""
+    requested = [str(item).strip() for item in grammar_items]
+    contexts = topic_contexts or [""] * len(requested)
+    if len(contexts) != len(requested):
+        raise ValueError("Grammar batch contexts must match grammar item count.")
+    effective_explanation_language = (
+        target_language
+        if not explanation_language.strip() or explanation_language == "Same as target"
+        else explanation_language
+    )
+    entries = []
+    for index, (grammar_item, context) in enumerate(zip(requested, contexts), start=1):
+        context_text = str(context or "").strip()
+        context_block = (
+            f"\nSOURCE CONTEXT (use only to understand this grammar item):\n{context_text}"
+            if context_text
+            else ""
+        )
+        entries.append(f"ITEM {index}\nINPUT:\n{grammar_item}{context_block}")
+    items_block = "\n\n".join(entries)
+    return f"""
+You are a professional {target_language} grammar teacher.
+Create exactly {len(requested)} grammar learning items, one for each input below, IN THE SAME ORDER.
+
+Target language: {target_language}
+Explanation language: {effective_explanation_language}
+
+{items_block}
+
+For EACH item use exactly this learner-facing contract:
+- target: a short name of the grammar construction itself, never a rule/explanation/example sentence
+- structure: a compact grammatical pattern/formula
+- rule: what the construction does and/or when it is used
+- example: exactly one natural sentence that actually USES the construction
+- explanation: a concise learner-friendly explanation in {effective_explanation_language}
+- example_demonstrates_structure: true only after semantic self-check
+- target_is_structure: true only after semantic self-check
+
+Important:
+- Keep output order identical to input order.
+- Do not merge, skip, duplicate, or reorder items.
+- Each item's SOURCE CONTEXT belongs only to that item.
+- A sentence describing a grammar rule is not a valid example.
+- If either semantic check would be false, fix that item's learner-facing fields before returning JSON.
+
+Return ONLY valid JSON, no markdown:
+{{
+  "cards": [
+    {{
+      "target": "short grammar construction",
+      "structure": "compact grammar pattern",
+      "rule": "what it does / when to use it",
+      "example": "one real sentence using the construction",
+      "explanation": "explanation in {effective_explanation_language}",
+      "example_demonstrates_structure": true,
+      "target_is_structure": true
+    }}
+  ]
+}}
+"""
+
 
 def _conversation_flashcard_instructions(flashcard_context: str) -> str:
     """Return strict teaching rules for flashcard-based conversation mode."""
@@ -990,25 +1250,27 @@ ALLOWED OUTPUT TYPES
 
 {mode_contract}
 
-Your job is controlled recall, not runaway word mining:
+Your job is HIGH-RECALL candidate extraction, not ranking:
 - Candidate count must be driven by the source content, never by a fixed quota or target number.
-- A short/simple source may contain only a few useful candidates; a dense glossary or advanced lesson may legitimately contain 100+ useful candidates.
-- Return every candidate that genuinely meets the quality criteria, and do not add weak items just to increase the count.
-- Do NOT choose only an arbitrary top-N subset from explicit lesson vocabulary lists.
+- First identify candidates exhaustively across the ENTIRE source. Ranking happens later in the UI.
+- Do NOT pre-filter the list down to only the "best", "strongest", "most central", or "highest-value" items.
+- Review metadata such as learning_value, topic_relevance, reusability, advancedness and document_specificity are labels only. They must NEVER be used as a reason to omit an otherwise learnable candidate.
+- A short/simple source may contain only a few candidates; a dense reading passage or advanced lesson may legitimately contain dozens or 100+.
+- Do NOT choose an arbitrary top-N subset.
 - Extract every explicit vocabulary item from clearly marked lesson vocabulary lists when it is a real learnable target.
 - Extract every explicit idiom/expression from clearly marked expression sections when it is a real learnable target.
-- Do NOT extract every possible word from continuous prose.
-- Do NOT create one candidate for every noun, verb, adjective, symptom, body part, or repeated word in ordinary paragraphs.
-- If the source contains explicit vocabulary/expression sections, process those sections first and keep reading-text mining minimal and selective.
-- If the source is mostly continuous prose, return only genuinely useful reusable items: idioms, collocations, specialist terms, and lesson-relevant phrases.
-- Never aim for 20, 60, 80, 100, or any other fixed number of candidates. Stop because the useful material is exhausted, not because a quota was reached.
+- For continuous prose, scan sentence by sentence from the beginning to the end of the source.
+- Include every non-basic, potentially learnable item appropriate for an intermediate/advanced learner: transferable single words, phrasal verbs, idioms, collocations, fixed/semi-fixed phrases, useful academic/descriptive vocabulary, specialist terms and notable lexical chunks.
+- A candidate may still be returned even if it is only Useful or Optional; the UI will rank it later.
+- Omit only obvious basic/function vocabulary, proper names with no language-learning value, OCR garbage, duplicate items, page furniture and material that is not a lexical learning target.
+- Never stop early because enough candidates have already been found. Continue scanning until the END of the source.
 
 Priority order:
 1. Extract every explicit bullet/list item under headings such as Vocabulario, Vocabulary, Léxico, Lexique, Wortschatz, Expresiones, Expresiones coloquiales, Idioms, Expressions when it is suitable for learning.
 2. Extract every numbered idiom/expression heading from expression sections.
-3. Extract useful reusable collocations and expressions from reading text after explicit lists and expression headings are complete.
-4. Skip exercises, questions, tasks, page footers, emails, websites, image filenames, copyright/footer text, tutor IDs, and page numbers unless they themselves contain a clearly reusable language target.
-5. When in doubt, prefer quality over quantity: omit weak one-off words, but never drop a strong candidate merely because many candidates were already found.
+3. Scan reading text sentence by sentence from start to finish and extract all plausible intermediate/advanced lexical candidates, including useful single words as well as collocations and expressions.
+4. Skip exercises, questions, tasks, page footers, emails, websites, image filenames, copyright/footer text, tutor IDs, and page numbers unless they themselves contain a genuine lexical target.
+5. When uncertain whether a non-basic item is worth learning, INCLUDE it and mark its review metadata accordingly. The UI, not this extraction step, decides whether it is Recommended, Useful or Optional.
 
 Slash and parenthesis rules:
 - If a slash-separated item is a list of separate words, split it into separate vocabulary candidates.
@@ -1249,8 +1511,8 @@ Important:
 - Return candidate drafts only. The app will review/edit/send them to Batch later.
 - Candidate count must be driven by what is actually present on the page, never by a fixed quota. Return every genuinely useful candidate and do not pad or truncate to a target number.
 - A sparse page may yield only a few candidates; a dense vocabulary/grammar page may legitimately yield many.
-- Do NOT extract every word from continuous prose. For ordinary paragraphs, return only high-value lesson vocabulary, idioms, collocations, and clearly marked/highlighted items.
-- If the page has explicit lists/tables, extract those first. If it is mostly prose, be selective.
+- Do NOT extract every word from continuous prose. For ordinary paragraphs, scan sentence by sentence and extract every clearly learnable non-basic item that is useful for an intermediate/advanced learner: phrasal verbs, idioms, collocations, fixed/semi-fixed phrases, useful academic/descriptive vocabulary, specialist terms, and transferable single words with meaningful learning value.
+- If the page has explicit lists/tables, extract those first. If it is mostly prose, do not collapse the result to a tiny "top few" subset: a dense reading passage can legitimately yield dozens of useful vocabulary candidates. Omit only genuinely basic, one-off/proper-name, OCR-garbage, or low-learning-value items.
 
 Table-aware rules:
 - If the page contains a table, preserve row relationships. Never mix cells from different rows.
@@ -1280,6 +1542,7 @@ Vocabulary image contract:
 - In Vocabulary mode, return type="vocabulary" only. Do not return provided_example or grammar.
 - In Vocabulary + source examples mode, return type="vocabulary" only, but attach source_sentence when a clear visible example belongs to that expression.
 - In Smart vocabulary mode, you may return type="vocabulary" and type="provided_example". Use provided_example only for complete useful source sentences with a clear target; never return grammar in Smart vocabulary mode.
+- In Smart vocabulary mode, after explicit lists/headings are handled, scan reading prose systematically for reusable learner vocabulary. Include useful single words as well as collocations/phrases; do not restrict prose extraction to only a handful of standout items.
 - Extract all explicit list items from visible Vocabulario/Vocabulary/Léxico/Expresiones sections before extracting anything from prose.
 - Extract numbered idiom/expression headings as vocabulary/idiom candidates.
 - Split slash-separated word lists into separate candidates; preserve or expand slash alternatives inside fixed expressions.

@@ -4,8 +4,10 @@ from __future__ import annotations
 
 from html import unescape
 import base64
+import logging
 from pathlib import Path
 import re
+import time
 from typing import Any
 
 import requests
@@ -33,6 +35,9 @@ from src.anki.templates import (
 )
 from src.domain.languages import get_language_tag
 from src.domain.models import GrammarAnalysis, VocabularyCard
+
+
+LOGGER = logging.getLogger(__name__)
 
 
 class DuplicateNoteError(ValueError):
@@ -75,7 +80,15 @@ class AnkiClient:
                 ``http://localhost:8765``.
             deck_name: Default deck used when adding notes.
         """
-        self._url = anki_connect_url
+        raw_url = anki_connect_url.strip()
+        if raw_url.rstrip("/") == "http://localhost:8765":
+            raw_url = "http://127.0.0.1:8765"
+        self._url = raw_url
+        self._session = requests.Session()
+        if self._url.startswith(("http://127.0.0.1", "http://localhost", "http://[::1]")):
+            # AnkiConnect is local. Do not route loopback traffic through system
+            # proxy settings, and reuse the HTTP connection across calls.
+            self._session.trust_env = False
         self._deck_name = deck_name
         self._model_ready = False
         self._grammar_model_ready = False
@@ -477,11 +490,15 @@ class AnkiClient:
         extra_tags: list[str] | None = None,
         audio_metadata: dict[str, str] | None = None,
     ) -> None:
-        """Add one batch vocabulary card with a final collection-wide safety guard.
+        """Add one batch vocabulary card after Queue already scanned duplicates.
 
-        Batch already performs one broad duplicate scan for performance.  This
-        method keeps that fast path, but it must never bypass the final exact
-        current-model check because the collection can change after the precheck.
+        Add all ready builds one collection-wide duplicate snapshot before it
+        starts and updates that in-memory map after every successful add. Do not
+        rescan the whole current note model for every card here: that turned a
+        98-card export into repeated findNotes + notesInfo full-model reads.
+        Anki's native allowDuplicate=False remains the final write-time guard for
+        the current model while the Queue snapshot protects this app's broader
+        cross-model/cross-deck identity rules.
         """
         self.ensure_vocabulary_model_exists()
         language_tag = get_language_tag(card.target_language)
@@ -498,18 +515,12 @@ class AnkiClient:
                 *(extra_tags or []),
             ],
         }
-        existing_note_id = self.find_existing_vocabulary_note_id(card.word_or_phrase)
-        if existing_note_id is not None:
-            raise DuplicateNoteError(
-                f"A vocabulary card for '{card.word_or_phrase}' already exists in the Anki collection.",
-                existing_note_id,
-                model_name=MODEL_NAME,
-                duplicate_count=1,
-                update_safe=True,
-            )
         result = self._invoke(action="addNote", params={"note": note})
         if result is None:
-            raise ValueError(f"Could not add card: {card.word_or_phrase}")
+            raise ValueError(
+                f"Could not add card: {card.word_or_phrase}. "
+                "Anki may have rejected it as a duplicate or invalid note."
+            )
 
     def update_card_by_note_id(
         self,
@@ -628,18 +639,24 @@ class AnkiClient:
             if value:
                 fields[field_name] = value
 
-    def _filter_existing_note_fields(self, note_id: int, fields: dict[str, str]) -> dict[str, str]:
+    def _filter_existing_note_fields(
+        self,
+        note_id: int,
+        fields: dict[str, str],
+        existing_field_names: set[str] | None = None,
+    ) -> dict[str, str]:
         """Keep only fields exposed by a specific note type.
 
-        Existing-card audio repair can target arbitrary legacy/user note types.
-        Those notes usually do not have our hidden AudioProvider/AudioModel fields,
-        so metadata is written only when the note type supports it.
+        Existing-card audio workflows usually already loaded the note and therefore
+        know its field names. Reuse that snapshot instead of doing another
+        AnkiConnect notesInfo call for every audio item.
         """
-        notes = self._invoke(action="notesInfo", params={"notes": [note_id]}) or []
-        if not notes:
-            return fields
-        existing_names = set((notes[0].get("fields") or {}).keys())
-        return {name: value for name, value in fields.items() if name in existing_names}
+        if existing_field_names is None:
+            notes = self._invoke(action="notesInfo", params={"notes": [note_id]}) or []
+            if not notes:
+                return fields
+            existing_field_names = set((notes[0].get("fields") or {}).keys())
+        return {name: value for name, value in fields.items() if name in existing_field_names}
 
     def store_media_file(self, file_path: Path) -> str:
         """Copy a local audio file into Anki media and return its media filename."""
@@ -651,6 +668,93 @@ class AnkiClient:
         if not result:
             raise ValueError(f"Could not store Anki media file: {file_path.name}")
         return str(result)
+
+    def store_and_attach_audio_batch(
+        self,
+        items: list[dict[str, Any]],
+    ) -> list[str]:
+        """Store several audio files and update their notes using two AnkiConnect multi calls.
+
+        Each item must provide: path, note_id, field_name, audio_metadata,
+        existing_fields, and append (bool). Existing fields are supplied by the
+        caller so this fast path never performs per-note notesInfo reads.
+        """
+        if not items:
+            return []
+
+        media_actions = []
+        for item in items:
+            path = Path(item["path"])
+            data = base64.b64encode(path.read_bytes()).decode("ascii")
+            media_actions.append(
+                {
+                    "action": "storeMediaFile",
+                    "params": {"filename": path.name, "data": data},
+                }
+            )
+
+        media_names = self._invoke(
+            action="multi",
+            params={"actions": media_actions},
+        ) or []
+        if len(media_names) != len(items):
+            raise ValueError(
+                f"AnkiConnect stored {len(media_names)} audio files for {len(items)} requested items."
+            )
+
+        update_actions = []
+        normalized_names: list[str] = []
+        for item, raw_media_name in zip(items, media_names):
+            if not raw_media_name:
+                raise ValueError(f"Could not store Anki media file for note {item['note_id']}.")
+            media_name = str(raw_media_name)
+            normalized_names.append(media_name)
+
+            note_id = int(item["note_id"])
+            field_name = str(item["field_name"])
+            existing_fields = dict(item.get("existing_fields") or {})
+            audio_metadata = item.get("audio_metadata")
+            sound = f"[sound:{media_name}]"
+
+            if bool(item.get("append")):
+                if field_name not in existing_fields:
+                    raise ValueError(f"Field '{field_name}' does not exist on note {note_id}.")
+                current_value = str(existing_fields.get(field_name) or "")
+                if "[sound:" in current_value.casefold():
+                    updated_value = current_value
+                elif current_value:
+                    updated_value = f"{current_value}<br>{sound}"
+                else:
+                    updated_value = sound
+                fields = {field_name: updated_value}
+            else:
+                fields = {field_name: sound}
+
+            fields.update(VocabularyFieldBuilder.audio_metadata_fields(audio_metadata))
+            fields = self._filter_existing_note_fields(
+                note_id,
+                fields,
+                existing_field_names=set(existing_fields),
+            )
+            if field_name not in fields:
+                raise ValueError(f"Field '{field_name}' does not exist on note {note_id}.")
+
+            update_actions.append(
+                {
+                    "action": "updateNoteFields",
+                    "params": {"note": {"id": note_id, "fields": fields}},
+                }
+            )
+
+        update_results = self._invoke(
+            action="multi",
+            params={"actions": update_actions},
+        ) or []
+        if len(update_results) != len(items):
+            raise ValueError(
+                f"AnkiConnect updated {len(update_results)} notes for {len(items)} requested audio items."
+            )
+        return normalized_names
 
     AUDIO_FIELD_CANDIDATES = ("Audio", "ExampleAudio", "WordAudio", "SentenceAudio")
     WORD_FIELD_CANDIDATES = ("Word", "Sentence", "Structure", "Front", "Expression", "Phrase", "Term")
@@ -727,12 +831,17 @@ class AnkiClient:
         media_filename: str,
         field_name: str = "Audio",
         audio_metadata: dict[str, str] | None = None,
+        existing_field_names: set[str] | None = None,
     ) -> None:
         """Set an Anki sound reference and hidden TTS metadata on an existing note."""
         target_field = field_name or "Audio"
         fields = {target_field: f"[sound:{media_filename}]"}
         fields.update(VocabularyFieldBuilder.audio_metadata_fields(audio_metadata))
-        fields = self._filter_existing_note_fields(note_id, fields)
+        fields = self._filter_existing_note_fields(
+            note_id,
+            fields,
+            existing_field_names=existing_field_names,
+        )
         if target_field not in fields:
             raise ValueError(f"Field '{target_field}' does not exist on note {note_id}.")
         self._invoke(
@@ -746,6 +855,7 @@ class AnkiClient:
         media_filename: str,
         field_name: str,
         audio_metadata: dict[str, str] | None = None,
+        existing_fields: dict[str, str] | None = None,
     ) -> None:
         """Append an Anki sound reference to an existing text field.
 
@@ -754,13 +864,20 @@ class AnkiClient:
         """
         if not field_name:
             raise ValueError("Choose a target field for appended audio.")
-        notes = self._invoke(action="notesInfo", params={"notes": [note_id]}) or []
-        if not notes:
-            raise ValueError(f"Could not read note {note_id} before appending audio.")
-        fields = notes[0].get("fields") or {}
+        if existing_fields is None:
+            notes = self._invoke(action="notesInfo", params={"notes": [note_id]}) or []
+            if not notes:
+                raise ValueError(f"Could not read note {note_id} before appending audio.")
+            raw_fields = notes[0].get("fields") or {}
+            fields = {
+                name: (payload or {}).get("value", "")
+                for name, payload in raw_fields.items()
+            }
+        else:
+            fields = existing_fields
         if field_name not in fields:
             raise ValueError(f"Field '{field_name}' does not exist on note {note_id}.")
-        current_value = (fields.get(field_name) or {}).get("value", "")
+        current_value = fields.get(field_name, "")
         sound = f"[sound:{media_filename}]"
         if "[sound:" in str(current_value).casefold():
             updated_value = str(current_value)
@@ -770,7 +887,11 @@ class AnkiClient:
             updated_value = sound
         update_fields = {field_name: updated_value}
         update_fields.update(VocabularyFieldBuilder.audio_metadata_fields(audio_metadata))
-        update_fields = self._filter_existing_note_fields(note_id, update_fields)
+        update_fields = self._filter_existing_note_fields(
+            note_id,
+            update_fields,
+            existing_field_names=set(fields),
+        )
         self._invoke(
             action="updateNoteFields",
             params={"note": {"id": note_id, "fields": update_fields}},
@@ -956,24 +1077,34 @@ class AnkiClient:
         )
 
     def _invoke(self, action: str, params: dict[str, Any] | None = None) -> Any:
-        """Call AnkiConnect and return the ``result`` field.
-
-        Raises:
-            ConnectionError: If Anki or AnkiConnect is not reachable.
-            RuntimeError: If AnkiConnect returns an application-level error.
-            requests.HTTPError: If the HTTP request fails.
-        """
+        """Call AnkiConnect and return the result field."""
+        started_at = time.perf_counter()
         payload = {"action": action, "version": 6, "params": params or {}}
         try:
-            response = requests.post(self._url, json=payload, timeout=10)
-        except requests.exceptions.ConnectionError as exc:
-            raise ConnectionError(
-                "Could not connect to Anki. Make sure Anki is open "
-                "and AnkiConnect is installed."
-            ) from exc
+            try:
+                response = self._session.post(self._url, json=payload, timeout=10)
+            except requests.exceptions.ConnectionError as exc:
+                raise ConnectionError(
+                    "Could not connect to Anki. Make sure Anki is open "
+                    "and AnkiConnect is installed."
+                ) from exc
 
-        response.raise_for_status()
-        data = response.json()
-        if data.get("error") is not None:
-            raise RuntimeError(f"AnkiConnect error: {data['error']}")
-        return data.get("result")
+            response.raise_for_status()
+            data = response.json()
+            if data.get("error") is not None:
+                raise RuntimeError(f"AnkiConnect error: {data['error']}")
+            result = data.get("result")
+        except Exception:
+            LOGGER.info(
+                "PERF anki action=%s status=error seconds=%.3f",
+                action,
+                max(0.0, time.perf_counter() - started_at),
+            )
+            raise
+
+        LOGGER.info(
+            "PERF anki action=%s status=ok seconds=%.3f",
+            action,
+            max(0.0, time.perf_counter() - started_at),
+        )
+        return result

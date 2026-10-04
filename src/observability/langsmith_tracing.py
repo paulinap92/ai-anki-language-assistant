@@ -535,6 +535,10 @@ class LlmOpsTracer:
 
     def _provider_key(self, provider: str) -> str:
         name = str(provider or "").casefold()
+        if "openrouter" in name:
+            return "OPENROUTER"
+        if "groq" in name:
+            return "GROQ"
         if "openai" in name or "chatgpt" in name:
             return "OPENAI"
         if "gemini" in name or "google" in name:
@@ -549,6 +553,8 @@ class LlmOpsTracer:
         key = self._provider_key(provider)
         return {
             "OPENAI": "openai",
+            "OPENROUTER": "openrouter",
+            "GROQ": "groq",
             "GEMINI": "google_genai",
             "CLAUDE": "anthropic",
             "ELEVENLABS": "elevenlabs",
@@ -1239,6 +1245,93 @@ class TracedVocabularyAiClient(VocabularyAiClient):
             lambda: self._inner.generate_card(word_or_phrase, target_language, explanation_language, topic_context),
             metadata={"source": "single_flashcard"},
             workflow="card",
+        )
+
+    def generate_cards_batch(
+        self,
+        words_or_phrases: list[str],
+        target_language: str,
+        explanation_language: str,
+        topic_context: str = "",
+    ) -> list[VocabularyCard]:
+        return self._trace(
+            "vocabulary_card_generation_batch",
+            {
+                "words_or_phrases": words_or_phrases,
+                "target_language": target_language,
+                "explanation_language": explanation_language,
+                "topic_context": topic_context,
+                "batch_size": len(words_or_phrases),
+            },
+            lambda: self._inner.generate_cards_batch(
+                words_or_phrases,
+                target_language,
+                explanation_language,
+                topic_context,
+            ),
+            metadata={"source": "queue_batch", "batch_size": len(words_or_phrases)},
+            workflow="card",
+        )
+
+    def generate_sentence_cards_batch(
+        self,
+        raw_items: list[str],
+        target_language: str,
+        explanation_language: str,
+        topic_context: str = "",
+    ) -> list[VocabularyCard]:
+        return self._trace(
+            "provided_example_card_generation_batch",
+            {
+                "raw_items": raw_items,
+                "target_language": target_language,
+                "explanation_language": explanation_language,
+                "topic_context": topic_context,
+                "batch_size": len(raw_items),
+            },
+            lambda: self._inner.generate_sentence_cards_batch(
+                raw_items,
+                target_language,
+                explanation_language,
+                topic_context,
+            ),
+            metadata={"source": "queue_batch", "batch_size": len(raw_items)},
+            workflow="card",
+        )
+
+    def generate_grammar_cards_batch(
+        self,
+        grammar_items: list[str],
+        target_language: str,
+        topic_contexts: list[str] | None = None,
+        explanation_language: str = "Same as target",
+    ) -> list[GrammarAnalysis]:
+        contexts = topic_contexts or [""] * len(grammar_items)
+        return self._trace(
+            "grammar_card_generation_batch",
+            {
+                "grammar_items": grammar_items,
+                "target_language": target_language,
+                "topic_contexts": contexts,
+                "explanation_language": explanation_language,
+                "batch_size": len(grammar_items),
+            },
+            lambda: self._inner.generate_grammar_cards_batch(
+                grammar_items,
+                target_language,
+                contexts,
+                explanation_language=explanation_language,
+            ),
+            metadata={"source": "queue_batch", "batch_size": len(grammar_items)},
+            workflow=(
+                "import"
+                if any(
+                    token in str(context or "").casefold()
+                    for context in contexts
+                    for token in ("source", "ocr", "import", "rule-only", "detected")
+                )
+                else "card"
+            ),
         )
 
     def start_conversation(

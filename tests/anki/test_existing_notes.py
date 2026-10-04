@@ -143,6 +143,70 @@ def test_append_audio_to_note_appends_sound_to_existing_field() -> None:
     assert client.updated_fields == {"Back": "translation<br>[sound:outlast.mp3]"}
 
 
+
+def test_attach_audio_to_note_reuses_known_fields_without_notes_info() -> None:
+    class FakeAnkiClient(AnkiClient):
+        def __init__(self) -> None:
+            super().__init__("http://localhost:8765", "Deck")
+            self.calls = []
+
+        def _invoke(self, action, params=None):  # type: ignore[override]
+            self.calls.append((action, params))
+            if action == "notesInfo":
+                raise AssertionError("known fields must avoid notesInfo")
+            return None
+
+    client = FakeAnkiClient()
+
+    client.attach_audio_to_note(
+        123,
+        "short_fuse.mp3",
+        "Audio",
+        audio_metadata={"AudioProvider": "OpenAI", "AudioModel": "gpt-4o-mini-tts"},
+        existing_field_names={"Audio", "AudioProvider"},
+    )
+
+    assert [action for action, _ in client.calls] == ["updateNoteFields"]
+    assert client.calls[0][1]["note"]["fields"] == {
+        "Audio": "[sound:short_fuse.mp3]",
+        "AudioProvider": "OpenAI",
+    }
+
+
+def test_append_audio_to_note_reuses_loaded_fields_without_notes_info() -> None:
+    class FakeAnkiClient(AnkiClient):
+        def __init__(self) -> None:
+            super().__init__("http://localhost:8765", "Deck")
+            self.calls = []
+
+        def _invoke(self, action, params=None):  # type: ignore[override]
+            self.calls.append((action, params))
+            if action == "notesInfo":
+                raise AssertionError("loaded fields must avoid notesInfo")
+            return None
+
+    client = FakeAnkiClient()
+
+    client.append_audio_to_note(
+        123,
+        "outlast.mp3",
+        "Back",
+        existing_fields={"Front": "outlast", "Back": "translation"},
+    )
+
+    assert [action for action, _ in client.calls] == ["updateNoteFields"]
+    assert client.calls[0][1]["note"]["fields"] == {
+        "Back": "translation<br>[sound:outlast.mp3]"
+    }
+
+
+def test_local_anki_url_uses_ipv4_loopback_and_ignores_proxy_environment() -> None:
+    client = AnkiClient("http://localhost:8765", "Deck")
+
+    assert client._url == "http://127.0.0.1:8765"
+    assert client._session.trust_env is False
+
+
 def test_existing_note_map_broad_can_scan_all_decks() -> None:
     class FakeAnkiClient(AnkiClient):
         def __init__(self) -> None:
@@ -332,3 +396,68 @@ def test_summarise_note_exposes_audio_metadata_for_preview() -> None:
     assert summary["audio_voice"] == "coral"
     assert summary["audio_voice_label"] == "Coral"
     assert summary["audio_generated_at"] == "2026-08-03T10:48:00"
+
+
+def test_store_and_attach_audio_batch_uses_two_multi_calls(tmp_path) -> None:
+    class FakeAnkiClient(AnkiClient):
+        def __init__(self) -> None:
+            super().__init__("http://localhost:8765", "Deck")
+            self.calls = []
+
+        def _invoke(self, action, params=None):  # type: ignore[override]
+            self.calls.append((action, params))
+            if action == "multi":
+                actions = params["actions"]
+                if actions and actions[0]["action"] == "storeMediaFile":
+                    return [item["params"]["filename"] for item in actions]
+                return [None for _ in actions]
+            raise AssertionError(f"unexpected action: {action}")
+
+    audio1 = tmp_path / "one.mp3"
+    audio2 = tmp_path / "two.mp3"
+    audio1.write_bytes(b"one")
+    audio2.write_bytes(b"two")
+
+    client = FakeAnkiClient()
+    media_names = client.store_and_attach_audio_batch(
+        [
+            {
+                "path": audio1,
+                "note_id": 1,
+                "field_name": "Audio",
+                "audio_metadata": {"AudioProvider": "OpenAI"},
+                "existing_fields": {"Audio": "", "AudioProvider": ""},
+                "append": False,
+            },
+            {
+                "path": audio2,
+                "note_id": 2,
+                "field_name": "Back",
+                "audio_metadata": {},
+                "existing_fields": {"Back": "translation"},
+                "append": True,
+            },
+        ]
+    )
+
+    assert media_names == ["one.mp3", "two.mp3"]
+    assert [action for action, _ in client.calls] == ["multi", "multi"]
+
+    media_actions = client.calls[0][1]["actions"]
+    assert [action["action"] for action in media_actions] == [
+        "storeMediaFile",
+        "storeMediaFile",
+    ]
+
+    update_actions = client.calls[1][1]["actions"]
+    assert [action["action"] for action in update_actions] == [
+        "updateNoteFields",
+        "updateNoteFields",
+    ]
+    assert update_actions[0]["params"]["note"]["fields"] == {
+        "Audio": "[sound:one.mp3]",
+        "AudioProvider": "OpenAI",
+    }
+    assert update_actions[1]["params"]["note"]["fields"] == {
+        "Back": "translation<br>[sound:two.mp3]"
+    }
