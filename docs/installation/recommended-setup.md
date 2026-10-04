@@ -66,16 +66,6 @@ Keep **Anki Desktop open**.
 
 If that works, the basic installation is complete.
 
-## Gemini instead of OpenAI
-
-Gemini is optional.
-
-If you prefer Google Gemini, create a key here:
-
-[Google AI Studio API Keys](https://aistudio.google.com/apikey)
-
-Then add it in **Setup** instead of OpenAI.
-
 ## Optional features
 
 Speech recognition, local voices, cloud speech services, OCR providers, and fully local AI are **optional**. You do not need to configure them to start using the application.
