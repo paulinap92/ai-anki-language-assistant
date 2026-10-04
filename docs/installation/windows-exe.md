@@ -20,9 +20,10 @@ If you do not know where to start, use these links:
 
 | You need | Click here | Do you need it? |
 |---|---|---|
-| **OpenAI API key** | [OpenAI API Keys](https://platform.openai.com/api-keys) | **Recommended** — easiest setup |
+| **OpenAI API key** | [OpenAI API Keys](https://platform.openai.com/api-keys) | Use OpenAI |
+| **Gemini API key** | [Google AI Studio API Keys](https://aistudio.google.com/apikey) | Use Gemini |
 
-**Recommended for most people:** use **OpenAI**.
+**You only need one of these keys.**
 
 This guide is for people who receive a ready-to-run Windows release and do **not** need Python, Git, a terminal, or programming knowledge.
 
@@ -33,7 +34,7 @@ For normal flashcard creation, install or prepare only:
 1. **AI Anki Language Assistant**
 2. **Anki Desktop**
 3. **AnkiConnect**
-4. **one AI provider** — the recommended setup uses OpenAI
+4. **one AI provider** — OpenAI or Gemini
 
 ## 1. Install Anki Desktop
 
@@ -97,9 +98,9 @@ For a first installation, continue with:
 
 [Recommended setup](recommended-setup.md)
 
-It uses **OpenAI** as the recommended AI provider.
+Choose **OpenAI or Gemini**.
 
-You only need one OpenAI API key.
+You only need one API key. Paste it directly into **Setup → Recommended setup**; no manual `.env` editing is required.
 
 ## 6. First test
 

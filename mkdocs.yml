@@ -57,7 +57,7 @@ nav:
   - Installation:
       - Windows EXE: installation/windows-exe.md
       - Recommended Setup: installation/recommended-setup.md
-      - OpenAI API Key: installation/api-keys.md
+      - API Key: installation/api-keys.md
   - Getting Started: getting-started.md
   - User Guide:
       - Profile: user-guide/profile.md

@@ -13,47 +13,56 @@ In Anki:
 
 Restart Anki afterwards and keep it open when using AI Anki Language Assistant.
 
-## Recommended setup for most users
-
-You need:
+## What you need
 
 1. **Anki Desktop**
 2. **AnkiConnect**
 3. **AI Anki Language Assistant**
-4. **one OpenAI API key**
+4. **one API key: OpenAI or Gemini**
 
-That is all you need to start creating and saving cards.
+You do **not** need both keys.
 
-## Step 1 — create an OpenAI API key
+## Option A — OpenAI
 
-Open:
+Create a key here:
 
 [OpenAI API Keys](https://platform.openai.com/api-keys)
 
-Then:
-
-1. sign in,
-2. click **Create new secret key**,
-3. copy the key.
+Then copy the key.
 
 !!! note
     ChatGPT subscriptions and OpenAI API billing are separate. Having ChatGPT Plus/Pro does not automatically include API credit.
 
-## Step 2 — paste the key into the app
+## Option B — Gemini
+
+Create a key here:
+
+[Google AI Studio API Keys](https://aistudio.google.com/apikey)
+
+Sign in with your Google account, create an API key, and copy it.
+
+## Paste the key into the app
 
 Open:
 
 **Setup → Recommended setup**
 
-Paste the OpenAI API key and click:
+You will see two fields:
+
+- **OpenAI API key**
+- **Gemini API key**
+
+Paste your key into the matching field and click:
 
 **Apply recommended setup**
 
 You do **not** need to open or edit `.env` manually. The application saves the key locally for you.
 
+You can also configure both providers and choose between them in the application.
+
 ![Setup screen](../assets/setup.png)
 
-## Step 3 — test Anki
+## Test Anki
 
 Keep **Anki Desktop open**.
 
@@ -65,4 +74,3 @@ Keep **Anki Desktop open**.
 6. Confirm that the card appears in your Anki deck.
 
 If that works, the basic installation is complete.
-
