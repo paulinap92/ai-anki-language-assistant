@@ -1,5 +1,18 @@
 # Recommended setup
 
+## Before configuring AI
+
+First install:
+
+- **Anki Desktop:** [https://apps.ankiweb.net/](https://apps.ankiweb.net/)
+- **AnkiConnect:** [https://ankiweb.net/shared/info/2055492159](https://ankiweb.net/shared/info/2055492159)
+
+In Anki, install AnkiConnect via:
+
+**Tools → Add-ons → Get Add-ons... → code `2055492159`**
+
+Restart Anki afterwards and keep it open when using deck-related features.
+
 For a non-technical Windows user, the recommended configuration is:
 
 | Feature | Recommended provider |
