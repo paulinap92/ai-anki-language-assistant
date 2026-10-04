@@ -2,6 +2,10 @@
 
 The **Learning Profile** is the single source of truth for learner-facing language settings.
 
+![Learning Profile screen](../assets/profile.png)
+
+*Learning language, level, and support language are configured from the Profile screen.*
+
 It stores:
 
 - learning language,
