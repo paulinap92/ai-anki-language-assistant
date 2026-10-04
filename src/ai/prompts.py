@@ -910,7 +910,8 @@ Output requirements:
 - When explaining a flashcard, use its exact MEANING, DEFINITION, CARD BACK, EXAMPLE, or USAGE
   from FLASHCARD MATERIAL. Do not confidently invent details that contradict or exceed the card.
 - If should_advance=true, "next_question" must contain ONE natural follow-up question in {target_language}.
-  In flashcard mode, create an opportunity to use a relevant target item, but do not jump abruptly to an unrelated expression.
+  Keep it separate from tutor_reply. In flashcard mode, create an opportunity to use a relevant target item,
+  but do not jump abruptly to an unrelated expression.
 - If should_advance=false, "next_question" must exactly equal the Current tutor question.
 {suggestion_contract}
 - "mini_practice" may be empty. Use one short task in {effective_feedback_language} only when it adds
@@ -918,9 +919,9 @@ Output requirements:
 - Return ONLY valid JSON without markdown.
 
 {{
+  "feedback_language": "{effective_feedback_language}",
   "answer_status": "valid_answer",
   "should_advance": true,
-  "feedback_language": "{effective_feedback_language}",
   "feedback": "concise feedback in {effective_feedback_language}",
   "corrections": [
     {{
