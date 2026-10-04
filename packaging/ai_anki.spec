@@ -8,9 +8,9 @@ ROOT = Path(SPECPATH).parent
 
 
 def optional_collect(package: str):
-    """Collect package data/binaries/hidden imports when the package is installed."""
+    """Collect runtime data/binaries without copying raw Python source files."""
     try:
-        return collect_all(package)
+        return collect_all(package, include_py_files=False)
     except Exception:
         return [], [], []
 
@@ -21,8 +21,9 @@ datas = [
 binaries = []
 hiddenimports = []
 
-# These packages contain lazy imports, package data, DLLs, or native extensions
-# that are easy for a normal static-analysis build to miss.
+# Only packages that need native binaries or runtime data are collected
+# explicitly. Cloud SDKs are discovered normally by PyInstaller, which avoids
+# copying their test fixtures and very long source filenames into the release.
 for package in (
     "customtkinter",
     "faster_whisper",
@@ -33,13 +34,6 @@ for package in (
     "piper_phonemize",
     "sounddevice",
     "soundfile",
-    "google.genai",
-    "openai",
-    "anthropic",
-    "mistralai",
-    "langsmith",
-    "bs4",
-    "lxml",
 ):
     package_datas, package_binaries, package_hiddenimports = optional_collect(package)
     datas += package_datas
@@ -76,6 +70,7 @@ exe = EXE(
     upx=False,
     console=False,
     icon=str(ROOT / "assets" / "app_icon.ico"),
+    contents_directory="_i",
 )
 
 coll = COLLECT(
@@ -85,5 +80,5 @@ coll = COLLECT(
     strip=False,
     upx=False,
     upx_exclude=[],
-    name="AI Anki Language Assistant",
+    name="AIAnki",
 )
