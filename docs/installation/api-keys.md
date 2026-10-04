@@ -8,14 +8,27 @@ Never send an API key to another person, paste it into a public issue, or commit
 
 ## OpenAI — recommended
 
-1. Open the official OpenAI API key page:
-   [OpenAI API keys](https://platform.openai.com/api-keys)
-2. Sign in.
-3. Create a new secret key.
-4. Copy it immediately and store it somewhere private.
-5. Open **AI Anki Language Assistant → Setup**.
-6. Paste it into **OpenAI API Key**.
-7. Reload configuration.
+**CLICK HERE:** [Create / manage an OpenAI API key](https://platform.openai.com/api-keys)
+
+Do this:
+
+1. Click the link above.
+2. Sign in or create an OpenAI Platform account.
+3. Click **Create new secret key**.
+4. Copy the key immediately.
+5. Go back to **AI Anki Language Assistant → Setup**.
+6. Paste the key into the **Recommended setup** box.
+7. Click **Apply recommended setup**.
+
+That is enough for the recommended AI configuration.
+
+!!! important "ChatGPT subscription is not the same as API access"
+    ChatGPT Plus/Pro and OpenAI API billing are separate products. If the API account has no billing/credit available, the app can receive a billing or quota error even if ChatGPT itself works.
+
+Official links:
+
+- [OpenAI API keys](https://platform.openai.com/api-keys)
+- [OpenAI API pricing](https://platform.openai.com/pricing)
 
 OpenAI API usage is billed separately from ChatGPT subscriptions. If API requests are rejected because no API balance/billing is available, configure billing in the OpenAI Platform account.
 
@@ -24,19 +37,26 @@ OpenAI API usage is billed separately from ChatGPT subscriptions. If API request
 !!! warning
     Do not share the key. If a key is exposed, revoke it in the provider dashboard and create a new one.
 
-## Gemini
+## Gemini — easy alternative to OpenAI
 
-Gemini is an alternative AI and multimodal provider.
+Gemini is optional. Use it if you prefer Google instead of OpenAI.
 
-1. Open Google AI Studio:
-   [Create a Gemini API key](https://aistudio.google.com/apikey)
-2. Create or select a project.
-3. Create an API key.
+**CLICK HERE:** [Create a Gemini API key in Google AI Studio](https://aistudio.google.com/apikey)
+
+Do this:
+
+1. Click the link above.
+2. Sign in with a Google account.
+3. Create an API key in Google AI Studio.
 4. Copy it.
-5. Paste it into **Setup → Gemini API Key**.
-6. Reload configuration.
+5. Open **AI Anki Language Assistant → Setup**.
+6. Paste it into the Gemini API key field.
+7. Reload configuration.
 
-[Official Gemini API key guide](https://ai.google.dev/gemini-api/docs/api-key)
+Official help:
+
+- [Google: Using Gemini API keys](https://ai.google.dev/gemini-api/docs/api-key)
+- [Google: Gemini API getting started](https://ai.google.dev/gemini-api/docs/get-started)
 
 ## Groq
 
