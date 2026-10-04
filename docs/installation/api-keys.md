@@ -1,32 +1,39 @@
-# OpenAI API key
+# API key
 
-For the recommended Windows setup, you need **one OpenAI API key**.
+For the recommended Windows setup, choose **OpenAI or Gemini**. You only need one key.
 
-## Create the key
+Never share an API key or commit it to GitHub.
 
-Open:
+## OpenAI
 
 [Create / manage an OpenAI API key](https://platform.openai.com/api-keys)
 
-Then:
-
 1. Sign in or create an OpenAI Platform account.
 2. Click **Create new secret key**.
-3. Copy the key immediately.
-4. Open **AI Anki Language Assistant → Setup**.
-5. Paste the key into **Recommended setup**.
+3. Copy the key.
+4. Open **AI Anki Language Assistant → Setup → Recommended setup**.
+5. Paste it into **OpenAI API key**.
 6. Click **Apply recommended setup**.
-
-That is all you need for the recommended AI configuration.
 
 !!! important
     ChatGPT subscriptions and OpenAI API billing are separate. ChatGPT Plus/Pro does not automatically include API credit.
 
-!!! warning
-    Do not share your API key. If it is exposed, revoke it in the OpenAI Platform and create a new one.
+## Gemini
 
-Official links:
+[Create a Gemini API key in Google AI Studio](https://aistudio.google.com/apikey)
 
-- [OpenAI API keys](https://platform.openai.com/api-keys)
-- [OpenAI API pricing](https://platform.openai.com/pricing)
-- [OpenAI API quickstart](https://platform.openai.com/docs/quickstart)
+1. Sign in with your Google account.
+2. Create an API key.
+3. Copy the key.
+4. Open **AI Anki Language Assistant → Setup → Recommended setup**.
+5. Paste it into **Gemini API key**.
+6. Click **Apply recommended setup**.
+
+## Which one should I choose?
+
+Either works with the simple setup.
+
+- Use **OpenAI** if you already use the OpenAI API.
+- Use **Gemini** if you prefer Google AI Studio.
+
+You can add both later if you want to switch providers inside the app.
