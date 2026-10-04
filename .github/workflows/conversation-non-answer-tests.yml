@@ -1,0 +1,30 @@
+name: Conversation non-answer regression
+
+on:
+  push:
+    branches:
+      - fix/conversation-non-answer-v13.2
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - name: Install test dependencies
+        run: python -m pip install pytest "pydantic>=2"
+      - name: Compile source
+        run: python -m compileall -q src
+      - name: Run conversation regression tests
+        run: >
+          python -m pytest -q
+          tests/conversation/test_feedback_model_fields.py
+          tests/ai/test_conversation_flashcard_prompts.py
+          tests/ui/test_conversation_non_answer_guard.py
