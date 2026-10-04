@@ -1,5 +1,20 @@
 # Install the Windows EXE
 
+## Quick links — click here
+
+If you do not know where to start, use these links:
+
+| You need | Click here | Do you need it? |
+|---|---|---|
+| **OpenAI API key** | [OpenAI API Keys](https://platform.openai.com/api-keys) | **Recommended** — easiest setup |
+| **Gemini API key** | [Google AI Studio API Keys](https://aistudio.google.com/apikey) | Optional alternative to OpenAI |
+| **Whisper** | [faster-whisper official GitHub](https://github.com/SYSTRAN/faster-whisper) | Optional local speech recognition; normally bundled in the EXE |
+| **Piper** | [Piper official project](https://github.com/OHF-Voice/piper1-gpl) | Optional local audio; normally use Voice Library in the app |
+
+**Recommended for most people:** use **OpenAI + Local Whisper + Piper**.
+
+You do **not** need to install Whisper or Piper manually if the Windows release is packaged correctly. The links above are there for reference and troubleshooting.
+
 This guide is for people who receive a ready-to-run Windows release and do **not** need Python, Git, a terminal, or programming knowledge.
 
 ## What you need
