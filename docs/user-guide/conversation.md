@@ -2,6 +2,10 @@
 
 **Conversation Practice** uses the active Learning Profile and can run from a free topic or flashcard-based context.
 
+![Conversation Practice screen](../assets/conv.png)
+
+*Conversation Practice combines editable STT input, tutor replies, feedback, and flashcard-aware context.*
+
 A typical session is:
 
 1. choose a conversation mode,
