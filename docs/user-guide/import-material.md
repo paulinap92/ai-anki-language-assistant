@@ -2,6 +2,10 @@
 
 **Import Material** is the advanced workflow for lessons, TXT/HTML files, PDFs, screenshots, scans, and mixed learning material.
 
+![Import Material screen](../assets/import.png)
+
+*Load source material, inspect extracted candidates, then send only approved items to Queue.*
+
 Loading a source and extracting candidates are separate actions. The application should never silently treat a newly selected file as approved learning content.
 
 ## Main flow
