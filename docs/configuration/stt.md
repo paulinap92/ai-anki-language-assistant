@@ -8,7 +8,7 @@ Speech-to-text is used primarily to fill an editable answer field in Conversatio
 |---|---|---|
 | Local Whisper | Available | `STT_PROVIDER=local_whisper`, `WHISPER_MODEL` |
 | OpenAI Cloud STT | Available | `STT_PROVIDER=openai`, `OPENAI_API_KEY`, `OPENAI_STT_MODEL` |
-| Groq Cloud STT | **Planned** | Not implemented in v12.4.8 |
+| Groq Cloud STT | Available | `STT_PROVIDER=groq`, `GROQ_API_KEY`, `GROQ_STT_MODEL` |
 
 ### Local Whisper
 
@@ -29,6 +29,16 @@ OPENAI_STT_MODEL=gpt-4o-mini-transcribe
 ```
 
 If OpenAI Cloud STT is selected without a valid OpenAI API key, the STT factory does not create the service.
+
+### Groq Cloud
+
+```env
+STT_PROVIDER=groq
+GROQ_API_KEY=...
+GROQ_STT_MODEL=whisper-large-v3-turbo
+```
+
+The same Groq API key can also enable the Groq LLM provider. If Groq Cloud STT is selected without a valid key, the STT factory does not create the service.
 
 ## Language and context
 
