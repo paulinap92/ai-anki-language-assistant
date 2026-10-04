@@ -10,8 +10,8 @@ AI providers are isolated behind the shared AI client interface and created by `
 | OpenAI | Available | `OPENAI_API_KEY` |
 | Claude | Available | `ANTHROPIC_API_KEY` or `CLAUDE_API_KEY` |
 | Ollama | Available | `OLLAMA_MODEL` + local Ollama |
-| Groq | **Planned** | Not implemented in the current v12.4.8 factory |
-| OpenRouter | **Planned** | Not implemented in the current v12.4.8 factory |
+| Groq | Available | `GROQ_API_KEY` |
+| OpenRouter | Available | `OPENROUTER_API_KEY` |
 
 Cloud SDK imports are lazy, so a local-only installation does not need every cloud SDK at runtime.
 
@@ -30,6 +30,12 @@ GEMINI_API_KEY configured
 
 OLLAMA_MODEL configured + local/hybrid mode
 → Ollama can be created
+
+OPENROUTER_API_KEY configured
+→ OpenRouter can be created
+
+GROQ_API_KEY configured
+→ Groq can be created
 ```
 
 !!! important "Architecture rule"
