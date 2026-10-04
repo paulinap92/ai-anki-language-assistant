@@ -7,132 +7,75 @@ First install:
 - **Anki Desktop:** [https://apps.ankiweb.net/](https://apps.ankiweb.net/)
 - **AnkiConnect:** [https://ankiweb.net/shared/info/2055492159](https://ankiweb.net/shared/info/2055492159)
 
-In Anki, install AnkiConnect via:
+In Anki:
 
 **Tools → Add-ons → Get Add-ons... → code `2055492159`**
 
-Restart Anki afterwards and keep it open when using deck-related features.
+Restart Anki afterwards and keep it open when using AI Anki Language Assistant.
 
-For a non-technical Windows user, the recommended configuration is:
+## Recommended setup for most users
 
-| Feature | Recommended provider |
-|---|---|
-| Setup mode | **Hybrid / BYOK** |
-| AI card generation | **OpenAI** |
-| Import / review / conversation AI | **OpenAI** |
-| Speech-to-text | **Local Whisper** |
-| Card audio / TTS | **Piper** |
-| Flashcard storage | **Anki + AnkiConnect** |
+You need:
 
-This setup keeps the difficult AI work simple — one OpenAI key — while speech recognition and card audio can run locally without additional API charges.
+1. **Anki Desktop**
+2. **AnkiConnect**
+3. **AI Anki Language Assistant**
+4. **one OpenAI API key**
 
-## Why this setup
+That is all you need to start creating and saving cards.
 
-### One cloud account
-
-The same OpenAI key can be used for generation, review, conversation, multimodal features, cloud STT, and OpenAI TTS when needed.
-
-### Local speech recognition
-
-Local Whisper uses **faster-whisper**. It does not require an API key.
-
-The recommended model is:
-
-```text
-small
-```
-
-The model is loaded only when speech recognition is used. On a new computer, the first use can take longer while the model is downloaded and cached.
-
-### Local audio
-
-Piper provides free local TTS. Voices are managed from the application's **Speech & Audio / Voice Library** instead of requiring the user to edit configuration files manually.
-
-## Step-by-step
-
-### Step 1 — choose Hybrid / BYOK
+## Step 1 — create an OpenAI API key
 
 Open:
 
-**Setup → Hybrid / BYOK**
-
-![Setup screen](../assets/setup.png)
-
-### Step 2 — add the OpenAI API key
-
-Create a key using the instructions in:
-
-[API keys](api-keys.md#openai-recommended)
-
-Paste the key into the OpenAI field in **Setup**, then reload configuration.
-
-!!! note
-    A ChatGPT subscription and OpenAI API billing are separate. Having ChatGPT Plus/Pro does not automatically add API credit.
-
-### Step 3 — select Local Whisper
-
-In **Setup → Speech-to-text**, choose:
-
-```text
-Local Whisper
-```
-
-Use:
-
-```text
-Model: small
-Language: automatic / profile language
-```
-
-When Conversation first records speech, allow Windows microphone access if asked.
-
-If Local Whisper is too slow on the computer, switch to **OpenAI Cloud STT**. It can reuse the same OpenAI API key.
-
-### Step 4 — select Piper for audio
-
-Open:
-
-**Speech & Audio → Voice Library**
+[OpenAI API Keys](https://platform.openai.com/api-keys)
 
 Then:
 
-1. choose the current learning language,
-2. preview an available Piper voice,
-3. download the voice,
-4. select it as the local TTS voice.
+1. sign in,
+2. click **Create new secret key**,
+3. copy the key.
 
-![Speech and Audio screen](../assets/audio.png)
+!!! note
+    ChatGPT subscriptions and OpenAI API billing are separate. Having ChatGPT Plus/Pro does not automatically include API credit.
 
-If Piper is not convenient on a particular computer, use **OpenAI TTS** with the same OpenAI key.
+## Step 2 — paste the key into the app
 
-### Step 5 — test Anki
+Open:
 
-Keep Anki Desktop running and confirm AnkiConnect is installed.
+**Setup → Recommended setup**
 
-Create one test card and add it to Anki.
+Paste the OpenAI API key and click:
 
-## Minimum working setup
+**Apply recommended setup**
 
-If the user wants the fewest possible steps, this is enough:
+You do **not** need to open or edit `.env` manually. The application saves the key locally for you.
 
-```text
-Anki Desktop
-+ AnkiConnect
-+ AI Anki Language Assistant
-+ OpenAI API key
-```
+![Setup screen](../assets/setup.png)
 
-Speech and audio can be configured later.
+## Step 3 — test Anki
 
-## No-local-download alternative
+Keep **Anki Desktop open**.
 
-For someone who does not want to download Whisper or Piper models:
+1. Open **Create Card**.
+2. Enter a simple word or phrase.
+3. Generate the card.
+4. Review it.
+5. Add it to Anki.
+6. Confirm that the card appears in your Anki deck.
 
-| Feature | Provider |
-|---|---|
-| AI | OpenAI |
-| STT | OpenAI Cloud |
-| TTS | OpenAI |
-| Anki | Anki + AnkiConnect |
+If that works, the basic installation is complete.
 
-This is the easiest configuration, but all AI/STT/TTS usage is cloud API usage.
+## Gemini instead of OpenAI
+
+Gemini is optional.
+
+If you prefer Google Gemini, create a key here:
+
+[Google AI Studio API Keys](https://aistudio.google.com/apikey)
+
+Then add it in **Setup** instead of OpenAI.
+
+## Optional features
+
+Speech recognition, local voices, cloud speech services, OCR providers, and fully local AI are **optional**. You do not need to configure them to start using the application.
