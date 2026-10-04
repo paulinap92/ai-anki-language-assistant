@@ -1,0 +1,2 @@
+# Windows packaging only. End users do not install these.
+pyinstaller>=6.10
