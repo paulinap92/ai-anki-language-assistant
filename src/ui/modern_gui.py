@@ -14810,6 +14810,7 @@ class ModernVocabularyGui:
         answer = self._message_input.get("1.0", "end").strip()
         if not answer:
             return
+        current_question = self._conversation_question
 
         self._message_input.delete("1.0", "end")
         self._append_chat("YOU", answer)
@@ -14846,7 +14847,19 @@ class ModernVocabularyGui:
 
         self._conversation_current_input_from_stt = False
         flashcard_mode = self._conversation_mode_var.get() == CONVERSATION_MODE_FLASHCARDS
-        if flashcard_mode:
+        answer_status = (getattr(feedback, "answer_status", "valid_answer") or "valid_answer").strip().casefold()
+        should_advance = bool(getattr(feedback, "should_advance", True))
+        if answer_status in {"non_answer", "wrong_language", "unclear"}:
+            should_advance = False
+        feedback.should_advance = should_advance
+
+        if not should_advance:
+            # Never let a provider advance the session or consume flashcard coverage
+            # after a non-answer / wrong-language / unclear turn.
+            feedback.next_question = current_question
+            use_next = list(self._conversation_expressions_to_use_next) if flashcard_mode else []
+            new_candidates = []
+        elif flashcard_mode:
             # Older/local providers may still fill only suggested_vocabulary. Keep it usable
             # as a speaking-cue fallback, and only let its items become candidates after the
             # same strict deck/staged/grounding filter used for the dedicated new-card field.
@@ -14898,7 +14911,7 @@ class ModernVocabularyGui:
         self._conversation_tutor_reply = feedback.tutor_reply or ""
         self._conversation_question = feedback.next_question
 
-        if flashcard_mode:
+        if flashcard_mode and should_advance:
             coverage_text = "\n".join(
                 part for part in (self._conversation_question or "", answer, assistant_turn) if part
             )
@@ -14916,8 +14929,17 @@ class ModernVocabularyGui:
                     f"Feedback ready · {practised}/{total} practised · "
                     f"no new candidate this turn · {pool_total} accumulated."
                 )
-        else:
+        elif flashcard_mode:
+            total = len(self._conversation_flashcard_targets)
+            practised = len(self._conversation_practised_targets)
+            status = (
+                f"Answer not counted · same question remains active · "
+                f"{practised}/{total} practised."
+            )
+        elif should_advance:
             status = "Feedback ready. Select expressions or continue the conversation."
+        else:
+            status = "Answer not counted · try the same question again."
         self._status_var.set(status)
         self._schedule_conversation_auto_read(
             tutor_reply=feedback.tutor_reply or "",
@@ -15004,7 +15026,10 @@ class ModernVocabularyGui:
 
         if feedback.tutor_reply:
             self._append_chat("AI TUTOR", feedback.tutor_reply)
-            self._append_chat("NEXT QUESTION", feedback.next_question)
+            self._append_chat(
+                "NEXT QUESTION" if getattr(feedback, "should_advance", True) else "TRY AGAIN",
+                feedback.next_question,
+            )
         else:
             # Backward-compatible display for older/local providers that do not
             # yet return the dedicated conversational reply field.
