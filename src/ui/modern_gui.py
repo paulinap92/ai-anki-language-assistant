@@ -263,6 +263,7 @@ class ModernVocabularyGui:
         self._setup_mode_var = ctk.StringVar(value=SETUP_MODE_LABELS.get(current_settings.setup_mode, "Hybrid / BYOK"))
         self._setup_status_var = ctk.StringVar(value="Configuration not checked yet.")
         self._recommended_openai_key_var = ctk.StringVar(value="")
+        self._recommended_gemini_key_var = ctk.StringVar(value="")
         stt_key = (current_settings.stt_provider or "local_whisper").strip().casefold()
         if stt_key in {"whisper", "faster_whisper", "local"}:
             stt_key = "local_whisper"
@@ -1313,51 +1314,59 @@ class ModernVocabularyGui:
         recommended.grid_columnconfigure(0, weight=1)
         ctk.CTkLabel(
             recommended,
-            text="Recommended setup · easiest balanced option",
+            text="Recommended setup · easiest option",
             font=ctk.CTkFont(size=16, weight="bold"),
         ).grid(row=0, column=0, columnspan=3, sticky="w", padx=14, pady=(12, 4))
         ctk.CTkLabel(
             recommended,
             text=(
-                "Hybrid / BYOK · OpenAI for AI · Local Whisper for speech-to-text · Piper for local audio. "
-                "You only need one cloud API key. Leave the key field empty if OpenAI is already configured."
+                "Paste an OpenAI or Gemini API key. One key is enough to start. "
+                "You can also add both and choose the provider in the app."
             ),
             wraplength=980,
             justify="left",
             text_color=("gray35", "gray75"),
         ).grid(row=1, column=0, columnspan=3, sticky="ew", padx=14, pady=(0, 8))
+
         self._recommended_openai_key_entry = ctk.CTkEntry(
             recommended,
             textvariable=self._recommended_openai_key_var,
-            placeholder_text="Paste OpenAI API key here (optional if already configured)",
+            placeholder_text="OpenAI API key (optional)",
             show="•",
         )
-        self._recommended_openai_key_entry.grid(row=2, column=0, sticky="ew", padx=(14, 6), pady=(0, 12))
+        self._recommended_openai_key_entry.grid(row=2, column=0, sticky="ew", padx=(14, 6), pady=(0, 8))
         ctk.CTkButton(
             recommended,
-            text="Get OpenAI API key",
+            text="Get OpenAI key",
             command=self._open_openai_api_key_page,
-        ).grid(row=2, column=1, sticky="ew", padx=6, pady=(0, 12))
+        ).grid(row=2, column=1, sticky="ew", padx=6, pady=(0, 8))
+
+        self._recommended_gemini_key_entry = ctk.CTkEntry(
+            recommended,
+            textvariable=self._recommended_gemini_key_var,
+            placeholder_text="Gemini API key (optional)",
+            show="•",
+        )
+        self._recommended_gemini_key_entry.grid(row=3, column=0, sticky="ew", padx=(14, 6), pady=(0, 12))
+        ctk.CTkButton(
+            recommended,
+            text="Get Gemini key",
+            command=self._open_gemini_api_key_page,
+        ).grid(row=3, column=1, sticky="ew", padx=6, pady=(0, 12))
+
         ctk.CTkButton(
             recommended,
             text="Apply recommended setup",
             command=self._apply_recommended_setup_from_ui,
-        ).grid(row=2, column=2, sticky="ew", padx=(6, 14), pady=(0, 12))
+        ).grid(row=2, column=2, rowspan=2, sticky="nsew", padx=(6, 14), pady=(0, 12))
+
         ctk.CTkLabel(
             recommended,
-            text=(
-                "After applying: use Speech & Audio → Voice Library to download a Piper voice. "
-                "If local Whisper is too slow, switch STT to OpenAI Cloud with the same key."
-            ),
+            text="No manual .env editing is required.",
             wraplength=980,
             justify="left",
             text_color=("gray35", "gray75"),
-        ).grid(row=3, column=0, columnspan=2, sticky="ew", padx=(14, 6), pady=(0, 12))
-        ctk.CTkButton(
-            recommended,
-            text="Open Speech & Audio",
-            command=self._open_speech_audio_tab,
-        ).grid(row=3, column=2, sticky="ew", padx=(6, 14), pady=(0, 12))
+        ).grid(row=4, column=0, columnspan=3, sticky="w", padx=14, pady=(0, 12))
 
         modes = ctk.CTkFrame(layout, corner_radius=16)
         modes.grid(row=3, column=0, sticky="ew", padx=20, pady=(0, 12))
@@ -1485,6 +1494,9 @@ class ModernVocabularyGui:
     def _open_openai_api_key_page(self) -> None:
         webbrowser.open("https://platform.openai.com/api-keys")
 
+    def _open_gemini_api_key_page(self) -> None:
+        webbrowser.open("https://aistudio.google.com/apikey")
+
     def _open_speech_audio_tab(self) -> None:
         tabs = getattr(self, "_tabs", None)
         if tabs is not None:
@@ -1493,11 +1505,13 @@ class ModernVocabularyGui:
 
     def _apply_recommended_setup_from_ui(self) -> None:
         """Apply the beginner-friendly preset without exposing .env editing."""
-        supplied_key = self._recommended_openai_key_var.get().strip()
+        supplied_openai_key = self._recommended_openai_key_var.get().strip()
+        supplied_gemini_key = self._recommended_gemini_key_var.get().strip()
         try:
             apply_recommended_setup(
                 self._setup_env_path,
-                openai_api_key=supplied_key or None,
+                openai_api_key=supplied_openai_key or None,
+                gemini_api_key=supplied_gemini_key or None,
             )
         except Exception as exc:
             messagebox.showerror("Recommended setup", f"Could not save the recommended setup: {exc}")
@@ -1505,21 +1519,26 @@ class ModernVocabularyGui:
 
         self._setup_mode_var.set("Hybrid / BYOK")
         self._setup_stt_provider_var.set("Local Whisper")
-        if supplied_key:
+        if supplied_openai_key:
             self._recommended_openai_key_var.set("")
+        if supplied_gemini_key:
+            self._recommended_gemini_key_var.set("")
 
         self._reload_provider_configuration()
         values = read_env_values(self._setup_env_path)
         status = configured_status(values)
+        configured = []
         if status.get("openai"):
+            configured.append("OpenAI")
+        if status.get("gemini"):
+            configured.append("Gemini")
+        if configured:
             self._status_var.set(
-                "Recommended setup applied: Hybrid / BYOK + OpenAI + Local Whisper. "
-                "Next: open Speech & Audio and download a Piper voice."
+                "Recommended setup applied. AI provider ready: " + " + ".join(configured) + "."
             )
         else:
             self._status_var.set(
-                "Recommended setup applied: Hybrid / BYOK + Local Whisper. "
-                "Add an OpenAI API key above, then apply the setup again."
+                "Recommended setup saved. Add an OpenAI or Gemini API key above, then apply again."
             )
         self._refresh_setup_status()
 
