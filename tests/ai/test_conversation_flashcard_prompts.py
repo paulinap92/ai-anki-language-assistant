@@ -182,3 +182,43 @@ def test_flashcard_feedback_prompt_ignores_stale_topic():
 
     assert "islas canarias" not in prompt.casefold()
     assert "Conversation focus: flashcard targets only" in prompt
+
+
+def test_feedback_prompt_has_non_answer_turn_gate():
+    question = "Have you ever seen a public figure with many followers?"
+    prompt = build_conversation_feedback_prompt(
+        topic="",
+        question=question,
+        answer="dupa dupa dupa",
+        target_language="English",
+        improvement_level="Strong B2/C1",
+        feedback_language="Polish",
+        flashcard_context="1. TARGET: followers | CARD BACK: obserwujący",
+    )
+
+    assert 'answer_status is "valid_answer"' in prompt
+    assert '"non_answer"' in prompt
+    assert '"wrong_language"' in prompt
+    assert '"unclear"' in prompt
+    assert "Set should_advance=true ONLY" in prompt
+    assert "next_question MUST exactly repeat the Current tutor question" in prompt
+    assert "Do NOT pretend the learner's meaning was clear" in prompt
+    assert "Do NOT rewrite the input into a full answer" in prompt
+    assert "Do not moralize about profanity" in prompt
+    assert "Good attempt — your meaning was clear" not in prompt
+
+
+def test_feedback_prompt_json_example_has_turn_control_fields():
+    prompt = build_conversation_feedback_prompt(
+        topic="travel",
+        question="Where would you like to go?",
+        answer="I would like to go to Peru.",
+        target_language="English",
+        improvement_level="Strong B2/C1",
+        feedback_language="Polish",
+    )
+
+    example = _extract_prompt_json_example(prompt)
+
+    assert example["answer_status"] == "valid_answer"
+    assert example["should_advance"] is True

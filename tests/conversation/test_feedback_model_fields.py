@@ -68,3 +68,27 @@ def test_correction_kind_distinguishes_error_improvement_and_stt_issue():
         "improvement",
         "possible_transcription",
     ]
+
+
+def test_answer_status_defaults_keep_legacy_outputs_compatible():
+    feedback = ConversationFeedback(**_base_payload())
+
+    assert feedback.answer_status == "valid_answer"
+    assert feedback.should_advance is True
+
+
+def test_non_answer_turn_control_fields_are_parsed():
+    payload = _base_payload()
+    payload.update(
+        {
+            "answer_status": "non_answer",
+            "should_advance": False,
+            "corrected_version": "",
+            "advanced_answer": "",
+        }
+    )
+
+    feedback = ConversationFeedback(**payload)
+
+    assert feedback.answer_status == "non_answer"
+    assert feedback.should_advance is False

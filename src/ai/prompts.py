@@ -6,7 +6,7 @@ from __future__ import annotations
 VOCABULARY_PROMPT_VERSION = "v11-semantic-target-usage-validation"
 GRAMMAR_BATCH_PROMPT_VERSION = "v3-smart-grammar-generated-example-contract"
 SENTENCE_BASED_CARD_PROMPT_VERSION = "v1-provided-example-card"
-CONVERSATION_PROMPT_VERSION = "v3-direct-reply-history-card-back"
+CONVERSATION_PROMPT_VERSION = "v4-answer-status-gating"
 EXPLANATION_LANGUAGES = ["Polish", "English", "Spanish", "German", "Italian", "Same as target", "No translation"]
 
 
@@ -791,6 +791,9 @@ HISTORY>>>
     if flashcard_context:
         suggestion_contract = f"""
 FLASHCARD-MODE VOCABULARY OUTPUT CONTRACT
+- These rules apply only when answer_status is "valid_answer".
+- For non_answer, wrong_language, or unclear: return empty lists for suggested_vocabulary,
+  expressions_to_use_next, and new_flashcard_candidates.
 - "suggested_vocabulary" must be an empty list. Existing flashcards are not new suggestions.
 - "expressions_to_use_next" must contain 2-4 relevant speaking cues for the learner's next
   answer. These MAY reuse exact flashcard targets or useful collocations based on them.
@@ -813,6 +816,9 @@ FLASHCARD-MODE VOCABULARY OUTPUT CONTRACT
     else:
         suggestion_contract = f"""
 TOPIC-MODE VOCABULARY OUTPUT CONTRACT
+- These rules apply only when answer_status is "valid_answer".
+- For non_answer, wrong_language, or unclear: return empty lists for suggested_vocabulary,
+  expressions_to_use_next, and new_flashcard_candidates.
 - "suggested_vocabulary" must contain 4 useful reusable words, phrases, or chunks from the
   current exchange that are suitable for staging as new flashcards.
 - "expressions_to_use_next" and "new_flashcard_candidates" must both be empty lists.
@@ -833,13 +839,37 @@ Current learner answer: "{answer}"
 Requested level: "{improvement_level}"
 Feedback language: {effective_feedback_language}
 
-Two-layer response rule:
+FIRST classify the learner answer:
+- "valid_answer": a genuine attempt to answer or react to the current question in {target_language}.
+  It may be short, imperfect, informal, or contain mistakes.
+- "non_answer": random/unrelated text, repeated filler, keyboard testing, insults/profanity with no
+  relevant answer content, or text that does not attempt to answer the current question.
+- "wrong_language": the learner clearly answers in another language instead of {target_language},
+  unless they are explicitly asking for a translation/explanation.
+- "unclear": the intended content cannot be inferred reliably, including severe STT garbling.
+
+Critical turn-control rules:
+- Set should_advance=true ONLY for answer_status="valid_answer".
+- For non_answer, wrong_language, or unclear, set should_advance=false.
+- When should_advance=false:
+  * Do NOT pretend the learner's meaning was clear.
+  * Do NOT invent what they "must have meant".
+  * Do NOT rewrite the input into a full answer that the learner never expressed.
+  * Keep corrected_version, advanced_answer, and mini_practice empty.
+  * Keep corrections empty unless there is one very obvious local correction that does not invent content.
+  * tutor_reply should briefly ask the learner to answer the SAME question again in {target_language}.
+  * next_question MUST exactly repeat the Current tutor question.
+  * Do not moralize about profanity. If profanity/repetition is unrelated to the question, classify it as non_answer.
+  * Do not create vocabulary suggestions or mark any flashcard target as practised from this turn.
+
+Two-layer response rule for valid answers:
 1. Language coaching: correct and improve the learner's wording.
 2. Real conversation: answer or react to the CONTENT of what the learner said before asking
    another question. Never ignore a learner's direct question or request for an explanation.
 
 Teaching style:
 - Be positive but concise, like a good human teacher in a real conversation.
+- Do not praise a non-answer, wrong-language answer, or unintelligible answer as if it communicated a clear meaning.
 - Highlight important mistakes clearly, but do not label a correct sentence as wrong merely because
   a more sophisticated alternative exists.
 - Separate genuine language errors from optional naturalness/style improvements.
@@ -856,8 +886,11 @@ Teaching style:
 - Use RECENT CONVERSATION HISTORY to stay coherent and avoid repeating questions already answered.
 
 Output requirements:
-- "feedback" must be ONE concise encouraging sentence that names only the main improvement.
-- "corrections" must contain 0-3 high-value items. Do not manufacture an error when the answer is correct.
+- "answer_status" must be exactly one of: valid_answer, non_answer, wrong_language, unclear.
+- "should_advance" must be true only when answer_status is valid_answer.
+- "feedback" must be ONE concise sentence in {effective_feedback_language} describing the main issue or success.
+- "corrections" must contain 0-3 high-value items. Do not manufacture an error when the answer is correct,
+  and do not manufacture an intended answer when the input is a non-answer.
 - Each correction must include "kind":
   * "error" for a genuine grammar, vocabulary, spelling, or syntax error;
   * "improvement" for wording that is already acceptable but could sound more natural/advanced;
@@ -867,8 +900,8 @@ Output requirements:
   explanation in {effective_feedback_language}.
 - Never present an "improvement" as if the learner's original wording were incorrect.
 - Never count a "possible_transcription" item as a learner language mistake.
-- "corrected_version" must preserve the learner's idea but fix errors.
-- "advanced_answer" must be a richer natural version at {improvement_level}.
+- For valid answers, "corrected_version" must preserve the learner's idea but fix errors.
+- For valid answers, "advanced_answer" must be a richer natural version at {improvement_level}.
 - "tutor_reply" must be a direct 1-3 sentence conversational response in {target_language}.
   It must answer clarification questions and explain an unknown flashcard before moving on.
   Stay primarily a language-conversation tutor: answer relevant factual questions briefly, but do not
@@ -876,9 +909,10 @@ Output requirements:
   as authoritative fact.
 - When explaining a flashcard, use its exact MEANING, DEFINITION, CARD BACK, EXAMPLE, or USAGE
   from FLASHCARD MATERIAL. Do not confidently invent details that contradict or exceed the card.
-- "next_question" must contain ONE natural follow-up question in {target_language}.
-  Keep it separate from tutor_reply. In flashcard mode, create an opportunity to use a relevant
-  target item, but do not jump abruptly to an unrelated expression.
+- If should_advance=true, "next_question" must contain ONE natural follow-up question in {target_language}.
+  Keep it separate from tutor_reply. In flashcard mode, create an opportunity to use a relevant target item,
+  but do not jump abruptly to an unrelated expression.
+- If should_advance=false, "next_question" must exactly equal the Current tutor question.
 {suggestion_contract}
 - "mini_practice" may be empty. Use one short task in {effective_feedback_language} only when it adds
   clear value; do not force a mini exercise after every turn.
@@ -886,7 +920,9 @@ Output requirements:
 
 {{
   "feedback_language": "{effective_feedback_language}",
-  "feedback": "Good attempt — your meaning was clear. The main thing to improve is ...",
+  "answer_status": "valid_answer",
+  "should_advance": true,
+  "feedback": "concise feedback in {effective_feedback_language}",
   "corrections": [
     {{
       "kind": "error | improvement | possible_transcription",
