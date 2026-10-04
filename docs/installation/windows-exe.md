@@ -22,12 +22,8 @@ If you do not know where to start, use these links:
 |---|---|---|
 | **OpenAI API key** | [OpenAI API Keys](https://platform.openai.com/api-keys) | **Recommended** — easiest setup |
 | **Gemini API key** | [Google AI Studio API Keys](https://aistudio.google.com/apikey) | Optional alternative to OpenAI |
-| **Whisper** | [faster-whisper official GitHub](https://github.com/SYSTRAN/faster-whisper) | Optional local speech recognition; normally bundled in the EXE |
-| **Piper** | [Piper official project](https://github.com/OHF-Voice/piper1-gpl) | Optional local audio; normally use Voice Library in the app |
 
-**Recommended for most people:** use **OpenAI + Local Whisper + Piper**.
-
-You do **not** need to install Whisper or Piper manually if the Windows release is packaged correctly. The links above are there for reference and troubleshooting.
+**Recommended for most people:** use **OpenAI**.
 
 This guide is for people who receive a ready-to-run Windows release and do **not** need Python, Git, a terminal, or programming knowledge.
 
@@ -104,14 +100,9 @@ For a first installation, continue with:
 
 [Recommended setup](recommended-setup.md)
 
-It uses:
+It uses **OpenAI** as the recommended AI provider.
 
-- **Hybrid / BYOK**
-- **OpenAI** for card generation and AI features
-- **Local Whisper** for free local speech-to-text
-- **Piper** for free local card audio
-
-You only need one cloud API key.
+You only need one API key. Other speech/audio features can be configured later if you want them.
 
 ## 6. First test
 
@@ -125,11 +116,7 @@ After configuration:
 6. Add it to Anki.
 7. Confirm that the note appears in Anki.
 
-Then test optional features:
-
-- **Conversation → Record** for speech-to-text.
-- **Speech & Audio → Voice preview** for TTS.
-- **Import Material** for lesson text, screenshots, or PDFs.
+Then, if you want, test **Import Material** with lesson text, screenshots, or PDFs.
 
 ## Quick diagnosis
 
@@ -139,7 +126,5 @@ Then test optional features:
 | No AI provider available | Add at least one API key in Setup |
 | 401 / invalid API key | Recreate or re-enter the provider key |
 | Microphone does not work | Windows microphone privacy permission |
-| Whisper is slow the first time | The local model may still be downloading/loading |
-| No voice/audio | Select a cloud TTS provider or download a Piper voice |
 
 For more details see [Troubleshooting](../troubleshooting/index.md).
