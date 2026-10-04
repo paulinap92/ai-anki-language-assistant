@@ -57,7 +57,7 @@ nav:
   - Installation:
       - Windows EXE: installation/windows-exe.md
       - Recommended Setup: installation/recommended-setup.md
-      - API Keys: installation/api-keys.md
+      - OpenAI API Key: installation/api-keys.md
   - Getting Started: getting-started.md
   - User Guide:
       - Profile: user-guide/profile.md
@@ -66,14 +66,11 @@ nav:
       - Queue: user-guide/queue.md
       - Import Material: user-guide/import-material.md
       - Conversation: user-guide/conversation.md
-      - Speech & Audio: user-guide/speech-audio.md
       - Fix Cards: user-guide/fix-cards.md
       - Practice: user-guide/practice.md
   - Configuration:
       - Environment: configuration/env.md
       - AI Providers: configuration/ai-providers.md
-      - Speech-to-Text: configuration/stt.md
-      - Text-to-Speech: configuration/tts.md
       - Simple Mode: configuration/simple-mode.md
   - Developer Guide:
       - Architecture: developer-guide/architecture.md
