@@ -6311,7 +6311,18 @@ class ModernVocabularyGui:
                     item["answer"] = clean_ocr_text(answer).replace("\n", " ").strip()
                 items.append(item)
         except Exception:
-            # Fallback for a provider that ignored JSON and returned lines.
+            # Only use the legacy line fallback when the provider clearly returned
+            # plain-text rows. A malformed/truncated JSON payload must NOT be
+            # reinterpreted line-by-line as hundreds of fake candidates.
+            stripped = cleaned.lstrip()
+            looks_like_json_payload = (
+                stripped.startswith("{")
+                or stripped.startswith("[")
+                or '"candidates"' in stripped[:500]
+                or re.search(r'"(?:type|target|sentence|source_role)"\s*:', stripped[:2000]) is not None
+            )
+            if looks_like_json_payload:
+                raise ValueError("AI candidate response looked like malformed or truncated JSON")
             for row in self._ocr_candidate_rows_from_ai_response(cleaned, default_mode):
                 parsed = self._parse_ocr_candidate_row(row, default_mode)
                 if parsed is None:
