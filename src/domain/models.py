@@ -143,6 +143,15 @@ class ConversationFeedback(BaseModel):
 
     model_config = ConfigDict(populate_by_name=True, extra="ignore")
 
+    answer_status: str = Field(
+        default="valid_answer",
+        description="valid_answer | non_answer | wrong_language | unclear",
+    )
+    should_advance: bool = Field(
+        default=True,
+        description="Whether the tutor should move to a new question after this learner turn.",
+    )
+
     feedback_language: str = Field(default="", description="Language used for the feedback field.")
     feedback: str = Field(
         default="",
