@@ -66,6 +66,3 @@ Keep **Anki Desktop open**.
 
 If that works, the basic installation is complete.
 
-## Optional features
-
-Speech recognition, local voices, cloud speech services, OCR providers, and fully local AI are **optional**. You do not need to configure them to start using the application.
