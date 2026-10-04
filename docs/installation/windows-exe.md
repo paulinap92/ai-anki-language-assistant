@@ -35,8 +35,6 @@ For normal flashcard creation, install or prepare only:
 3. **AnkiConnect**
 4. **one AI provider** — the recommended setup uses OpenAI
 
-Speech recognition, local voices, OCR providers, and fully local AI are optional.
-
 ## 1. Install Anki Desktop
 
 Download Anki from the official site:
@@ -91,7 +89,7 @@ On the first launch, choose:
 
 ![Learning Profile screen](../assets/profile.png)
 
-These settings are reused throughout Create Card, Import Material, Queue, Conversation, STT, TTS, and feedback.
+These settings are reused throughout Create Card, Import Material, Queue, Conversation, and feedback.
 
 ## 5. Use the recommended setup
 
@@ -101,7 +99,7 @@ For a first installation, continue with:
 
 It uses **OpenAI** as the recommended AI provider.
 
-You only need one API key. Other speech/audio features can be configured later if you want them.
+You only need one OpenAI API key.
 
 ## 6. First test
 
@@ -124,6 +122,5 @@ Then, if you want, test **Import Material** with lesson text, screenshots, or PD
 | Cannot connect to Anki | Anki is open and AnkiConnect is installed |
 | No AI provider available | Add at least one API key in Setup |
 | 401 / invalid API key | Recreate or re-enter the provider key |
-| Microphone does not work | Windows microphone privacy permission |
 
 For more details see [Troubleshooting](../troubleshooting/index.md).
