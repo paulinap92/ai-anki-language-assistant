@@ -266,6 +266,29 @@ def create_or_update_starter_env(mode: str, path: str | Path = ".env") -> Path:
     return merge_env_values(file_path, merged)
 
 
+
+def apply_recommended_setup(
+    path: str | Path = ".env",
+    *,
+    openai_api_key: str | None = None,
+) -> Path:
+    """Apply the beginner-friendly Hybrid + OpenAI + local Whisper preset.
+
+    Existing non-empty provider secrets remain untouched unless the caller
+    explicitly supplies a replacement OpenAI key.
+    """
+    file_path = create_or_update_starter_env("hybrid", path)
+    updates = {
+        "AI_SETUP_MODE": "hybrid",
+        "STT_PROVIDER": "local_whisper",
+        "WHISPER_MODEL": "small",
+        "WHISPER_LANGUAGE": "",
+    }
+    supplied_key = (openai_api_key or "").strip()
+    if supplied_key:
+        updates["OPENAI_API_KEY"] = supplied_key
+    return merge_env_values(file_path, updates)
+
 def configured_status(values: dict[str, str]) -> dict[str, bool]:
     """Return non-secret configured/missing flags for the setup screen."""
     nonempty = lambda key: bool((values.get(key) or "").strip())

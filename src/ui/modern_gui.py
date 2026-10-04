@@ -42,6 +42,7 @@ from src.core.learning_profile import (
 )
 from src.core.user_setup import (
     SETUP_MODE_LABELS,
+    apply_recommended_setup,
     check_ollama,
     configured_status,
     create_or_update_starter_env,
@@ -261,6 +262,7 @@ class ModernVocabularyGui:
         current_settings = get_settings()
         self._setup_mode_var = ctk.StringVar(value=SETUP_MODE_LABELS.get(current_settings.setup_mode, "Hybrid / BYOK"))
         self._setup_status_var = ctk.StringVar(value="Configuration not checked yet.")
+        self._recommended_openai_key_var = ctk.StringVar(value="")
         stt_key = (current_settings.stt_provider or "local_whisper").strip().casefold()
         if stt_key in {"whisper", "faster_whisper", "local"}:
             stt_key = "local_whisper"
@@ -1306,8 +1308,59 @@ class ModernVocabularyGui:
             text_color=("gray35", "gray75"),
         ).grid(row=1, column=0, sticky="ew", padx=20, pady=(0, 14))
 
+        recommended = ctk.CTkFrame(layout, corner_radius=16)
+        recommended.grid(row=2, column=0, sticky="ew", padx=20, pady=(0, 12))
+        recommended.grid_columnconfigure(0, weight=1)
+        ctk.CTkLabel(
+            recommended,
+            text="Recommended setup · easiest balanced option",
+            font=ctk.CTkFont(size=16, weight="bold"),
+        ).grid(row=0, column=0, columnspan=3, sticky="w", padx=14, pady=(12, 4))
+        ctk.CTkLabel(
+            recommended,
+            text=(
+                "Hybrid / BYOK · OpenAI for AI · Local Whisper for speech-to-text · Piper for local audio. "
+                "You only need one cloud API key. Leave the key field empty if OpenAI is already configured."
+            ),
+            wraplength=980,
+            justify="left",
+            text_color=("gray35", "gray75"),
+        ).grid(row=1, column=0, columnspan=3, sticky="ew", padx=14, pady=(0, 8))
+        self._recommended_openai_key_entry = ctk.CTkEntry(
+            recommended,
+            textvariable=self._recommended_openai_key_var,
+            placeholder_text="Paste OpenAI API key here (optional if already configured)",
+            show="•",
+        )
+        self._recommended_openai_key_entry.grid(row=2, column=0, sticky="ew", padx=(14, 6), pady=(0, 12))
+        ctk.CTkButton(
+            recommended,
+            text="Get OpenAI API key",
+            command=self._open_openai_api_key_page,
+        ).grid(row=2, column=1, sticky="ew", padx=6, pady=(0, 12))
+        ctk.CTkButton(
+            recommended,
+            text="Apply recommended setup",
+            command=self._apply_recommended_setup_from_ui,
+        ).grid(row=2, column=2, sticky="ew", padx=(6, 14), pady=(0, 12))
+        ctk.CTkLabel(
+            recommended,
+            text=(
+                "After applying: use Speech & Audio → Voice Library to download a Piper voice. "
+                "If local Whisper is too slow, switch STT to OpenAI Cloud with the same key."
+            ),
+            wraplength=980,
+            justify="left",
+            text_color=("gray35", "gray75"),
+        ).grid(row=3, column=0, columnspan=2, sticky="ew", padx=(14, 6), pady=(0, 12))
+        ctk.CTkButton(
+            recommended,
+            text="Open Speech & Audio",
+            command=self._open_speech_audio_tab,
+        ).grid(row=3, column=2, sticky="ew", padx=(6, 14), pady=(0, 12))
+
         modes = ctk.CTkFrame(layout, corner_radius=16)
-        modes.grid(row=2, column=0, sticky="ew", padx=20, pady=(0, 12))
+        modes.grid(row=3, column=0, sticky="ew", padx=20, pady=(0, 12))
         modes.grid_columnconfigure((0, 1, 2), weight=1)
         ctk.CTkLabel(modes, text="1 · Choose a provider mode", font=ctk.CTkFont(size=15, weight="bold")).grid(
             row=0, column=0, columnspan=3, sticky="w", padx=14, pady=(12, 6)
@@ -1337,7 +1390,7 @@ class ModernVocabularyGui:
             ).grid(row=1, column=0, sticky="nw", padx=12, pady=(0, 12))
 
         env_card = ctk.CTkFrame(layout, corner_radius=16)
-        env_card.grid(row=3, column=0, sticky="ew", padx=20, pady=(0, 12))
+        env_card.grid(row=4, column=0, sticky="ew", padx=20, pady=(0, 12))
         env_card.grid_columnconfigure(0, weight=1)
         ctk.CTkLabel(env_card, text="2 · Configure providers", font=ctk.CTkFont(size=15, weight="bold")).grid(
             row=0, column=0, sticky="w", padx=14, pady=(12, 4)
@@ -1373,7 +1426,7 @@ class ModernVocabularyGui:
         )
 
         speech_card = ctk.CTkFrame(layout, corner_radius=16)
-        speech_card.grid(row=4, column=0, sticky="ew", padx=20, pady=(0, 12))
+        speech_card.grid(row=5, column=0, sticky="ew", padx=20, pady=(0, 12))
         speech_card.grid_columnconfigure(1, weight=1)
         ctk.CTkLabel(speech_card, text="3 · Speech-to-text", font=ctk.CTkFont(size=15, weight="bold")).grid(
             row=0, column=0, columnspan=3, sticky="w", padx=14, pady=(12, 4)
@@ -1398,7 +1451,7 @@ class ModernVocabularyGui:
         )
 
         status_card = ctk.CTkFrame(layout, corner_radius=16)
-        status_card.grid(row=5, column=0, sticky="ew", padx=20, pady=(0, 20))
+        status_card.grid(row=6, column=0, sticky="ew", padx=20, pady=(0, 20))
         status_card.grid_columnconfigure(0, weight=1)
         ctk.CTkLabel(status_card, text="4 · Current configuration", font=ctk.CTkFont(size=15, weight="bold")).grid(
             row=0, column=0, sticky="w", padx=14, pady=(12, 4)
@@ -1426,7 +1479,48 @@ class ModernVocabularyGui:
             wraplength=1000,
             justify="left",
             text_color=("gray35", "gray75"),
-        ).grid(row=6, column=0, sticky="ew", padx=20, pady=(0, 20))
+        ).grid(row=7, column=0, sticky="ew", padx=20, pady=(0, 20))
+        self._refresh_setup_status()
+
+    def _open_openai_api_key_page(self) -> None:
+        webbrowser.open("https://platform.openai.com/api-keys")
+
+    def _open_speech_audio_tab(self) -> None:
+        tabs = getattr(self, "_tabs", None)
+        if tabs is not None:
+            tabs.set("Speech & Audio")
+            self._on_tab_changed()
+
+    def _apply_recommended_setup_from_ui(self) -> None:
+        """Apply the beginner-friendly preset without exposing .env editing."""
+        supplied_key = self._recommended_openai_key_var.get().strip()
+        try:
+            apply_recommended_setup(
+                self._setup_env_path,
+                openai_api_key=supplied_key or None,
+            )
+        except Exception as exc:
+            messagebox.showerror("Recommended setup", f"Could not save the recommended setup: {exc}")
+            return
+
+        self._setup_mode_var.set("Hybrid / BYOK")
+        self._setup_stt_provider_var.set("Local Whisper")
+        if supplied_key:
+            self._recommended_openai_key_var.set("")
+
+        self._reload_provider_configuration()
+        values = read_env_values(self._setup_env_path)
+        status = configured_status(values)
+        if status.get("openai"):
+            self._status_var.set(
+                "Recommended setup applied: Hybrid / BYOK + OpenAI + Local Whisper. "
+                "Next: open Speech & Audio and download a Piper voice."
+            )
+        else:
+            self._status_var.set(
+                "Recommended setup applied: Hybrid / BYOK + Local Whisper. "
+                "Add an OpenAI API key above, then apply the setup again."
+            )
         self._refresh_setup_status()
 
     @staticmethod
