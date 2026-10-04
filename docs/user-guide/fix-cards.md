@@ -2,6 +2,10 @@
 
 **Fix Cards** is the review/repair workflow for existing learning content that needs correction rather than blind regeneration.
 
+![Fix Cards screen](../assets/fix.png)
+
+*Filter and repair existing cards without regenerating unrelated content.*
+
 Use it when a card has issues such as an unnatural example, inconsistent language, missing fields, or content that needs a stronger review model.
 
 The same project rules still apply:
