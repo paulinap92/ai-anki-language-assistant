@@ -2,6 +2,10 @@
 
 **Queue** is the review and batch-processing path for structured or already extracted material.
 
+![Queue screen](../assets/queue.png)
+
+*Queue keeps batch generation visible and reviewable while the background worker processes items.*
+
 Typical inputs include vocabulary targets, grammar targets, mixed rows, and `target | example` rows.
 
 ## Workflow
