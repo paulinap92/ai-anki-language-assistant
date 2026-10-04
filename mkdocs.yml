@@ -58,7 +58,6 @@ nav:
       - Windows EXE: installation/windows-exe.md
       - Recommended Setup: installation/recommended-setup.md
       - API Keys: installation/api-keys.md
-      - Local Speech & Audio: installation/local-speech-audio.md
   - Getting Started: getting-started.md
   - User Guide:
       - Profile: user-guide/profile.md
