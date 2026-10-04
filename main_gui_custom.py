@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from datetime import datetime
 from pathlib import Path
+import sys
 import traceback
 
 import customtkinter as ctk
@@ -32,6 +33,10 @@ def _startup_trace(message: str) -> None:
 
 def main() -> None:
     """Run the modern desktop application without hiding startup work."""
+    if "--packaging-self-test" in sys.argv:
+        from src.core.packaged_self_test import run_packaged_self_test
+
+        raise SystemExit(run_packaged_self_test())
     _startup_trace("START launcher entered")
 
     # Create and paint a real window before provider/Anki setup.  Previously all
