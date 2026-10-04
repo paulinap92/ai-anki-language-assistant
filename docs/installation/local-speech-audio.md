@@ -4,9 +4,30 @@ Local speech features are optional. The application can work without them.
 
 ## Local Whisper — speech-to-text
 
-Whisper converts microphone recordings into editable text, primarily in **Conversation Practice**.
+Whisper converts what you say into text, primarily in **Conversation Practice**.
 
-The application uses **faster-whisper** for the local provider.
+The application uses **faster-whisper**.
+
+### Do I need to install Whisper myself?
+
+**Normally: NO.**
+
+If you received a correctly packaged Windows EXE, do **not** install Python and do **not** run `pip install`.
+
+You only need to select:
+
+**Setup → Speech-to-text → Local Whisper**
+
+The application should contain the required runtime. The selected Whisper model is downloaded automatically when it is needed for the first time.
+
+Useful official/reference links:
+
+- [faster-whisper — official GitHub repository](https://github.com/SYSTRAN/faster-whisper)
+- [faster-whisper releases](https://github.com/SYSTRAN/faster-whisper/releases)
+- [Recommended `small` model on Hugging Face](https://huggingface.co/Systran/faster-whisper-small)
+
+!!! note
+    These links are mainly for reference or troubleshooting. A normal EXE user should not need to install faster-whisper manually.
 
 ### Recommended setting
 
@@ -52,7 +73,26 @@ These do not require a local Whisper model but require the corresponding API key
 
 ## Piper — local text-to-speech
 
-Piper generates speech locally and does not need an API key after the runtime and voice are available.
+Piper generates the spoken audio for flashcards locally.
+
+### Do I need to install Piper myself?
+
+**Normally: NO.**
+
+For a packaged EXE release, the preferred flow is:
+
+**Speech & Audio → Voice Library**
+
+Then download a voice from inside the app.
+
+Useful official/reference links:
+
+- [Piper — current official project](https://github.com/OHF-Voice/piper1-gpl)
+- [Piper releases / Windows builds](https://github.com/OHF-Voice/piper1-gpl/releases)
+- [Piper voice documentation](https://github.com/OHF-Voice/piper1-gpl/blob/main/docs/VOICES.md)
+
+!!! note
+    The old `rhasspy/piper` repository is archived; current development is under the Open Home Foundation `OHF-Voice/piper1-gpl` project.
 
 For a normal user, voices should be managed from:
 
