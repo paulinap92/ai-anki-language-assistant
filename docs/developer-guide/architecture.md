@@ -2,6 +2,10 @@
 
 The application is a Python desktop project with provider integrations kept outside the GUI as far as possible.
 
+![Advanced and observability screen](../assets/advanced.png)
+
+*The Advanced screen exposes developer-facing diagnostics and optional observability controls.*
+
 ## Current source layout
 
 ```text
@@ -30,6 +34,8 @@ graph TD
     AIF --> OPENAI[OpenAI]
     AIF --> CLAUDE[Claude]
     AIF --> OLLAMA[Ollama]
+    AIF --> GROQ[Groq]
+    AIF --> OPENROUTER[OpenRouter]
 
     GUI --> SPEECH[Speech factories/services]
     SPEECH --> STT[STT]
