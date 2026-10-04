@@ -1,5 +1,19 @@
 # Install the Windows EXE
 
+## REQUIRED before you start
+
+AI Anki Language Assistant does **not** replace Anki. To save, update, scan, or fix flashcards, you must have both of these installed:
+
+1. **Anki Desktop** — [download Anki](https://apps.ankiweb.net/)
+2. **AnkiConnect add-on** — [open AnkiConnect on AnkiWeb](https://ankiweb.net/shared/info/2055492159)
+
+Install AnkiConnect inside Anki:
+
+**Tools → Add-ons → Get Add-ons... → enter code `2055492159` → restart Anki**
+
+!!! warning
+    Keep **Anki Desktop running** while AI Anki Language Assistant is working with your decks. Without AnkiConnect, the app cannot communicate with Anki.
+
 ## Quick links — click here
 
 If you do not know where to start, use these links:
