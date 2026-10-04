@@ -37,8 +37,11 @@ def test_hybrid_requirements_include_local_and_cloud_sdks() -> None:
 
 def test_setup_tab_exposes_recommended_nontechnical_preset() -> None:
     text = Path("src/ui/modern_gui.py").read_text(encoding="utf-8")
-    assert "Recommended setup · easiest balanced option" in text
-    assert "Get OpenAI API key" in text
+    assert "Recommended setup · easiest option" in text
+    assert "Get OpenAI key" in text
+    assert "Get Gemini key" in text
+    assert "OpenAI API key (optional)" in text
+    assert "Gemini API key (optional)" in text
     assert "Apply recommended setup" in text
-    assert "Open Speech & Audio" in text
+    assert "_open_gemini_api_key_page" in text
     assert "_apply_recommended_setup_from_ui" in text

@@ -6,11 +6,10 @@ If you received a ready-to-run Windows release and do not work with Python or Gi
 
 - [Install the Windows EXE](installation/windows-exe.md)
 - [Recommended setup](installation/recommended-setup.md)
-- [Create an API key](installation/api-keys.md)
-- [Local Whisper and Piper](installation/local-speech-audio.md)
+- [Create an OpenAI or Gemini API key](installation/api-keys.md)
 
 
-**AI Anki Language Assistant** is a desktop application for creating reviewed language-learning Anki cards from vocabulary, grammar material, conversations, imported text/images/PDFs, and speech workflows.
+**AI Anki Language Assistant** is a desktop application for creating reviewed language-learning Anki cards from vocabulary, grammar material, conversations, and imported text/images/PDFs.
 
 The project is built around one principle: **AI proposes; the learner reviews; only approved content reaches Anki.**
 

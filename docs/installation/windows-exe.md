@@ -1,19 +1,29 @@
 # Install the Windows EXE
 
+## REQUIRED before you start
+
+AI Anki Language Assistant does **not** replace Anki. To save, update, scan, or fix flashcards, you must have both of these installed:
+
+1. **Anki Desktop** — [download Anki](https://apps.ankiweb.net/)
+2. **AnkiConnect add-on** — [open AnkiConnect on AnkiWeb](https://ankiweb.net/shared/info/2055492159)
+
+Install AnkiConnect inside Anki:
+
+**Tools → Add-ons → Get Add-ons... → enter code `2055492159` → restart Anki**
+
+!!! warning
+    Keep **Anki Desktop running** while AI Anki Language Assistant is working with your decks. Without AnkiConnect, the app cannot communicate with Anki.
+
 ## Quick links — click here
 
 If you do not know where to start, use these links:
 
 | You need | Click here | Do you need it? |
 |---|---|---|
-| **OpenAI API key** | [OpenAI API Keys](https://platform.openai.com/api-keys) | **Recommended** — easiest setup |
-| **Gemini API key** | [Google AI Studio API Keys](https://aistudio.google.com/apikey) | Optional alternative to OpenAI |
-| **Whisper** | [faster-whisper official GitHub](https://github.com/SYSTRAN/faster-whisper) | Optional local speech recognition; normally bundled in the EXE |
-| **Piper** | [Piper official project](https://github.com/OHF-Voice/piper1-gpl) | Optional local audio; normally use Voice Library in the app |
+| **OpenAI API key** | [OpenAI API Keys](https://platform.openai.com/api-keys) | Use OpenAI |
+| **Gemini API key** | [Google AI Studio API Keys](https://aistudio.google.com/apikey) | Use Gemini |
 
-**Recommended for most people:** use **OpenAI + Local Whisper + Piper**.
-
-You do **not** need to install Whisper or Piper manually if the Windows release is packaged correctly. The links above are there for reference and troubleshooting.
+**You only need one of these keys.**
 
 This guide is for people who receive a ready-to-run Windows release and do **not** need Python, Git, a terminal, or programming knowledge.
 
@@ -24,9 +34,7 @@ For normal flashcard creation, install or prepare only:
 1. **AI Anki Language Assistant**
 2. **Anki Desktop**
 3. **AnkiConnect**
-4. **one AI provider** — the recommended setup uses OpenAI
-
-Speech recognition, local voices, OCR providers, and fully local AI are optional.
+4. **one AI provider** — OpenAI or Gemini
 
 ## 1. Install Anki Desktop
 
@@ -82,7 +90,7 @@ On the first launch, choose:
 
 ![Learning Profile screen](../assets/profile.png)
 
-These settings are reused throughout Create Card, Import Material, Queue, Conversation, STT, TTS, and feedback.
+These settings are reused throughout Create Card, Import Material, Queue, Conversation, and feedback.
 
 ## 5. Use the recommended setup
 
@@ -90,14 +98,9 @@ For a first installation, continue with:
 
 [Recommended setup](recommended-setup.md)
 
-It uses:
+Choose **OpenAI or Gemini**.
 
-- **Hybrid / BYOK**
-- **OpenAI** for card generation and AI features
-- **Local Whisper** for free local speech-to-text
-- **Piper** for free local card audio
-
-You only need one cloud API key.
+You only need one API key. Paste it directly into **Setup → Recommended setup**; no manual `.env` editing is required.
 
 ## 6. First test
 
@@ -111,11 +114,7 @@ After configuration:
 6. Add it to Anki.
 7. Confirm that the note appears in Anki.
 
-Then test optional features:
-
-- **Conversation → Record** for speech-to-text.
-- **Speech & Audio → Voice preview** for TTS.
-- **Import Material** for lesson text, screenshots, or PDFs.
+Then, if you want, test **Import Material** with lesson text, screenshots, or PDFs.
 
 ## Quick diagnosis
 
@@ -124,8 +123,5 @@ Then test optional features:
 | Cannot connect to Anki | Anki is open and AnkiConnect is installed |
 | No AI provider available | Add at least one API key in Setup |
 | 401 / invalid API key | Recreate or re-enter the provider key |
-| Microphone does not work | Windows microphone privacy permission |
-| Whisper is slow the first time | The local model may still be downloading/loading |
-| No voice/audio | Select a cloud TTS provider or download a Piper voice |
 
 For more details see [Troubleshooting](../troubleshooting/index.md).
