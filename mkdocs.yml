@@ -1,6 +1,7 @@
 # yaml-language-server: $schema=https://squidfunk.github.io/mkdocs-material/schema.json
 site_name: AI Anki Language Assistant
 site_description: Official user and developer documentation for AI Anki Language Assistant.
+site_url: https://paulinap92.github.io/ai-anki-language-assistant/
 repo_url: https://github.com/paulinap92/ai-anki-language-assistant
 repo_name: paulinap92/ai-anki-language-assistant
 
