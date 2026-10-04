@@ -21,7 +21,6 @@ If you do not know where to start, use these links:
 | You need | Click here | Do you need it? |
 |---|---|---|
 | **OpenAI API key** | [OpenAI API Keys](https://platform.openai.com/api-keys) | **Recommended** — easiest setup |
-| **Gemini API key** | [Google AI Studio API Keys](https://aistudio.google.com/apikey) | Optional alternative to OpenAI |
 
 **Recommended for most people:** use **OpenAI**.
 
