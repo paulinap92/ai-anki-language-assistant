@@ -271,11 +271,12 @@ def apply_recommended_setup(
     path: str | Path = ".env",
     *,
     openai_api_key: str | None = None,
+    gemini_api_key: str | None = None,
 ) -> Path:
-    """Apply the beginner-friendly Hybrid + OpenAI + local Whisper preset.
+    """Apply the beginner-friendly Hybrid preset with OpenAI and/or Gemini.
 
     Existing non-empty provider secrets remain untouched unless the caller
-    explicitly supplies a replacement OpenAI key.
+    explicitly supplies a replacement key for that provider.
     """
     file_path = create_or_update_starter_env("hybrid", path)
     updates = {
@@ -284,9 +285,12 @@ def apply_recommended_setup(
         "WHISPER_MODEL": "small",
         "WHISPER_LANGUAGE": "",
     }
-    supplied_key = (openai_api_key or "").strip()
-    if supplied_key:
-        updates["OPENAI_API_KEY"] = supplied_key
+    supplied_openai_key = (openai_api_key or "").strip()
+    supplied_gemini_key = (gemini_api_key or "").strip()
+    if supplied_openai_key:
+        updates["OPENAI_API_KEY"] = supplied_openai_key
+    if supplied_gemini_key:
+        updates["GEMINI_API_KEY"] = supplied_gemini_key
     return merge_env_values(file_path, updates)
 
 def configured_status(values: dict[str, str]) -> dict[str, bool]:
