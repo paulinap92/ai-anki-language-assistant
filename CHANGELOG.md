@@ -1,5 +1,14 @@
 # Changelog
 
+## v13.1.0 — Easy Setup
+
+- Added a beginner-friendly **Recommended setup** panel to the desktop Setup tab.
+- Recommended preset uses **Hybrid / BYOK + OpenAI + Local Whisper**, with Piper offered from Speech & Audio for local card audio.
+- Users can paste an OpenAI API key directly in the GUI instead of opening `.env`; existing secrets are preserved when the field is left empty.
+- Added one-click access to the official OpenAI API key page and the Speech & Audio workspace.
+- Added a reusable recommended-setup helper plus regression coverage for secret preservation and preset values.
+- Added end-user Windows EXE documentation covering Anki, AnkiConnect, API keys, Whisper, Piper, cloud fallbacks, and first-run testing.
+
 ## v13.0.0 — Fast Version
 
 - Promoted the current fast desktop line to a new major release after the v12.4.x stabilization cycle.
