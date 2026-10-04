@@ -1,6 +1,7 @@
 from pathlib import Path
 
 from src.core.user_setup import (
+    apply_recommended_setup,
     configured_status,
     create_or_update_starter_env,
     import_env_file,
@@ -88,3 +89,31 @@ def test_configured_status_recognizes_openrouter_and_groq() -> None:
     assert status["openrouter"] is True
     assert status["groq"] is True
     assert status["groq_stt"] is True
+
+
+def test_recommended_setup_uses_hybrid_local_whisper_and_preserves_other_secrets(tmp_path: Path) -> None:
+    env_path = tmp_path / ".env"
+    env_path.write_text(
+        "GROQ_API_KEY=keep-groq\nOPENAI_API_KEY=old-openai\nSTT_PROVIDER=groq\nWHISPER_MODEL=large-v3\n",
+        encoding="utf-8",
+    )
+
+    apply_recommended_setup(env_path)
+    values = read_env_values(env_path)
+
+    assert values["AI_SETUP_MODE"] == "hybrid"
+    assert values["STT_PROVIDER"] == "local_whisper"
+    assert values["WHISPER_MODEL"] == "small"
+    assert values["OPENAI_API_KEY"] == "old-openai"
+    assert values["GROQ_API_KEY"] == "keep-groq"
+
+
+def test_recommended_setup_can_save_supplied_openai_key(tmp_path: Path) -> None:
+    env_path = tmp_path / ".env"
+
+    apply_recommended_setup(env_path, openai_api_key="user-openai-key")
+    values = read_env_values(env_path)
+
+    assert values["OPENAI_API_KEY"] == "user-openai-key"
+    assert values["AI_SETUP_MODE"] == "hybrid"
+    assert values["STT_PROVIDER"] == "local_whisper"
