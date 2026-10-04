@@ -1250,27 +1250,27 @@ ALLOWED OUTPUT TYPES
 
 {mode_contract}
 
-Your job is FULL-COVERAGE candidate extraction with lexical consolidation:
-- Scan the ENTIRE source from beginning to end. Do not stop early and do not analyze only the first section.
+Your job is HIGH-RECALL candidate extraction, not ranking:
 - Candidate count must be driven by the source content, never by a fixed quota or target number.
-- Extract all genuinely learnable intermediate/advanced vocabulary, but consolidate aggressively so the output is a clean study list rather than a token dump.
-- Return ONE candidate per underlying lexical item or fixed expression.
-- Do not return the same lemma in several inflected forms unless the forms have different meanings or are independently learnable expressions.
-- Do not return both a single word and multiple trivial phrases built around that same word unless the phrase is a real collocation, idiom, phrasal verb or fixed expression worth learning separately.
-- Deduplicate repeated occurrences across the document before returning JSON.
-- Prefer the canonical dictionary form for ordinary verbs/nouns/adjectives when the source uses an inflected form.
-- Explicit vocabulary lists, idioms, collocations and lesson expressions should all be preserved.
-- In continuous prose, include non-basic transferable words, phrasal verbs, idioms, collocations, fixed/semi-fixed phrases, useful academic/descriptive vocabulary and specialist terms.
-- Exclude basic/function vocabulary, grammatical glue, dates/numbers, names, headings with no lexical value, OCR garbage, repeated boilerplate, legal/administrative formulae that are too document-specific to be useful, and near-duplicate paraphrases.
-- Review metadata is for ranking only, but an item that is merely incidental, document-specific or not useful for active learning should not become a candidate at all.
-- A dense lesson may still yield dozens of candidates, but hundreds of near-duplicates or trivial variants indicate failed extraction.
+- First identify candidates exhaustively across the ENTIRE source. Ranking happens later in the UI.
+- Do NOT pre-filter the list down to only the "best", "strongest", "most central", or "highest-value" items.
+- Review metadata such as learning_value, topic_relevance, reusability, advancedness and document_specificity are labels only. They must NEVER be used as a reason to omit an otherwise learnable candidate.
+- A short/simple source may contain only a few candidates; a dense reading passage or advanced lesson may legitimately contain dozens or 100+.
+- Do NOT choose an arbitrary top-N subset.
+- Extract every explicit vocabulary item from clearly marked lesson vocabulary lists when it is a real learnable target.
+- Extract every explicit idiom/expression from clearly marked expression sections when it is a real learnable target.
+- For continuous prose, scan sentence by sentence from the beginning to the end of the source.
+- Include every non-basic, potentially learnable item appropriate for an intermediate/advanced learner: transferable single words, phrasal verbs, idioms, collocations, fixed/semi-fixed phrases, useful academic/descriptive vocabulary, specialist terms and notable lexical chunks.
+- A candidate may still be returned even if it is only Useful or Optional; the UI will rank it later.
+- Omit only obvious basic/function vocabulary, proper names with no language-learning value, OCR garbage, duplicate items, page furniture and material that is not a lexical learning target.
+- Never stop early because enough candidates have already been found. Continue scanning until the END of the source.
 
 Priority order:
 1. Extract every explicit bullet/list item under headings such as Vocabulario, Vocabulary, Léxico, Lexique, Wortschatz, Expresiones, Expresiones coloquiales, Idioms, Expressions when it is suitable for learning.
 2. Extract every numbered idiom/expression heading from expression sections.
-3. Scan reading text sentence by sentence from start to finish and extract useful intermediate/advanced lexical candidates, consolidating repeated/inflected variants into one canonical target.
-4. Skip exercises, questions, tasks, page footers, emails, websites, image filenames, copyright/footer text, tutor IDs, page numbers and repetitive legal/administrative boilerplate unless they contain a genuinely reusable lexical target.
-5. When uncertain between two near-duplicate candidates, keep the more canonical/reusable one. Do not manufacture Optional rows just for coverage.
+3. Scan reading text sentence by sentence from start to finish and extract all plausible intermediate/advanced lexical candidates, including useful single words as well as collocations and expressions.
+4. Skip exercises, questions, tasks, page footers, emails, websites, image filenames, copyright/footer text, tutor IDs, and page numbers unless they themselves contain a genuine lexical target.
+5. When uncertain whether a non-basic item is worth learning, INCLUDE it and mark its review metadata accordingly. The UI, not this extraction step, decides whether it is Recommended, Useful or Optional.
 
 Slash and parenthesis rules:
 - If a slash-separated item is a list of separate words, split it into separate vocabulary candidates.
