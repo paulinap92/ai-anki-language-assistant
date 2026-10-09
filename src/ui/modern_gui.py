@@ -76,7 +76,7 @@ from src.practice import PracticeItem, PracticeQuestion, PracticeService
 from src.quality import validate_vocabulary_card
 from src.ocr import HTML_EXTENSIONS, TEXT_EXTENSIONS, OcrExtractionError, clean_ocr_text, extract_text_from_paths, extract_text_with_mistral, extract_candidates_with_multimodal, extract_text_with_multimodal
 from src.speech import RecordedSttService, SpeechService, build_stt_service
-from src.speech.playback import InternalAudioPlayer
+from src.speech.playback import AudioPlaybackError, InternalAudioPlayer, list_output_devices
 from src.speech.models import TtsResult
 from src.speech.voice_presets import get_voice_by_label, get_voice_labels
 from src.speech.voice_library import (
@@ -391,6 +391,13 @@ class ModernVocabularyGui:
         )
         self._conversation_audio_player = InternalAudioPlayer()
         self._speech_preview_player = InternalAudioPlayer()
+        self._audio_output_name = current_settings.audio_output_device_name
+        self._audio_output_host = current_settings.audio_output_host_api
+        self._audio_output_var = ctk.StringVar(value="Automatic")
+        self._audio_output_devices = {}
+        self._speech_preview_generation_id = 0
+        self._speech_preview_generation_lock = threading.Lock()
+        self._apply_audio_output_selection()
         self._conversation_audio_request_id = 0
         self._conversation_audio_generation_lock = threading.Lock()
         self._recording_timer_after_id: str | None = None
@@ -1658,6 +1665,10 @@ class ModernVocabularyGui:
             messagebox.showerror("Reload configuration", f"Could not reload configuration: {exc}")
             return
 
+        self._audio_output_name = settings.audio_output_device_name
+        self._audio_output_host = settings.audio_output_host_api
+        self._apply_audio_output_selection()
+        self._refresh_audio_outputs()
         self._ai_clients = ai_clients
         provider_names = list(ai_clients)
         provider_values = provider_names or ["Not configured"]
@@ -11710,6 +11721,18 @@ class ModernVocabularyGui:
             row=1, column=5, padx=(0, 16), pady=(4, 12)
         )
 
+        ctk.CTkLabel(voice_lab, text="Output device").grid(row=2, column=0, padx=(16, 8), pady=(0, 12), sticky="w")
+        self._audio_output_box = ctk.CTkComboBox(
+            voice_lab, variable=self._audio_output_var, values=["Automatic"],
+            state="readonly", command=self._save_audio_output_selection,
+        )
+        self._audio_output_box.grid(row=2, column=1, columnspan=3, sticky="ew", padx=(0, 8), pady=(0, 12))
+        self._audio_output_refresh = ctk.CTkButton(
+            voice_lab, text="Refresh devices", command=self._refresh_audio_outputs,
+        )
+        self._audio_output_refresh.grid(row=2, column=4, columnspan=2, padx=(0, 16), pady=(0, 12))
+        self._root.after(0, self._refresh_audio_outputs)
+
         search = ctk.CTkFrame(frame, corner_radius=18)
         search.grid(row=2, column=0, sticky="ew", pady=(0, 10))
         search.grid_columnconfigure((1, 3, 5), weight=1)
@@ -12880,21 +12903,127 @@ class ModernVocabularyGui:
             return
         self._play_audio_in_app(self._generated_audio.path, context="Example audio")
 
-    def _play_audio_in_app(self, path: Path, context: str = "Audio") -> bool:
-        """Play preview audio inside the app instead of opening an OS player."""
+    def _apply_audio_output_selection(self) -> None:
+        for player in (self._speech_preview_player, self._conversation_audio_player):
+            player.set_output_device(self._audio_output_name, self._audio_output_host)
+
+    def _run_audio_task(self, worker, on_success, on_error) -> None:
+        """Keep audio IO off Tk; poll results and run callbacks on the UI thread."""
+        results = queue.Queue()
+
+        def run() -> None:
+            try:
+                results.put((True, worker()))
+            except Exception as exc:
+                LOGGER.exception("Background audio task failed")
+                results.put((False, exc))
+
+        def poll() -> None:
+            try:
+                ok, value = results.get_nowait()
+            except queue.Empty:
+                self._root.after(50, poll)
+                return
+            (on_success if ok else on_error)(value)
+
+        threading.Thread(target=run, daemon=True, name="audio-playback-io").start()
+        self._root.after(50, poll)
+
+    def _refresh_audio_outputs(self) -> None:
+        self._audio_output_refresh.configure(state="disabled")
+
+        def success(devices) -> None:
+            self._audio_output_refresh.configure(state="normal")
+            self._audio_output_devices = {device.label: device for device in devices}
+            selected = "Automatic"
+            matches = [d for d in devices if d.name == self._audio_output_name and d.host_api == self._audio_output_host]
+            values = ["Automatic", *self._audio_output_devices]
+            if len(matches) == 1:
+                selected = matches[0].label
+            elif self._audio_output_name:
+                selected = f"Unavailable: {self._audio_output_name} — {self._audio_output_host}"
+                values.append(selected)
+            self._audio_output_box.configure(values=values)
+            self._audio_output_var.set(selected)
+
+        def error(exc) -> None:
+            self._audio_output_refresh.configure(state="normal")
+            self._speech_progress_var.set(self._friendly_playback_error(exc))
+
+        self._run_audio_task(list_output_devices, success, error)
+
+    def _save_audio_output_selection(self, label: str) -> None:
+        device = self._audio_output_devices.get(label)
+        if label != "Automatic" and device is None:
+            return
+        name, host = (device.name, device.host_api) if device else ("", "")
         try:
-            self._speech_preview_player.play(Path(path))
-        except Exception as exc:
-            LOGGER.exception("In-app audio preview failed: %s", path)
-            message = f"{context} could not be played in the app: {exc}"
+            merge_env_values(self._setup_env_path, {
+                "AUDIO_OUTPUT_DEVICE_NAME": name, "AUDIO_OUTPUT_HOST_API": host,
+            })
+        except Exception:
+            LOGGER.exception("Could not save audio output")
+            messagebox.showerror("Audio output", "Could not save the output device. Check that the configuration folder is writable.")
+            self._refresh_audio_outputs()
+            return
+        self._audio_output_name, self._audio_output_host = name, host
+        # Apply directly; rebuilding providers would reset unrelated selections.
+        os.environ["AUDIO_OUTPUT_DEVICE_NAME"] = name
+        os.environ["AUDIO_OUTPUT_HOST_API"] = host
+        self._apply_audio_output_selection()
+        self._speech_progress_var.set(f"Output device saved: {label}. Applies to previews and Conversation.")
+
+    @staticmethod
+    def _friendly_playback_error(exc: Exception) -> str:
+        if isinstance(exc, AudioPlaybackError):
+            return str(exc)
+        return ("Audio is ready, but playback could not start. Check your speakers or headphones "
+                "and select an output device in Speech & Audio → Output device.")
+
+    def _start_audio_playback(self, player, path: Path, on_success, on_error) -> None:
+        request_id = player.reserve_request()
+
+        def success(result) -> None:
+            if result is not None and player.is_current_request(request_id):
+                on_success(result)
+
+        def error(exc) -> None:
+            if player.is_current_request(request_id):
+                on_error(exc)
+
+        self._run_audio_task(lambda: player.play(Path(path), request_id=request_id), success, error)
+
+    def _stop_audio_player(self, player) -> None:
+        # Reserve on Tk now, so Stop also cancels a file still being decoded.
+        request_id = player.reserve_request()
+        def worker() -> None:
+            try:
+                player.stop(request_id=request_id)
+            except Exception:
+                LOGGER.exception("Could not stop audio playback")
+        threading.Thread(target=worker, daemon=True, name="audio-stop").start()
+
+    @staticmethod
+    def _playback_device_status(result) -> str:
+        prefix = "Fallback output" if result.used_fallback else "Output"
+        return f"{prefix}: {result.device.name} — {result.device.host_api}"
+
+    def _play_audio_in_app(self, path: Path, context: str = "Audio") -> None:
+        """Decode/open in a worker and start non-blocking in-app playback."""
+        def success(result) -> None:
+            self._speech_progress_var.set(f"{context} playing. {self._playback_device_status(result)}")
+
+        def error(exc) -> None:
+            message = self._friendly_playback_error(exc)
             self._speech_progress_var.set(message)
             messagebox.showerror("Audio playback", message)
-            return False
-        self._speech_progress_var.set(f"{context} playing in app: {Path(path).name}")
-        return True
+
+        self._speech_progress_var.set(f"Opening audio output for {context}...")
+        self._start_audio_playback(self._speech_preview_player, path, success, error)
 
     def _stop_speech_preview(self) -> None:
-        self._speech_preview_player.stop()
+        self._speech_preview_generation_id += 1
+        self._stop_audio_player(self._speech_preview_player)
         self._speech_progress_var.set("Voice preview stopped.")
 
     @staticmethod
@@ -12937,31 +13066,28 @@ class ModernVocabularyGui:
             language,
         )
         self._speech_progress_var.set(f"Previewing voice: {voice_label}...")
-        self._root.update_idletasks()
-        try:
-            result = self._speech_service.generate(
-                provider_name,
-                sample_text,
-                language,
-                model_name,
-                voice_value,
-            )
-        except Exception as exc:
-            LOGGER.exception(
-                "TTS voice preview failed: provider=%s model=%s voice_label=%s voice_value=%s",
-                provider_name,
-                model_name,
-                voice_label,
-                voice_value,
-            )
+        self._speech_preview_generation_id += 1
+        generation_id = self._speech_preview_generation_id
+        service = self._speech_service
+
+        def worker():
+            with self._speech_preview_generation_lock:
+                return service.generate(provider_name, sample_text, language, model_name, voice_value)
+
+        def success(result) -> None:
+            if generation_id != self._speech_preview_generation_id:
+                return
+            self._record_activity(f"♪ Voice preview: {voice_label}")
+            self._play_audio_in_app(result.path, context=f"Voice preview · {voice_label}")
+
+        def error(exc) -> None:
+            if generation_id != self._speech_preview_generation_id:
+                return
             message = self._friendly_tts_error_message(exc)
             self._speech_progress_var.set(message)
             messagebox.showerror("TTS preview error", message)
-            return
 
-        self._speech_progress_var.set(f"Voice preview ready: {result.path.name}")
-        self._record_activity(f"♪ Voice preview: {voice_label}")
-        self._play_audio_in_app(result.path, context=f"Voice preview · {voice_label}")
+        self._run_audio_task(worker, success, error)
 
     def _set_audio_batch_controls_state(self, running: bool) -> None:
         """Enable Pause/Stop only while a long audio queue is running."""
@@ -14143,22 +14269,7 @@ class ModernVocabularyGui:
         """Play an already-generated file without opening an external player."""
         self._conversation_audio_request_id += 1
         request_id = self._conversation_audio_request_id
-        try:
-            self._conversation_audio_player.play(path)
-        except Exception as exc:
-            LOGGER.exception("Conversation in-app playback failed")
-            message = str(exc) or exc.__class__.__name__
-            self._conversation_audio_status_var.set("Audio playback failed.")
-            self._status_var.set(message)
-            messagebox.showerror("Audio playback error", message)
-            return
-        self._conversation_audio_status_var.set(f"Playing {label}...")
-        self._status_var.set(f"Playing {label}: {path.name}")
-        threading.Thread(
-            target=self._wait_for_conversation_audio,
-            args=(request_id, label),
-            daemon=True,
-        ).start()
+        self._play_generated_conversation_audio(path, request_id=request_id, label=label)
 
     def _wait_for_conversation_audio(self, request_id: int, label: str) -> None:
         try:
@@ -14187,7 +14298,7 @@ class ModernVocabularyGui:
 
         self._conversation_audio_request_id += 1
         request_id = self._conversation_audio_request_id
-        self._conversation_audio_player.stop()
+        self._stop_audio_player(self._conversation_audio_player)
         self._conversation_audio_status_var.set(f"Generating {label}...")
         self._status_var.set(f"Generating {label} audio with {provider_name}...")
 
@@ -14237,23 +14348,31 @@ class ModernVocabularyGui:
     ) -> None:
         if request_id != self._conversation_audio_request_id:
             return
-        try:
-            self._conversation_audio_player.play(path)
-        except Exception as exc:
-            self._handle_conversation_audio_error(exc, request_id=request_id)
-            return
-        self._conversation_audio_status_var.set(f"Playing {label}...")
-        self._status_var.set(f"Playing {label} in the app: {path.name}")
-        threading.Thread(
-            target=self._wait_for_conversation_audio,
-            args=(request_id, label),
-            daemon=True,
-        ).start()
+        def success(result) -> None:
+            if request_id != self._conversation_audio_request_id:
+                return
+            self._conversation_audio_status_var.set(f"Playing {label}...")
+            self._status_var.set(f"Playing {label}. {self._playback_device_status(result)}")
+            threading.Thread(
+                target=self._wait_for_conversation_audio,
+                args=(request_id, label), daemon=True,
+            ).start()
+
+        def error(exc) -> None:
+            if request_id != self._conversation_audio_request_id:
+                return
+            message = self._friendly_playback_error(exc)
+            self._conversation_audio_status_var.set("Audio playback failed. Audio generation succeeded.")
+            self._status_var.set(message)
+            messagebox.showerror("Audio playback", message)
+
+        self._conversation_audio_status_var.set(f"Opening audio output for {label}...")
+        self._start_audio_playback(self._conversation_audio_player, path, success, error)
 
     def _stop_conversation_audio(self, *, silent: bool = False) -> None:
         """Stop current playback and invalidate any older pending auto-read request."""
         self._conversation_audio_request_id += 1
-        self._conversation_audio_player.stop()
+        self._stop_audio_player(self._conversation_audio_player)
         self._conversation_audio_status_var.set("Conversation audio: stopped." if not silent else "Conversation audio: ready.")
         if not silent:
             self._status_var.set("Conversation audio stopped.")

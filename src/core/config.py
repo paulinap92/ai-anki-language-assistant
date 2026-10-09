@@ -107,6 +107,8 @@ class Settings:
     langsmith_project: str
     langsmith_endpoint: str | None
     langsmith_redact_inputs: bool
+    audio_output_device_name: str = ""
+    audio_output_host_api: str = ""
 
 
 def get_settings() -> Settings:
@@ -163,6 +165,8 @@ def get_settings() -> Settings:
             setup_mode = "hybrid"
 
     return Settings(
+        audio_output_device_name=os.getenv("AUDIO_OUTPUT_DEVICE_NAME", "").strip(),
+        audio_output_host_api=os.getenv("AUDIO_OUTPUT_HOST_API", "").strip(),
         setup_mode=setup_mode,
         gemini_api_key=gemini_api_key,
         gemini_model=_clean_env_value(os.getenv("GEMINI_MODEL")) or "gemini-2.5-flash",
